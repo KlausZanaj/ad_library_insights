@@ -17,7 +17,7 @@ from collections import Counter, defaultdict
 from datetime import date, timedelta
 from importlib import resources
 
-from . import copy_analysis
+from . import copy_analysis, scoring
 
 TIERS = (("strong", 70), ("good", 40), ("testing", 0))
 AGE_FLOOR, AGE_CEILING = 18, 65      # the age range Meta's targeting spans
@@ -112,10 +112,21 @@ def audience_breadth(audience: dict | None, reach: dict | None) -> dict | None:
     }
 
 
+def score_parts(ad: dict) -> dict:
+    """How the longevity score splits into its two parts, for display.
+
+    The parts come from the scoring function itself (days with no reuse, reuse with
+    no days), so they always follow its rules.
+    """
+    return {"days": scoring.longevity_score(ad.get("days_running"), 1),
+            "reuse": scoring.longevity_score(0, ad.get("repetitions", 1))}
+
+
 def annotate(ranked: list[dict]) -> list[dict]:
     """Add tier, reach per day and audience breadth to ranked ads, then the review flag."""
     for ad in ranked:
         ad["tier"] = tier(ad["longevity_score"])
+        ad["score_parts"] = score_parts(ad)
         reach = ad.get("reach") or {}
         days = max(ad.get("days_running") or 0, 1)
         if reach.get("available"):

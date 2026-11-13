@@ -7,6 +7,7 @@ downloaded once, while the search is fresh, into the tool's home folder.
 from __future__ import annotations
 
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Callable
 
@@ -60,16 +61,18 @@ class MediaStore:
         return [str(p) for p in sorted(self.directory.glob(f"ad_{library_id}_frame_*.jpg"))]
 
 
-def save_ad_media(ads: list[dict], store: MediaStore) -> int:
+def save_ad_media(ads: list[dict], store: MediaStore, workers: int = 6) -> int:
     """Download thumbnail and page logo of each ad; set ``thumbnail_path`` / ``logo_path``.
 
-    Logos are shared by all the ads of a page, so each is fetched once. Returns the
-    number of files now on disk for these ads.
+    Logos are shared by all the ads of a page, so each is fetched once. Downloads run
+    a few at a time. Returns how many of the ads ended up with a thumbnail on disk.
     """
-    saved = 0
-    for ad in ads:
-        thumbnail = store.save(ad.get("image_url"), f"ad_{ad['library_id']}_thumb")
-        logo = store.save(ad.get("logo_url"), f"page_{ad['page_id']}_logo") if ad.get("page_id") else None
-        ad["thumbnail_path"], ad["logo_path"] = thumbnail, logo
-        saved += bool(thumbnail) + bool(logo)
-    return saved
+    logos = {ad["page_id"]: ad.get("logo_url") for ad in ads if ad.get("page_id")}
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        logo_paths = dict(zip(logos, pool.map(
+            lambda item: store.save(item[1], f"page_{item[0]}_logo"), logos.items())))
+        thumbnails = list(pool.map(
+            lambda ad: store.save(ad.get("image_url"), f"ad_{ad['library_id']}_thumb"), ads))
+    for ad, thumbnail in zip(ads, thumbnails):
+        ad["thumbnail_path"], ad["logo_path"] = thumbnail, logo_paths.get(ad.get("page_id"))
+    return sum(bool(path) for path in thumbnails)

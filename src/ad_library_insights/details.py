@@ -72,6 +72,8 @@ def parse_reach(transparency: dict | None, country: str | None = None) -> dict:
         countries, ages, genders = _breakdown(block)
         if total is None and not countries:
             continue
+        if total is not None and len(countries) == 1:
+            countries[0]["reach"] = total      # one country: the same people as the section total
         regions.append({"region": _region_name(key),
                         "total": total if total is not None else sum(c["reach"] for c in countries),
                         "countries": countries})
@@ -111,6 +113,16 @@ def parse_reach(transparency: dict | None, country: str | None = None) -> dict:
     }
 
 
+_PLACE_TYPES = {"country": "countries", "country_group": "country_groups", "region": "regions",
+                "city": "cities", "zip": "zips", "postal_code": "zips"}
+
+
+def _place_type(raw) -> str | None:
+    """One spelling for location kinds; the page mixes "countries" with "CITY"."""
+    kind = str(raw or "").strip().lower()
+    return _PLACE_TYPES.get(kind, kind) or None
+
+
 def parse_audience(transparency: dict | None) -> dict | None:
     """Targeting the advertiser chose: age, gender and locations, included and excluded.
 
@@ -128,7 +140,7 @@ def parse_audience(transparency: dict | None) -> dict | None:
             key = (place.get("name"), place.get("type"), bool(place.get("excluded")))
             if place.get("name") and key not in seen:
                 seen.add(key)
-                locations.append({"name": place["name"], "type": place.get("type"),
+                locations.append({"name": place["name"], "type": _place_type(place.get("type")),
                                   "excluded": bool(place.get("excluded"))})
     return {
         "age_min": age.get("min"),

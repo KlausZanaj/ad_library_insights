@@ -47,6 +47,29 @@ If PowerShell refuses to run the activation script, run
 `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once, or skip activation
 and call `.venv\Scripts\python.exe` directly.
 
+### Open the app
+
+On Windows, double-click `avvia.bat`. The first time it creates the virtual
+environment and installs everything; after that it opens the app in your
+browser. On any system, with the environment active:
+
+```bash
+ad-library-insights app
+```
+
+The app runs on your computer only (`127.0.0.1`). Choose a mode (search by
+keyword or analyse a company), a country and a level:
+
+| Level | What you get | What it uses |
+|---|---|---|
+| **Data** | Ranking, days running, reach and audience, company signals. | Nothing: plain code, no AI. |
+| **Analysis** | The same data, plus a ready text for your own assistant to explain why the company gets those results. | Your assistant's limits. |
+| **Plan** | The analysis plus ad ideas, a test plan and a report for your own product. Asks once for your project (product, price, cost, market, goal, main problem). | More of your assistant's limits. |
+
+No model is called by the app. Before an Analysis or Plan search it shows what
+will be sent (ads, video stills) and an estimate of the size, labelled low,
+medium or high. It is an estimate: limits depend on your plan and model.
+
 ### Connect it to an MCP client
 
 Point the client at the Python interpreter of the virtual environment.

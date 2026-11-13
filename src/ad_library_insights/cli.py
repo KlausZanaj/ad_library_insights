@@ -1,5 +1,6 @@
-"""Command line: start the MCP server, export a report, or run the break-even check.
+"""Command line: open the local app, start the MCP server, export a report, or run the break-even check.
 
+    ad-library-insights app
     ad-library-insights serve
     ad-library-insights report --country XX --query "<keyword>" [--advertiser NAME] --out DIR
     ad-library-insights pages --country XX --name "<advertiser>"
@@ -116,6 +117,10 @@ def main(argv: list[str] | None = None) -> int:
 
     commands.add_parser("serve", help="run the MCP server over stdio (default)")
 
+    web = commands.add_parser("app", help="open the local web app in the browser")
+    web.add_argument("--port", type=int, default=8765, help="preferred port on 127.0.0.1")
+    web.add_argument("--no-browser", action="store_true", help="do not open the browser")
+
     rep = commands.add_parser("report", help="research one search and write Markdown + CSV")
     rep.add_argument("--country", required=True, help="two-letter ISO country code, or ALL")
     rep.add_argument("--query", default="", help="keyword(s) to search")
@@ -165,6 +170,10 @@ def main(argv: list[str] | None = None) -> int:
             return _breakeven(args)
         if args.command == "pages":
             return _pages(args)
+        if args.command == "app":
+            from .web.app import serve
+            serve(args.port, not args.no_browser)
+            return 0
         if args.command == "company":
             return _company(args)
     except (ValueError, OSError) as exc:
