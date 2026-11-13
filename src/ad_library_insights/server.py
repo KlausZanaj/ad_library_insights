@@ -5,7 +5,7 @@ import asyncio
 
 from fastmcp import FastMCP
 
-from . import breakeven, report, service
+from . import breakeven, history, report, service
 from .client import AdLibraryClient, default_client
 
 mcp = FastMCP(
@@ -19,7 +19,8 @@ mcp = FastMCP(
         "active ad of the chosen page. Reach and audience are read from the detail view of the "
         "top-ranked ads only (deep_ads); Meta publishes them for ads delivered in the European "
         "Union or the United Kingdom, so say plainly when an ad has none. No spend or sales data "
-        "exists for commercial ads: longevity is a proxy, say so when reporting. Pages are "
+        "exists for commercial ads: longevity is a proxy, say so when reporting. Searches are "
+        "saved locally and what_changed compares the last two of the same keyword or page. Pages are "
         "cached for six hours and requests are spaced out, so a call can take a few minutes."
     ),
 )
@@ -59,6 +60,8 @@ def _progress_reporter():
 async def _deepen(result: dict, deep_ads: int, frames: bool, use_cache: bool) -> dict:
     if deep_ads > 0 and result.get("ads"):
         await service.deepen(_get_client(), result, deep_ads, frames, _progress_reporter(), use_cache)
+    if result.get("ads"):       # remembered, so that what_changed has something to compare
+        result["changes"] = history.summary(history.History().record(result))
     return result
 
 
@@ -138,6 +141,24 @@ async def analyze_company(country: str, page_id: str = "", name: str = "", deep_
     except ValueError as exc:
         return {"ok": False, "error": str(exc)}
     return _trim(result, max_results)
+
+
+@mcp.tool
+def what_changed(country: str = "", query: str = "", page_id: str = "") -> dict:
+    """New, stopped and changed ads since the previous search of a keyword or company.
+
+    Every search_ads and analyze_company call is saved on this machine; this compares
+    the last two saved searches of the same keyword (query) or page (page_id) in a
+    country. It needs two searches: after the first one it says so. Call it with no
+    arguments to list what has been searched so far. To look for changes now, run the
+    search again with use_cache false, then call this.
+    """
+    store = history.History()
+    if not (query or page_id):
+        return {"ok": True, "searches": store.subjects()}
+    key = (f"company:{country.strip().upper()}:{page_id.strip()}" if page_id
+           else f"keyword:{country.strip().upper()}:{query.strip().casefold()}")
+    return {"ok": True, **store.changes(key)}
 
 
 @mcp.tool

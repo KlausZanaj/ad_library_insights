@@ -19,12 +19,12 @@ from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from .. import __version__, briefs, consumption, details, media, project, service
+from .. import __version__, briefs, consumption, details, history, media, project, service
 from ..client import AdLibraryClient, normalise_country
 from ..storage import DiskCache, Throttle
 
 STATIC = Path(__file__).parent / "static"
-TABLE_THUMBNAILS = 60          # thumbnails kept for the ads listed in the table
+TABLE_THUMBNAILS = 150         # thumbnails kept for the ads listed in the table
 KEYWORD_SCROLLS = 8
 _SAFE_NAME = re.compile(r"^[\w.-]+$")
 
@@ -73,6 +73,7 @@ class Workspace:
     def __init__(self, client: AdLibraryClient | None = None, home: Path | None = None):
         self.client = client or AdLibraryClient(cache=DiskCache(), throttle=Throttle(), sleep=self._sleep)
         self.home = home
+        self.history = history.History(Path(home) / "snapshots" if home else None)
         self.jobs: dict[str, Job] = {}
         self._lock = asyncio.Lock()
         self._current: Job | None = None
@@ -104,12 +105,13 @@ class Workspace:
             self._current = job
             try:
                 job.phase = "list"
+                use_cache = not params.get("fresh")
                 if params["mode"] == "company":
                     result = await service.research_company(self.client, params["country"],
-                                                            page_id=params["page_id"])
+                                                            page_id=params["page_id"], use_cache=use_cache)
                 else:
                     result = await service.research(self.client, params["query"], params["country"],
-                                                    scroll_rounds=KEYWORD_SCROLLS)
+                                                    scroll_rounds=KEYWORD_SCROLLS, use_cache=use_cache)
                 if result.get("ads"):
                     plan = service.estimate_deep(result, params["deep"], params["frames"])
                     job.phase = "details"
@@ -120,10 +122,13 @@ class Workspace:
                             job.detail = {"done": event["done"], "total": event["total"],
                                           "eta_seconds": event["eta_seconds"]}
 
-                    await service.deepen(self.client, result, params["deep"], params["frames"], progress)
+                    await service.deepen(self.client, result, params["deep"], params["frames"], progress,
+                                         use_cache)
                     job.phase, job.detail = "media", {}
                     await asyncio.to_thread(media.save_ad_media, result["ads"][:TABLE_THUMBNAILS],
                                             self.client.media)
+                    # every search is remembered, so the next one can tell what changed
+                    result["changes"] = history.summary(self.history.record(result))
                 job.raw, job.result = result, present(result, params)
                 job.status = "done"
             except Exception as exc:  # shown to the user instead of a dead spinner
@@ -197,6 +202,7 @@ class Workspace:
                 "frames": bool(body.get("frames")),
                 "query": (body.get("query") or "").strip(),
                 "page_id": str(body.get("page_id") or "").strip(),
+                "fresh": bool(body.get("fresh")),      # skip the cache: used to look for changes
             }
             if params["mode"] not in ("keyword", "company"):
                 raise ValueError("mode must be keyword or company")
@@ -219,6 +225,16 @@ class Workspace:
         if not job:
             return JSONResponse({"error": "not_found"}, status_code=404)
         return JSONResponse(job.view())
+
+    async def saved_searches(self, request: Request) -> Response:
+        return JSONResponse({"subjects": self.history.subjects()})
+
+    async def changes(self, request: Request) -> Response:
+        found = self.history.changes(request.query_params.get("key", ""))
+        for group in ("new", "stopped", "changed"):
+            for ad in found.get(group, []):
+                ad["thumbnail"] = _media_url(ad.pop("thumbnail_path", None))
+        return JSONResponse(found)
 
     async def brief(self, request: Request) -> Response:
         body = await request.json()
@@ -251,6 +267,8 @@ def create_app(client: AdLibraryClient | None = None, home: Path | None = None) 
         Route("/api/jobs", space.create_job, methods=["POST"]),
         Route("/api/jobs/{job_id}", space.get_job),
         Route("/api/brief", space.brief, methods=["POST"]),
+        Route("/api/history", space.saved_searches),
+        Route("/api/history/changes", space.changes),
         Mount("/static", StaticFiles(directory=STATIC), name="static"),
     ])
     app.state.workspace = space

@@ -52,3 +52,9 @@ def cards():
                   details="See summary details", video=True),
         make_card(library_id="1003", started="Started running on Feb 1, 2026"),  # same copy as 1001
     ]
+
+
+@pytest.fixture(autouse=True)
+def isolated_home(tmp_path, monkeypatch):
+    """Keep cache, saved searches and pictures of every test inside its temp folder."""
+    monkeypatch.setenv("AD_LIBRARY_INSIGHTS_HOME", str(tmp_path / "home"))

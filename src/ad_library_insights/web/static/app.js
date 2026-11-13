@@ -21,6 +21,7 @@ const S = {
   country: 'IT', query: '', company: '',
   pages: null, busy: null, job: null, result: null, jobId: null, notice: null,
   project: null, overlay: null, estimate: null, pending: null,
+  history: null, news: null,
 };
 let T = { it: {}, en: {} };
 
@@ -108,8 +109,8 @@ function renderSearch() {
   const lang = `<div class="switch" role="group" aria-label="${esc(t('lang.label'))}">${toggle('lang', ['it', 'en'], S.lang, (v) => v.toUpperCase())}</div>`;
   let html = `<div class="search-in"><div class="search-head"><div><h1>${esc(t(`mode.${S.mode}`))}</h1><p>${esc(t(`${S.mode}.lead`))}</p></div>${lang}</div>`;
   if (!active) {
-    html += `<p class="notice">${esc(t('soon'))}</p></div>`;
-    $('#search').innerHTML = html;
+    if (S.mode !== 'news') html += `<p class="notice">${esc(t('soon'))}</p>`;
+    $('#search').innerHTML = `${html}</div>`;
     return;
   }
   const company = S.mode === 'company';
@@ -122,10 +123,13 @@ function renderSearch() {
       <select data-bind="country" ${locked ? 'disabled' : ''}>${countryOptions(S.country)}</select></label>
     <button class="btn" data-action="submit" ${locked ? 'disabled' : ''}>${esc(t(company ? 'button.find' : 'button.search'))}</button>
   </div>
-  <p class="levels-title">${esc(t('level.title'))}</p>
-  <div class="levels" role="radiogroup">${LEVELS.map((level) => `
+  <p class="levels-title"><span>${esc(t('level.title'))}</span><span>${esc(t('level.note'))}</span></p>
+  <div class="levels" role="radiogroup">${LEVELS.map((level, depth) => `
     <button class="level" role="radio" data-action="level" data-value="${level}" aria-checked="${level === S.level}" ${locked ? 'disabled' : ''}>
-      <strong>${esc(t(`level.${level}`))}</strong><span>${esc(t(`level.${level}.desc`))}</span><small>${esc(t(`level.${level}.cost`))}</small>
+      <span class="lv-head"><strong>${esc(t(`level.${level}`))}</strong><span class="steps" aria-hidden="true">${[0, 1, 2].map((n) => `<i${n <= depth ? ' class="on"' : ''}></i>`).join('')}</span></span>
+      <span class="lv-q">${esc(t(`level.${level}.q`))}</span>
+      <span class="lv-list">${[1, 2, 3].map((n) => `<span>${esc(t(`level.${level}.${n}`))}</span>`).join('')}</span>
+      <span class="lv-foot"><span>${esc(t('level.who'))}</span><span>${esc(t(`level.${level}.who`))}</span><span>${esc(t('level.cost'))}</span><span>${esc(t(`level.${level}.use`))}</span></span>
     </button>`).join('')}</div>
   <div class="options">
     <span>${esc(t('deep.before'))}</span>
@@ -185,6 +189,15 @@ function headSection(r) {
     <div class="grow"><h1>${title}</h1><p>${sub}</p></div>
     <div class="rlinks"><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(t('link.meta'))}</a>
     <button class="linklike" data-action="guide">${esc(t('link.guide'))}</button></div></section>`;
+}
+function changesSection(r) {
+  const c = r.changes;
+  if (!c) return '';
+  if (!c.available) return `<section class="changes"><p class="muted">${esc(t('changes.first'))}</p></section>`;
+  const date = `${day(c.previous_taken_at.slice(0, 10))}, ${clock(c.previous_taken_at)}`;
+  const { new: fresh, stopped, changed } = c.counts;
+  const text = fresh + stopped + changed ? t('changes.since', { date, new: fresh, stopped, changed }) : t('changes.same', { date });
+  return `<section class="changes"><p>${esc(text)}</p><button class="btn quiet small" data-action="news-open" data-value="${esc(c.key)}">${esc(t('news.view'))}</button></section>`;
 }
 function readySection(r) {
   const level = r.request.level;
@@ -265,10 +278,79 @@ function tableSection(r) {
 }
 function renderResults() {
   const el = $('#results');
+  if (S.mode === 'news') { renderNews(); return; }
   if (S.pages) { el.innerHTML = pagesSheet(); return; }
   const r = S.result;
   if (!r || !(r.ads || []).length || !(S.mode === 'keyword' || S.mode === 'company')) { el.innerHTML = ''; return; }
-  el.innerHTML = `<div class="sheet">${headSection(r)}${readySection(r)}${metricsSection(r)}${factsSection(r)}${tableSection(r)}</div>`;
+  el.innerHTML = `<div class="sheet">${headSection(r)}${readySection(r)}${changesSection(r)}${metricsSection(r)}${factsSection(r)}${tableSection(r)}</div>`;
+}
+
+/* ---------- what changed ---------- */
+const stamp = (iso) => `${day(iso.slice(0, 10))}, ${clock(iso)}`;
+function adCell(ad, keyword) {
+  return `<div class="adcell">${ad.thumbnail ? `<img class="thumb" src="${esc(ad.thumbnail)}" alt="" loading="lazy">` : '<span class="thumb"></span>'}
+    <div class="adtext"><div><a href="${esc(ad.ad_url)}" target="_blank" rel="noopener">${esc(ad.opening || t('t.notext'))}</a></div>
+    <small>${esc([keyword ? ad.advertiser : t(`format.${ad.media_type || 'unknown'}`), ad.cta].filter(Boolean).join(' · '))}</small></div></div>`;
+}
+function newsList(title, ads, keyword, extraHead, extraCell) {
+  const body = ads.length ? `<table class="ads"><thead><tr><th>${esc(t('t.ad'))}</th>${extraHead}<th class="r">${esc(t('news.started'))}</th><th class="r">${esc(t('news.ran'))}</th><th class="r">${esc(t('t.score'))}</th></tr></thead>
+    <tbody>${ads.map((ad) => `<tr><td>${adCell(ad, keyword)}</td>${extraCell(ad)}<td class="r">${ad.started ? esc(day(ad.started)) : '—'}</td><td class="r">${num(ad.days_running)}</td><td class="r">${ad.longevity_score == null ? '—' : Math.round(ad.longevity_score)}</td></tr>`).join('')}</tbody></table>`
+    : `<p class="muted">${esc(t('news.none'))}</p>`;
+  return `<section><div class="listhead"><h2>${esc(title)}</h2><span>${ads.length}</span></div>${body}</section>`;
+}
+function newsDetail(c) {
+  const keyword = c.subject.mode === 'keyword';
+  const title = keyword ? t('result.keyword', { query: c.subject.label, country: region(c.subject.country) }) : `${c.subject.label} · ${region(c.subject.country)}`;
+  const cells = [
+    [c.counts.new, t('news.new'), `${t('news.new.x')} ${t('news.new.texts', { n: c.counts.new_texts })}`],
+    [c.counts.stopped, t('news.stopped'), t('news.stopped.x')],
+    [c.counts.changed, t('news.changed'), t('news.changed.x')],
+  ];
+  const what = (ad) => `<td>${ad.fields.map((f) => esc(t(`field.${f}`))).join(', ')}${ad.before.opening && ad.fields.includes('text') ? `<span class="was">${esc(t('news.before', { value: ad.before.opening }))}</span>` : ''}</td>`;
+  const kind = (ad) => `<td class="dim">${esc(t(ad.new_text ? 'news.newtext' : 'news.reused'))}</td>`;
+  return `<div class="sheet">
+    <section class="rhead"><div class="grow"><h1>${esc(title)}</h1><p>${esc(t('news.span', { from: stamp(c.previous.taken_at), to: stamp(c.current.taken_at), gap: c.days_between < 1 ? t('gap.hours', { n: Math.max(1, Math.round(c.days_between * 24)) }) : t('gap.days', { n: num(Math.round(c.days_between)) }) }))}</p></div>
+      <div class="rlinks"><button class="linklike" data-action="news-refresh" data-value="${esc(c.subject.key)}">${esc(t('news.refresh'))}</button></div></section>
+    <section class="metrics three">${cells.map(([value, label, why]) => `<div class="metric"><b>${num(value)}</b><span>${esc(label)}</span><small>${esc(why)}</small></div>`).join('')}</section>
+    ${c.sample ? `<section><p class="muted">${esc(t('news.sample'))}</p></section>` : ''}
+    ${newsList(t('news.new'), c.new, keyword, '<th></th>', kind)}
+    ${newsList(t('news.stopped'), c.stopped, keyword, '', () => '')}
+    ${newsList(t('news.changed'), c.changed, keyword, `<th>${esc(t('news.what'))}</th>`, what)}
+  </div>`;
+}
+function renderNews() {
+  const el = $('#results');
+  if (!S.history) { el.innerHTML = ''; return; }
+  if (!S.history.length) { el.innerHTML = `<div class="sheet"><section><p class="muted">${esc(t('news.empty'))}</p></section></div>`; return; }
+  const rows = S.history.map((row) => `<tr>
+    <td>${esc(row.label)}</td><td>${esc(t(`news.kind.${row.mode}`))}</td><td>${esc(region(row.country))}</td>
+    <td class="r">${row.snapshots}</td><td class="r">${esc(stamp(row.last_taken_at))}</td>
+    <td class="r">${row.snapshots > 1 ? `<button class="btn small${S.news && S.news.subject.key === row.key ? '' : ' quiet'}" data-action="news-open" data-value="${esc(row.key)}">${esc(t('news.view'))}</button>` : `<span class="dim">${esc(t('news.second'))}</span>`}</td>
+    <td class="r"><button class="btn quiet small" data-action="news-refresh" data-value="${esc(row.key)}">${esc(t('news.refresh'))}</button></td></tr>`).join('');
+  el.innerHTML = `<div class="sheet"><section><h2 style="margin-bottom:18px">${esc(t('news.saved'))}</h2><table>
+    <thead><tr><th>${esc(t('news.subject'))}</th><th>${esc(t('news.kind'))}</th><th>${esc(t('field.country'))}</th><th class="r">${esc(t('news.count'))}</th><th class="r">${esc(t('news.last'))}</th><th></th><th></th></tr></thead>
+    <tbody>${rows}</tbody></table></section></div>${S.news ? newsDetail(S.news) : ''}`;
+}
+async function loadHistory() {
+  try { S.history = (await api('/api/history')).subjects; } catch { S.history = []; }
+  if (S.mode === 'news') renderResults();
+}
+async function openNews(key) {
+  S.mode = 'news'; S.pages = null; S.notice = null; S.overlay = null;
+  render();
+  await loadHistory();
+  try { S.news = await api(`/api/history/changes?key=${encodeURIComponent(key)}`); } catch { S.news = null; }
+  if (S.news && !S.news.available) S.news = null;
+  renderResults();
+}
+function refreshSubject(key) {
+  const row = (S.history || []).find((item) => item.key === key) || (S.news && S.news.subject);
+  if (!row) return;
+  S.mode = row.mode; S.country = row.country; S.news = null;
+  if (row.mode === 'keyword') S.query = row.label; else S.company = row.label;
+  render();
+  gate(row.mode === 'keyword' ? { mode: 'keyword', query: row.query || row.label, fresh: true }
+    : { mode: 'company', page_id: row.page_id, fresh: true });
 }
 
 /* ---------- drawer: one ad ---------- */
@@ -400,7 +482,7 @@ async function submit() {
   } catch (error) { S.busy = null; note('error.title', null, true); }
 }
 function gate(request) {
-  S.pending = { ...request, country: S.country };
+  S.pending = { fresh: false, ...request, country: S.country };
   if (S.level === 'plan' && !S.project) return openProject(true);
   if (S.level !== 'data') { S.overlay = { type: 'confirm' }; renderOverlay(); return refreshEstimate(); }
   return launch();
@@ -449,7 +531,8 @@ async function makeBrief() {
 }
 
 const ACTIONS = {
-  mode(value) { S.mode = value; S.pages = null; S.notice = null; render(); },
+  mode(value) { S.mode = value; S.pages = null; S.notice = null; render(); if (value === 'news') loadHistory(); },
+  'news-open': openNews, 'news-refresh': refreshSubject,
   theme(value) { S.theme = value; store.set('theme', value); renderTop(); },
   lang(value) { S.lang = value; store.set('lang', value); render(); },
   level(value) { S.level = value; renderSearch(); refreshEstimate(); },

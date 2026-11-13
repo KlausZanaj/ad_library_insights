@@ -14,7 +14,7 @@ import asyncio
 import json
 import sys
 
-from . import breakeven, report, service
+from . import breakeven, history, report, service
 from .client import default_client
 
 
@@ -48,6 +48,13 @@ def _finish(result: dict, args: argparse.Namespace) -> int:
     files = report.write_report(result, service.copy_report(result, args.top), args.out, args.top)
     source = "cache" if result["from_cache"] else f"{result['attempts']} attempt(s)"
     print(f"{result['distinct_ads']} distinct ads from {len(result['advertisers'])} advertisers ({source})")
+    changes = history.History().record(result)
+    if changes.get("available"):
+        counts = changes["counts"]
+        print(f"Since {changes['previous']['taken_at']}: {counts['new']} new, {counts['stopped']} stopped, "
+              f"{counts['changed']} changed")
+    else:
+        print("First saved search: changes will show from the next one.")
     for path in files.values():
         print(path)
     return 0

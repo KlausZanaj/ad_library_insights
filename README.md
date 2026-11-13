@@ -66,6 +66,10 @@ keyword or analyse a company), a country and a level:
 | **Analysis** | The same data, plus a ready text for your own assistant to explain why the company gets those results. | Your assistant's limits. |
 | **Plan** | The analysis plus ad ideas, a test plan and a report for your own product. Asks once for your project (product, price, cost, market, goal, main problem). | More of your assistant's limits. |
 
+Every search is saved on your computer. From the second search of the same
+company or keyword, the **What changed** tab lists new ads, ads no longer
+listed, and ads whose copy, headline, button, destination or offer changed.
+
 No model is called by the app. Before an Analysis or Plan search it shows what
 will be sent (ads, video stills) and an estimate of the size, labelled low,
 medium or high. It is an estimate: limits depend on your plan and model.
@@ -123,6 +127,7 @@ Ask in plain language; the client picks the tools.
 | `search_ads(country, query, advertiser, ..., deep_ads)` | Ranked ads for a keyword and/or advertiser name. `deep_ads` adds reach and audience for that many top ads. |
 | `find_advertiser_pages(name, country)` | The pages the library suggests for a name, with followers and category. |
 | `analyze_company(country, page_id \| name, deep_ads, frames)` | Every active ad of one page, ranked, with company signals, reach and audience. |
+| `what_changed(country, query \| page_id)` | New, stopped and changed ads since the previous search of the same keyword or page. |
 | `scrape_library_url(url, ...)` | Same, for an Ad Library URL you already filtered by hand. |
 | `analyze_top_ads(country, query, advertiser, top_n)` | Hook, promise, proof and CTA of the top ads, plus shared patterns. |
 | `export_report(country, output_dir, query, advertiser, top_n, formats)` | Writes the Markdown brief and/or the CSV. |
@@ -213,7 +218,7 @@ The `examples/` folder contains a report produced by a live run.
    that ran long on a single use of their copy and reached far fewer people per
    day than the advertiser's other ads. The longevity score is not affected.
 
-Cache, throttle state and saved pictures live in `~/.ad_library_insights`
+Cache, throttle state, saved pictures and saved searches live in `~/.ad_library_insights`
 (override with the `AD_LIBRARY_INSIGHTS_HOME` environment variable).
 
 ## Technical limits
