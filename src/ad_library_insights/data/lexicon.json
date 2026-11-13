@@ -1,0 +1,59 @@
+{
+  "_about": "Industry-neutral marker phrases (English, Italian, Spanish, French, German) used by copy_analysis. All languages are matched together; add phrases or languages freely.",
+  "pain": [
+    "tired of", "struggling", "struggle", "sick of", "fed up", "frustrated", "stop wasting", "problem",
+    "stanco di", "stanca di", "stufo di", "stufa di", "fatichi", "basta con", "non riesci", "problema", "difficoltà",
+    "cansado de", "cansada de", "harto de", "harta de", "te cuesta", "dificultad",
+    "marre de", "fatigué de", "fatiguée de", "galère", "problème", "difficulté",
+    "genug von", "müde von", "frustriert", "schwierigkeiten"
+  ],
+  "benefit": [
+    "get", "save", "boost", "improve", "achieve", "discover", "transform", "enjoy", "without", "in just", "results", "easier", "faster", "better", "everything you need",
+    "ottieni", "risparmia", "migliora", "raggiungi", "scopri", "trasforma", "goditi", "senza", "in soli", "risultati", "più facile", "più veloce", "su misura", "tutto quello che ti serve",
+    "consigue", "ahorra", "mejora", "alcanza", "descubre", "transforma", "disfruta", "sin", "en solo", "resultados", "más fácil", "más rápido",
+    "obtenez", "économisez", "améliorez", "atteignez", "découvrez", "transformez", "profitez", "sans", "en seulement", "résultats", "plus facile", "plus rapide",
+    "erhalte", "spare", "verbessere", "erreiche", "entdecke", "genieße", "ohne", "in nur", "ergebnisse", "einfacher", "schneller"
+  ],
+  "proof_review": [
+    "reviews", "review", "rated", "stars", "customers", "testimonials", "trusted by", "loved by",
+    "recensioni", "recensione", "clienti", "stelle", "valutazione", "scelto da",
+    "opiniones", "reseñas", "clientes", "estrellas",
+    "avis", "clients", "étoiles",
+    "bewertungen", "kunden", "sterne"
+  ],
+  "proof_guarantee": [
+    "guarantee", "guaranteed", "warranty", "money back", "money-back", "free returns", "risk-free",
+    "garanzia", "garantito", "reso gratuito", "soddisfatti o rimborsati", "senza rischi",
+    "garantía", "garantizado", "devolución gratuita", "sin riesgo",
+    "garantie", "garanti", "retour gratuit", "satisfait ou remboursé",
+    "geld zurück", "geld-zurück", "kostenlose rückgabe", "risikofrei"
+  ],
+  "proof_authority": [
+    "certified", "award", "award-winning", "as seen", "official", "patented", "tested", "approved", "made in", "designed in",
+    "certificato", "certificata", "premiato", "ufficiale", "brevettato", "testato", "approvato", "progettato in", "progettata in",
+    "certificado", "premiado", "oficial", "patentado", "probado", "hecho en",
+    "certifié", "primé", "officiel", "breveté", "testé", "fabriqué en",
+    "zertifiziert", "ausgezeichnet", "offiziell", "patentiert", "geprüft", "hergestellt in"
+  ],
+  "urgency": [
+    "today", "now", "last chance", "limited", "ends", "hurry", "only", "while stocks last", "last spots",
+    "oggi", "subito", "ultimi", "ultime", "ultima occasione", "solo per", "scade", "fino al", "limitata", "limitato", "affrettati",
+    "hoy", "ahora", "últimas", "últimos", "solo por", "limitada", "date prisa",
+    "aujourd'hui", "maintenant", "dernières", "derniers", "limitée", "dépêchez",
+    "heute", "jetzt", "nur noch", "begrenzt", "letzte chance"
+  ],
+  "offer": [
+    "off", "discount", "sale", "free shipping", "free delivery", "free", "deal", "offer", "coupon", "bundle",
+    "sconto", "sconti", "saldi", "spedizione gratuita", "gratis", "offerta", "offerte", "omaggio", "promo", "promozione",
+    "descuento", "envío gratis", "oferta", "rebajas",
+    "réduction", "livraison gratuite", "offre", "soldes", "gratuit",
+    "rabatt", "kostenloser versand", "angebot", "kostenlos"
+  ],
+  "cta_verbs": [
+    "shop", "buy", "order", "get yours", "discover", "learn more", "sign up", "book", "try", "download", "click", "tap", "visit", "join", "start", "claim", "request", "find", "choose",
+    "acquista", "compra", "ordina", "scopri", "prenota", "prova", "scarica", "clicca", "visita", "iscriviti", "inizia", "richiedi", "vieni", "trova", "scegli",
+    "descubre", "reserva", "prueba", "descarga", "haz clic", "únete", "pide", "empieza", "solicita", "encuentra", "elige",
+    "achetez", "commandez", "découvrez", "réservez", "essayez", "téléchargez", "cliquez", "inscrivez", "demandez", "trouvez", "choisissez",
+    "kaufen", "bestellen", "entdecken", "buchen", "testen", "herunterladen", "klicken", "anmelden", "sichern", "finde", "wähle"
+  ]
+}
