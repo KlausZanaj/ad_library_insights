@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ad-library-insights"
+version = "0.1.0"
+description = "MCP server and CLI that turns the public Meta Ad Library into ranked, structured competitor research."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "Klaus Zanaj" }]
+dependencies = [
+    "fastmcp>=2.6",
+    "playwright>=1.45",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+ad-library-insights = "ad_library_insights.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ad_library_insights = ["data/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
