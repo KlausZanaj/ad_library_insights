@@ -434,10 +434,20 @@ function projectDialog(overlay) {
 }
 function briefDialog(overlay) {
   const made = overlay.made;
+  const choices = S.deepChoices.filter((n) => n <= made.collected.ads);
+  const frames = made.collected.frames
+    ? `<label class="check"><input type="checkbox" data-change="brief-frames" ${made.frames ? 'checked' : ''}>${esc(t('confirm.frames.on'))}</label>`
+    : `<span class="muted">${esc(t('brief.frames.none'))}</span>`;
   return `<div class="dialog wide" role="dialog" aria-modal="true"><h2>${esc(t(`brief.title.${made.level}`))}</h2><p class="lead">${esc(t('brief.how'))}</p>
+    <div class="use tight">
+      <div><span class="k">${esc(t('brief.ads'))}</span><span class="v">${choices.length > 1 ? `<span class="switch" role="group">${toggle('brief-ads', choices, made.ads, String)}</span>` : num(made.ads)}</span></div>
+      <div><span class="k">${esc(t('brief.frames'))}</span><span class="v">${frames}</span></div>
+      <div><span class="k">${esc(t('confirm.band'))}</span><span class="v">${esc(t('brief.size', { n: num(made.size.tokens), band: t(`band.${made.size.band}`).toLowerCase() }))}</span></div>
+    </div>
     <textarea class="brieftext" id="brieftext" readonly>${esc(made.text)}</textarea>
-    <p class="smallnote">${esc(t('brief.size', { n: num(made.size.tokens), band: t(`band.${made.size.band}`).toLowerCase() }))}</p>
     ${made.images.length ? `<p class="smallnote">${esc(t('brief.attach', { n: made.images.length }))}</p><ul class="attach">${made.images.map((path) => `<li>${esc(path)}</li>`).join('')}</ul>` : ''}
+    <h3 class="sub">${esc(t('brief.code'))}</h3><p class="smallnote" style="margin-top:4px">${esc(t('brief.code.x'))}</p>
+    <p class="command">${esc(t(`brief.command.${made.level}`, { folder: made.folder }))}</p>
     <div class="foot"><button class="btn quiet" data-action="close">${esc(t('button.close'))}</button><button class="btn" data-action="copy-brief">${esc(t('button.copy'))}</button></div></div>`;
 }
 function renderOverlay() {
@@ -520,10 +530,12 @@ async function saveProject() {
   S.overlay = null; render();
   if (overlay.thenSearch && S.pending) gate(S.pending);
 }
-async function makeBrief() {
+async function makeBrief(options = {}) {
   const request = S.result.request;
+  const before = (S.overlay && S.overlay.type === 'brief' && S.overlay.made) || { ads: request.deep, frames: request.frames };
+  const ads = options.ads ?? before.ads, frames = options.frames ?? before.frames;
   try {
-    const made = await api('/api/brief', { method: 'POST', body: { job_id: S.jobId, level: request.level, ads: request.deep, frames: request.frames, lang: S.lang } });
+    const made = await api('/api/brief', { method: 'POST', body: { job_id: S.jobId, level: request.level, ads, frames, lang: S.lang } });
     S.overlay = { type: 'brief', made }; renderOverlay();
   } catch (error) {
     if (error.data && error.data.error === 'project_required') openProject(false);
@@ -539,7 +551,8 @@ const ACTIONS = {
   deep(value) { S.deep = Number(value); renderSearch(); renderOverlay(); refreshEstimate(); },
   submit, guide() { S.overlay = { type: 'guide' }; renderOverlay(); },
   project() { openProject(false); },
-  'save-project': saveProject, 'confirm-go': launch, brief: makeBrief,
+  'save-project': saveProject, 'confirm-go': launch, brief() { makeBrief(); },
+  'brief-ads'(value) { makeBrief({ ads: Number(value) }); },
   'choose-page'(value) { gate({ mode: 'company', page_id: value }); },
   'open-ad'(value) { S.overlay = { type: 'ad', id: value }; renderOverlay(); },
   close() { S.overlay = null; renderOverlay(); },
@@ -562,6 +575,7 @@ document.addEventListener('input', (event) => {
 document.addEventListener('change', (event) => {
   const el = event.target;
   if (el.dataset.change === 'frames') { S.frames = el.checked; refreshEstimate(); }
+  if (el.dataset.change === 'brief-frames') makeBrief({ frames: el.checked });
   if (el.dataset.bind === 'country') S.country = el.value;
 });
 document.addEventListener('keydown', (event) => {

@@ -205,9 +205,9 @@
   "brief.make.plan": "Prepara piano",
   "brief.title.analysis": "Testo per l'analisi",
   "brief.title.plan": "Testo per il piano",
-  "brief.how": "Incollalo in Claude o in un altro assistente. Se usi Claude Code con questo progetto, gli stessi dati sono disponibili anche dagli strumenti MCP.",
-  "brief.size": "Circa {n} token con le riletture · consumo {band}",
-  "brief.attach": "Fotogrammi da allegare a mano ({n})",
+  "brief.how": "Per qualsiasi assistente: incolla questo testo. Contiene ruolo, metodo e dati, e funziona in un solo passaggio.",
+  "brief.size": "Circa {n} token contando le riletture · consumo {band}",
+  "brief.attach": "Immagini da allegare a mano ({n})",
   "level.note": "Ogni livello comprende quello prima.",
   "level.who": "Chi lavora",
   "level.cost": "Consumo",
@@ -267,7 +267,14 @@
   "changes.since": "Dalla ricerca del {date}: {new} nuovi, {stopped} spenti, {changed} cambiati.",
   "changes.same": "Nessuna novità dalla ricerca del {date}.",
   "gap.hours": "{n} ore",
-  "gap.days": "{n} giorni"
+  "gap.days": "{n} giorni",
+  "brief.ads": "Annunci nel testo",
+  "brief.frames": "Fotogrammi dei video",
+  "brief.frames.none": "non raccolti in questa ricerca",
+  "brief.code": "Con Claude Code e gli specialisti",
+  "brief.code.x": "Gli stessi dati sono salvati in file separati, uno per specialista, così ognuno legge solo la sua parte. In Claude Code, con questo progetto aperto, scrivi:",
+  "brief.command.analysis": "Fai l'analisi del concorrente con il pacchetto in {folder}",
+  "brief.command.plan": "Prepara il piano con il pacchetto in {folder}"
  },
  "en": {
   "mode.keyword": "Search by keyword",
@@ -475,9 +482,9 @@
   "brief.make.plan": "Prepare plan",
   "brief.title.analysis": "Text for the analysis",
   "brief.title.plan": "Text for the plan",
-  "brief.how": "Paste it into Claude or another assistant. If you use Claude Code with this project, the same data is also available through the MCP tools.",
-  "brief.size": "About {n} tokens including re-reads · {band} usage",
-  "brief.attach": "Stills to attach by hand ({n})",
+  "brief.how": "For any assistant: paste this text. It holds role, method and data, and works in a single pass.",
+  "brief.size": "About {n} tokens counting re-reads · {band} usage",
+  "brief.attach": "Pictures to attach by hand ({n})",
   "level.note": "Each level includes the one before.",
   "level.who": "Who does the work",
   "level.cost": "Usage",
@@ -537,6 +544,13 @@
   "changes.since": "Since the search of {date}: {new} new, {stopped} stopped, {changed} changed.",
   "changes.same": "Nothing changed since the search of {date}.",
   "gap.hours": "{n} hours",
-  "gap.days": "{n} days"
+  "gap.days": "{n} days",
+  "brief.ads": "Ads in the text",
+  "brief.frames": "Video stills",
+  "brief.frames.none": "not collected in this search",
+  "brief.code": "With Claude Code and the specialists",
+  "brief.code.x": "The same data is saved as separate files, one per specialist, so each reads only its part. In Claude Code, with this project open, write:",
+  "brief.command.analysis": "Run the competitor analysis on the pack in {folder}",
+  "brief.command.plan": "Prepare the plan with the pack in {folder}"
  }
 }

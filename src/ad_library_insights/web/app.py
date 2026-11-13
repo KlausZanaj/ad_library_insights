@@ -245,11 +245,15 @@ class Workspace:
         card = project.load(self.home)
         if level == "plan" and not card:
             return JSONResponse({"error": "project_required"}, status_code=409)
+        frames = bool(body.get("frames")) and bool(job.params.get("frames"))    # only if they were collected
         try:
-            made = briefs.compose(level, job.raw, int(body.get("ads", 10)), bool(body.get("frames")),
-                                  card, body.get("lang", "it"))
+            made = briefs.prepare(level, job.raw, int(body.get("ads", 10)), frames, card,
+                                  body.get("lang", "it"),
+                                  Path(self.home) / "packs" if self.home else None)
         except (ValueError, TypeError) as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
+        made["collected"] = {"ads": len([ad for ad in job.raw["ads"] if "reach" in ad]) or job.params["deep"],
+                             "frames": bool(job.params.get("frames"))}
         return JSONResponse(made)
 
 

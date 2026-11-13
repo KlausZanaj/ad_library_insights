@@ -152,7 +152,8 @@ def test_plan_needs_the_project_card_first(app):
     job = run_job(client, **body)
     made = client.post("/api/brief", json={"job_id": job["id"], "level": "plan", "ads": 2, "lang": "en"}).json()
     assert "head of marketing" in made["text"] and "Standing desk" in made["text"]
-    assert "Break-even CPA: 229" in made["text"]
+    assert "may cost in ads: 229" in made["text"] and "up to 572.5" in made["text"]
+    assert Path(made["files"]["project"]).exists() and made["collected"] == {"ads": 2, "frames": False}
     assert made["size"]["tokens"] > 0 and made["size"]["band"] in ("low", "medium", "high")
 
 
@@ -163,9 +164,13 @@ def test_analysis_brief_carries_the_data_and_the_limits(app):
                                            "frames": True, "lang": "it"}).json()
     text = made["text"]
     assert "specialista di performance marketing" in text
-    assert "EU 7,398,228" in text and "IT 835,585" in text
+    assert "| 7,398,228 | 835,585 |" in text
     assert "solo per gli annunci mostrati nell'Unione europea o nel Regno Unito" in text
     assert len(made["images"]) == 6 and all(Path(p).exists() for p in made["images"])
+    assert Path(made["folder"]).is_dir() and made["collected"] == {"ads": 2, "frames": True}
+    fewer = client.post("/api/brief", json={"job_id": job["id"], "level": "analysis", "ads": 1,
+                                            "frames": False, "lang": "it"}).json()
+    assert fewer["ads"] == 1 and fewer["images"] == [] and fewer["size"]["tokens"] < made["size"]["tokens"]
     assert client.post("/api/brief", json={"job_id": "missing"}).status_code == 404
 
 

@@ -257,11 +257,15 @@ tr.pick:hover td { background: var(--sunken); }
 .use .v { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
 .use .big { font-size: 1.15rem; font-weight: 600; }
 .smallnote { margin-top: 16px; color: var(--muted); font-size: .9rem; }
+.use.tight { margin-top: 18px; }
+.use.tight > div { padding: 9px 0; }
+.dialog h3.sub { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line-soft); font-size: 1rem; font-weight: 600; }
+.command { margin-top: 10px; padding: 10px 12px; background: var(--sunken); border: 1px solid var(--line-soft); border-radius: var(--radius); font-family: Consolas, "Cascadia Mono", ui-monospace, monospace; font-size: .87rem; overflow-wrap: anywhere; user-select: all; }
 .check { display: inline-flex; align-items: center; gap: 8px; }
 .check input { width: 17px; height: 17px; accent-color: var(--accent); }
 .form { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 20px; margin-top: 22px; }
 .form .full { grid-column: 1 / -1; }
 .form .bad input, .form .bad select, .form .bad textarea { border-color: var(--warn); }
 .form em { display: block; font-style: normal; color: var(--warn); font-size: .87rem; margin-top: 4px; }
-.brieftext { margin-top: 18px; height: 380px; font-family: Consolas, "Cascadia Mono", ui-monospace, monospace; font-size: .87rem; line-height: 1.45; background: var(--sunken); }
-.attach { margin: 6px 0 0; padding-left: 18px; color: var(--muted); font-size: .87rem; overflow-wrap: anywhere; }
+.brieftext { margin-top: 18px; height: 300px; font-family: Consolas, "Cascadia Mono", ui-monospace, monospace; font-size: .87rem; line-height: 1.45; background: var(--sunken); }
+.attach { margin: 6px 0 0; padding-left: 18px; color: var(--muted); font-size: .87rem; overflow-wrap: anywhere; max-height: 132px; overflow-y: auto; }

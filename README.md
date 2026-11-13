@@ -110,6 +110,29 @@ reference files.
 | `ad-library-research` | Map a market or a competitor and explain how the longest-running ads are written. |
 | `breakeven-cpa-check` | Decide which of your own ads to cut, from your margin and an Ads Manager export. |
 | `weekly-competitor-report` | Track a fixed watchlist and report what is new, what stopped and what changed. |
+| `competitor-analysis` | The Analysis level: explain why a company gets its reach, through copy, creative, reach and audience, testing and destinations. |
+| `competitor-plan` | The Plan level: diagnosis of your project, five ad ideas, a test plan built on break-even CPA, and a one-page report. |
+
+### Analysis and Plan with your own assistant
+
+The program never calls a model. For these two levels it writes the data and
+you choose who reads it:
+
+- **Any assistant, one pass.** In the app, "Prepare analysis" or "Prepare
+  plan" composes one text with role, method, rules of evidence and the data
+  inside. Paste it into the assistant you use.
+- **Claude Code, with specialists.** The same data is saved as a pack: one
+  file per specialist (`copy.md`, `creative.md`, `reach.md`, `testing.md`,
+  plus `project.md` for a plan). The four sub-agents in `.claude/agents/`
+  each read only their slice; the two skills above coordinate them and join
+  the findings. Open this repository in Claude Code so the agents are found,
+  and install the skills as described above.
+
+You pick how many ads are analysed (10, 20, 50) and whether video stills are
+included, both before the search and again when the text is prepared, and the
+app shows an estimate of the size each time. A plan needs your project card:
+product, price, product cost, market, goal and main problem, asked once and
+kept on your computer.
 
 ## Usage
 
@@ -128,6 +151,9 @@ Ask in plain language; the client picks the tools.
 | `find_advertiser_pages(name, country)` | The pages the library suggests for a name, with followers and category. |
 | `analyze_company(country, page_id \| name, deep_ads, frames)` | Every active ad of one page, ranked, with company signals, reach and audience. |
 | `what_changed(country, query \| page_id)` | New, stopped and changed ads since the previous search of the same keyword or page. |
+| `estimate_consumption(level, ads, frames)` | Rough size of an Analysis or Plan, to confirm before collecting. |
+| `prepare_analysis(country, level, page_id \| query, ads, frames)` | Collects the data and writes the pack: one brief and one file per specialist. |
+| `get_project()` / `save_project(...)` | The project card the Plan level is written for. |
 | `scrape_library_url(url, ...)` | Same, for an Ad Library URL you already filtered by hand. |
 | `analyze_top_ads(country, query, advertiser, top_n)` | Hook, promise, proof and CTA of the top ads, plus shared patterns. |
 | `export_report(country, output_dir, query, advertiser, top_n, formats)` | Writes the Markdown brief and/or the CSV. |

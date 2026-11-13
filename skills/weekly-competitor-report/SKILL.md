@@ -8,8 +8,9 @@ description: >-
   when someone wants a weekly (or other regular) summary of what a fixed list
   of competitors or keywords is advertising in a given country: new ads since
   the last report, ads that stopped, the longest-running ads and shifts in
-  messaging. Needs the Ad Library Insights MCP server (export_report,
-  search_ads, analyze_top_ads) and a folder where past reports are kept. Skip
+  messaging. Needs the Ad Library Insights MCP server (analyze_company,
+  search_ads, what_changed, analyze_top_ads, export_report) and a folder where
+  past reports are kept. Skip
   for a one-off look at a market (use ad-library-research) and for reporting
   on the user's own campaign results.
 ---
@@ -37,15 +38,20 @@ report folder:
 1.  **Load the watchlist** from the report folder. If it is missing, run the
     setup above. Do not guess competitors.
 
-2.  **Export this week's data.** For each competitor call `export_report`
-    with `advertiser` set and `formats` `["csv"]`; for each keyword call it
-    with `query` set. Use `output_dir` = `<report folder>/<YYYY-MM-DD>/`.
-    The server spaces requests out; a full watchlist can take several
-    minutes. If a search returns `blocked`, note it in the report and move
-    on rather than retrying in a loop.
+2.  **Search again, fresh.** For each competitor call `analyze_company`
+    with its `page_id` (find it once with `find_advertiser_pages` and keep it
+    in the watchlist) and `use_cache` false; for each keyword call
+    `search_ads` with `query` and `use_cache` false. Every search is saved on
+    the machine. To keep files too, call `export_report` with `output_dir` =
+    `<report folder>/<YYYY-MM-DD>/`. The server spaces requests out; a full
+    watchlist can take several minutes. If a search returns `blocked`, note
+    it in the report and move on rather than retrying in a loop.
 
-3.  **Compare with the previous run.** Find the most recent earlier dated
-    folder and match rows on `library_id` for the same search:
+3.  **Compare with the previous run.** Call `what_changed` with the same
+    `page_id` or `query` and country: it returns new ads, ads no longer
+    listed and ads whose copy, headline, button, destination or offer
+    changed since the previous saved search. Where only exported CSVs exist,
+    match rows on `library_id` instead. The buckets:
 
     | Bucket | Definition |
     |---|---|
@@ -64,7 +70,7 @@ report folder:
     [template](references/report-template.md) and save it as
     `<report folder>/<YYYY-MM-DD>/report.md`.
 
-6.  **First run.** With no previous folder there is nothing to compare:
+6.  **First run.** With no previous search there is nothing to compare:
     deliver the baseline (longest-running ads and copy patterns) and say that
     changes will appear from the next run.
 

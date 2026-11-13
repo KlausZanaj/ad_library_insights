@@ -5,7 +5,7 @@ import asyncio
 
 from fastmcp import FastMCP
 
-from . import breakeven, history, report, service
+from . import breakeven, briefs, consumption, history, project, report, service
 from .client import AdLibraryClient, default_client
 
 mcp = FastMCP(
@@ -20,7 +20,9 @@ mcp = FastMCP(
         "top-ranked ads only (deep_ads); Meta publishes them for ads delivered in the European "
         "Union or the United Kingdom, so say plainly when an ad has none. No spend or sales data "
         "exists for commercial ads: longevity is a proxy, say so when reporting. Searches are "
-        "saved locally and what_changed compares the last two of the same keyword or page. Pages are "
+        "saved locally and what_changed compares the last two of the same keyword or page. For an "
+        "Analysis or Plan, show estimate_consumption first, then prepare_analysis writes the data as "
+        "files, one per specialist; a Plan needs the project card (get_project, save_project). Pages are "
         "cached for six hours and requests are spaced out, so a call can take a few minutes."
     ),
 )
@@ -141,6 +143,100 @@ async def analyze_company(country: str, page_id: str = "", name: str = "", deep_
     except ValueError as exc:
         return {"ok": False, "error": str(exc)}
     return _trim(result, max_results)
+
+
+@mcp.tool
+def estimate_consumption(level: str, ads: int = 10, frames: bool = False) -> dict:
+    """Rough size of an Analysis or Plan before any data is collected.
+
+    Show this to the user and let them confirm, or lower the number of ads or turn
+    stills off, before calling prepare_analysis. It is an estimate: limits depend on
+    the plan and model and are not counted in credits, so promise no percentage.
+
+    Args:
+        level: data | analysis | plan. Data uses no assistant at all.
+        ads: how many top-ranked ads are analysed (10, 20 or 50).
+        frames: whether three stills per video of the ten best ads are looked at.
+    """
+    try:
+        return {"ok": True, **consumption.estimate(level, ads, frames)}
+    except ValueError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@mcp.tool
+def get_project() -> dict:
+    """The user's saved project card (product, price, cost, market, goal, main problem).
+
+    The Plan level is written for this project. If "project" is null, ask the user
+    for the six fields once and store them with save_project before preparing a plan.
+    """
+    return {"ok": True, "project": project.load()}
+
+
+@mcp.tool
+def save_project(product: str, price: float, product_cost: float, market: str, goal: str,
+                 main_problem: str) -> dict:
+    """Store the user's project card on this machine. It is asked once and reused.
+
+    Args:
+        product: what the user sells.
+        price: selling price.
+        product_cost: cost of the product per order.
+        market: two-letter ISO code of the country they sell in.
+        goal: what they want to reach.
+        main_problem: e.g. high cost per purchase, too few creatives, low reach.
+    """
+    card, errors = project.save({"product": product, "price": price, "product_cost": product_cost,
+                                 "market": market, "goal": goal, "main_problem": main_problem})
+    if errors:
+        return {"ok": False, "errors": errors}
+    return {"ok": True, "project": card, "numbers": briefs.test_numbers(card)}
+
+
+@mcp.tool
+async def prepare_analysis(country: str, level: str = "analysis", page_id: str = "", query: str = "",
+                           ads: int = 10, frames: bool = False, language: str = "en",
+                           use_cache: bool = True) -> dict:
+    """Collect the data for an Analysis or Plan and write it as a pack of files.
+
+    Plain code does the collecting: the ranked ads of a page (page_id) or keyword
+    (query), reach and audience of the top `ads`, thumbnails, and with `frames` three
+    stills per video. The result is a folder with brief.md (everything in one text,
+    for a single pass) and one data file per specialist: overview, copy, creative,
+    reach, testing, plus project for a plan. Read only the files a task needs.
+
+    A plan needs the project card (see get_project): without it this returns
+    outcome "project_required" and writes nothing.
+
+    Args:
+        level: analysis | plan.
+        ads: how many top-ranked ads go into the pack (10, 20 or 50).
+        frames: also save and list video stills of the ten best ads.
+        language: language of the instructions in brief.md (en or it).
+    """
+    if level not in briefs.LEVELS:
+        return {"ok": False, "error": "level must be analysis or plan"}
+    card = project.load()
+    if level == "plan" and not card:
+        return {"ok": False, "outcome": "project_required",
+                "note": "Ask the user for product, price, product cost, market, goal and main problem, "
+                        "store them with save_project, then call this again."}
+    try:
+        if page_id:
+            result = await service.research_company(_get_client(), country, page_id, use_cache=use_cache)
+        else:
+            result = await service.research(_get_client(), query, country, use_cache=use_cache)
+        if not result.get("ads"):
+            return {k: v for k, v in result.items() if k != "ads"}
+        await _deepen(result, ads, frames, use_cache)
+        made = briefs.prepare(level, result, ads, frames, card, language)
+    except ValueError as exc:
+        return {"ok": False, "error": str(exc)}
+    made.pop("text")
+    return {"ok": True, "subject": result.get("page", {}).get("name") or result.get("query"),
+            "country": result["country"], **made,
+            "reach_read": result.get("deep", {}).get("with_reach", 0)}
 
 
 @mcp.tool

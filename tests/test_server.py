@@ -32,7 +32,8 @@ def test_tools_are_registered():
     assert asyncio.run(names()) == {"search_ads", "scrape_library_url", "analyze_top_ads",
                                     "export_report", "check_breakeven_cpa",
                                     "find_advertiser_pages", "analyze_company",
-                                    "what_changed"}
+                                    "what_changed", "estimate_consumption", "prepare_analysis",
+                                    "get_project", "save_project"}
 
 
 def test_search_ads_returns_ranked_ads(monkeypatch, cards):
@@ -74,8 +75,8 @@ def test_check_breakeven_cpa(monkeypatch, cards):
 def test_nothing_is_hardcoded_to_one_industry():
     """Keyword, advertiser and country are inputs; the shipped code and docs name no niche."""
     banned = ("fitness", "gym", "palestra", "workout")
-    files = [*ROOT.glob("src/**/*.py"), *ROOT.glob("src/**/*.json"), *ROOT.glob("skills/**/*.md"),
-             ROOT / "README.md"]
+    files = [*ROOT.glob("src/**/*.py"), *ROOT.glob("src/**/*.json"), *ROOT.glob("src/**/*.js"),
+             *ROOT.glob("skills/**/*.md"), *ROOT.glob(".claude/**/*.md"), ROOT / "README.md"]
     assert files
     for file in files:
         if file.exists():
