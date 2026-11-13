@@ -14,7 +14,9 @@ from dataclasses import asdict, dataclass, field
 from typing import Awaitable, Callable
 from urllib.parse import urlencode, urlparse
 
-from . import browser, parser
+from . import browser, parser, records
+from .details import DetailCollector
+from .media import MediaStore
 from .storage import DiskCache, Throttle
 
 LIBRARY_URL = "https://www.facebook.com/ads/library/"
@@ -48,6 +50,26 @@ def build_search_url(query: str, country: str, active_status: str = "active",
     })
 
 
+def build_page_url(page_id: str, country: str, active_status: str = "active",
+                   media_type: str = "all") -> str:
+    """Ad Library URL listing every ad of one advertiser page in a country."""
+    page_id = str(page_id or "").strip()
+    if not page_id.isdigit():
+        raise ValueError("page_id must be the numeric id of an advertiser page")
+    if active_status not in ACTIVE_STATUSES:
+        raise ValueError(f"active_status must be one of {ACTIVE_STATUSES}")
+    if media_type not in MEDIA_TYPES:
+        raise ValueError(f"media_type must be one of {MEDIA_TYPES}")
+    return LIBRARY_URL + "?" + urlencode({
+        "active_status": active_status,
+        "ad_type": "all",
+        "country": normalise_country(country),
+        "media_type": media_type,
+        "search_type": "page",
+        "view_all_page_id": page_id,
+    })
+
+
 def is_library_url(url: str) -> bool:
     parsed = urlparse(url)
     return (parsed.scheme == "https"
@@ -66,6 +88,8 @@ class FetchResult:
     from_cache: bool = False
     fetched_at: float = 0.0
     error: str | None = None
+    total_count: int | None = None    # the count the library itself gives for the search
+    source: str = "cards"             # "structured" (page data) or "cards" (visible text)
 
     @property
     def ok(self) -> bool:
@@ -84,9 +108,16 @@ class AdLibraryClient:
                  sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
                  jitter: Callable[[], float] = random.random,
                  clock: Callable[[], float] = time.time,
-                 max_retries: int = 2, backoff_base: float = 20.0, backoff_factor: float = 3.0):
+                 max_retries: int = 2, backoff_base: float = 20.0, backoff_factor: float = 3.0,
+                 suggester: Callable[..., Awaitable[dict | None]] = browser.suggest_pages,
+                 session_factory: Callable[..., object] = browser.DetailSession,
+                 media: MediaStore | None = None, follow_up_gap: float = 5.0):
         self.cache = cache
         self.throttle = throttle
+        self.media = media or MediaStore()
+        self.follow_up_gap = follow_up_gap
+        self._suggester = suggester
+        self._session_factory = session_factory
         self._renderer = renderer
         self._sleep = sleep
         self._jitter = jitter
@@ -134,7 +165,12 @@ class AdLibraryClient:
             result.status_code = page.status_code
             result.results_label = parser.results_label(page.page_text)
             result.fetched_at = self._clock()
-            result.ads = parser.parse_cards(page.cards)
+            # the data the page loaded first; the visible cards if it is missing
+            result.ads = records.ads_from_edges(page.edges)
+            result.source = "structured" if result.ads else "cards"
+            result.total_count = page.total_count
+            if not result.ads:
+                result.ads = parser.parse_cards(page.cards)
             if result.ads:
                 result.outcome = "ok"
                 if self.cache:  # empty or blocked pages are never cached
@@ -144,6 +180,84 @@ class AdLibraryClient:
                 result.outcome = "no_results"
                 return result
         return result
+
+
+    async def _follow_up_slot(self) -> None:
+        """Wait for a turn; page loads that continue one job need only a short gap."""
+        if self.throttle:
+            pause = self.throttle.delay_needed(self.follow_up_gap)
+            if pause > 0:
+                await self._sleep(pause)
+            self.throttle.record()
+
+    async def find_pages(self, name: str, country: str, use_cache: bool = True) -> list[dict]:
+        """Advertiser pages the library suggests for ``name``: id, name, followers, category."""
+        name = (name or "").strip()
+        if not name:
+            raise ValueError("name must not be empty")
+        country = normalise_country(country)
+        cache_key = f"pages:{country}:{name.casefold()}"
+        if use_cache and self.cache:
+            hit = self.cache.get(cache_key)
+            if hit:
+                return hit["pages"]
+        pages: list[dict] = []
+        for attempt in range(1, self.max_retries + 2):
+            if attempt > 1:
+                await self._sleep(self.backoff_delay(attempt - 1))
+            await self._follow_up_slot()
+            try:
+                payload = await self._suggester(name, country)
+            except Exception:  # navigation errors, browser crashes
+                continue
+            if payload is not None:
+                pages = records.pages_from_typeahead(payload)
+                break
+        if pages and self.cache:
+            self.cache.put(cache_key, {"pages": pages})
+        return pages
+
+    async def read_details(self, url: str, library_ids: list[str], country: str | None = None,
+                           videos: dict[str, str] | None = None, on_progress=None,
+                           use_cache: bool = True, scroll_rounds: int = 40) -> dict[str, dict]:
+        """Reach and audience of the given ads, read from their detail views.
+
+        ``url`` is the results page the ads are listed on. ``videos`` maps library ids
+        to video addresses for which three still frames should be saved. Returns
+        ``{library_id: {"ok", "details" | "error", "attempts", "from_cache", "frames"}}``.
+        A browser is opened only if something is missing from the cache.
+        """
+        if not is_library_url(url):
+            raise ValueError("url must be an https://www.facebook.com/ads/library/... link")
+        ids = [str(i) for i in library_ids]
+        videos = {str(k): v for k, v in (videos or {}).items() if v}
+        collector = DetailCollector(cache=self.cache, sleep=self._sleep, jitter=self._jitter,
+                                    clock=self._clock)
+        to_read = [i for i in ids if not (use_cache and collector.cached(i, country) is not None)]
+        to_frame = [i for i in videos if not self.media.frames(i)]
+
+        if not to_read and not to_frame:
+            results = await collector.collect(None, ids, country, on_progress, use_cache=True)
+        else:
+            results, error = None, None
+            for attempt in range(1, self.max_retries + 2):
+                if attempt > 1:
+                    await self._sleep(self.backoff_delay(attempt - 1))
+                await self._follow_up_slot()
+                try:
+                    async with self._session_factory(url, scroll_rounds=scroll_rounds) as session:
+                        results = await collector.collect(session, ids, country, on_progress, use_cache)
+                        for library_id in to_frame:
+                            await session.frames(videos[library_id], self.media.frame_stem(library_id))
+                    break
+                except Exception as exc:  # the results page itself did not load
+                    error = f"{type(exc).__name__}: {exc}"
+            if results is None:
+                results = {i: {"ok": False, "error": error, "attempts": 0, "from_cache": False}
+                           for i in ids}
+        for library_id, outcome in results.items():
+            outcome["frames"] = self.media.frames(library_id) if library_id in videos else []
+        return results
 
 
 def default_client() -> AdLibraryClient:

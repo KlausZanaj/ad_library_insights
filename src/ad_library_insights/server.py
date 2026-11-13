@@ -1,6 +1,8 @@
 """MCP server: competitor ad research on the public Meta Ad Library."""
 from __future__ import annotations
 
+import asyncio
+
 from fastmcp import FastMCP
 
 from . import breakeven, report, service
@@ -12,9 +14,13 @@ mcp = FastMCP(
         "Research competitor ads in the public Meta Ad Library for any keyword, advertiser "
         "and country. Results are ranked by a longevity score (days running and copy reuse), "
         "the best ads can be broken down into hook, promise, proof and CTA, and everything "
-        "can be exported to Markdown and CSV. No spend or performance data exists for "
-        "commercial ads: longevity is a proxy, say so when reporting. Pages are cached for "
-        "six hours and requests are spaced out, so a call can take a minute."
+        "can be exported to Markdown and CSV. A whole advertiser can be analysed by page: "
+        "find_advertiser_pages lists the pages matching a name, analyze_company loads every "
+        "active ad of the chosen page. Reach and audience are read from the detail view of the "
+        "top-ranked ads only (deep_ads); Meta publishes them for ads delivered in the European "
+        "Union or the United Kingdom, so say plainly when an ad has none. No spend or sales data "
+        "exists for commercial ads: longevity is a proxy, say so when reporting. Pages are "
+        "cached for six hours and requests are spaced out, so a call can take a few minutes."
     ),
 )
 
@@ -32,11 +38,35 @@ def _trim(result: dict, max_results: int) -> dict:
     return {**result, "ads": result["ads"][:max(1, max_results)]}
 
 
+def _progress_reporter():
+    """Forward detail-reading progress to the MCP client, when it listens for it."""
+    try:
+        from fastmcp.server.dependencies import get_context
+        context = get_context()
+    except Exception:  # not inside a request, or an older FastMCP
+        return None
+
+    def report(event: dict) -> None:
+        message = f"{event['done']}/{event['total']} ads read, about {event['eta_seconds']} s left"
+        try:
+            asyncio.ensure_future(context.report_progress(event["done"], event["total"], message))
+        except Exception:
+            pass
+
+    return report
+
+
+async def _deepen(result: dict, deep_ads: int, frames: bool, use_cache: bool) -> dict:
+    if deep_ads > 0 and result.get("ads"):
+        await service.deepen(_get_client(), result, deep_ads, frames, _progress_reporter(), use_cache)
+    return result
+
+
 @mcp.tool
 async def search_ads(country: str, query: str = "", advertiser: str = "",
                      active_status: str = "active", media_type: str = "all",
                      max_results: int = 25, scroll_rounds: int = 6, wait_seconds: int = 8,
-                     use_cache: bool = True) -> dict:
+                     use_cache: bool = True, deep_ads: int = 0, frames: bool = False) -> dict:
     """Search the Ad Library and return ads ranked by longevity score.
 
     Args:
@@ -50,11 +80,61 @@ async def search_ads(country: str, query: str = "", advertiser: str = "",
         scroll_rounds: maximum scroll steps to load more ads (0 = first screen only).
         wait_seconds: longest wait for the first ads to appear.
         use_cache: set false to force a fresh fetch.
+        deep_ads: read reach and audience for this many top-ranked ads (0 = none; 10, 20
+            or 50 are sensible). About three seconds per ad.
+        frames: also save three still frames of each video among those ads.
     """
     try:
         result = await service.research(
             _get_client(), query, country, advertiser, active_status, media_type,
             wait_seconds, scroll_rounds, use_cache)
+        await _deepen(result, deep_ads, frames, use_cache)
+    except ValueError as exc:
+        return {"ok": False, "error": str(exc)}
+    return _trim(result, max_results)
+
+
+@mcp.tool
+async def find_advertiser_pages(name: str, country: str, use_cache: bool = True) -> dict:
+    """List the advertiser pages the Ad Library suggests for a name.
+
+    Returns each page with its id, followers and category, most followed first, and
+    the likeliest match. When several pages share a name, show them and let the user
+    choose before calling analyze_company.
+    """
+    try:
+        return await service.find_pages(_get_client(), name, country, use_cache)
+    except ValueError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@mcp.tool
+async def analyze_company(country: str, page_id: str = "", name: str = "", deep_ads: int = 10,
+                          frames: bool = False, max_results: int = 25,
+                          active_status: str = "active", scroll_rounds: int = 40,
+                          use_cache: bool = True) -> dict:
+    """Load every active ad of one advertiser page, rank it and compute its signals.
+
+    Args:
+        country: two-letter ISO code of the country the ads are delivered in.
+        page_id: numeric id of the page (from find_advertiser_pages).
+        name: advertiser name, used when page_id is empty. If several pages match,
+            the result has outcome "choose_page" and lists them; nothing is loaded.
+        deep_ads: read reach and audience for this many top-ranked ads (0, 10, 20, 50).
+        frames: also save three still frames of each video among those ads.
+        max_results: how many ranked ads to return.
+        scroll_rounds: maximum scroll steps; 40 covers about 400 ads.
+
+    The result carries "signals" (format mix, launches per week, languages, buttons,
+    destinations, copy patterns, reach and audience summaries) and, per ad, tier,
+    reach, audience, chosen locations and a needs_review flag.
+    """
+    try:
+        result = await service.research_company(_get_client(), country, page_id, name,
+                                                active_status, scroll_rounds, use_cache=use_cache)
+        if "ads" not in result:
+            return result
+        await _deepen(result, deep_ads, frames, use_cache)
     except ValueError as exc:
         return {"ok": False, "error": str(exc)}
     return _trim(result, max_results)

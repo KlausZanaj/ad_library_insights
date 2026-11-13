@@ -8,3 +8,4 @@ build/
 dist/
 .env
 .ad_library_insights/
+screenshots/

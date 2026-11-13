@@ -30,7 +30,8 @@ def test_tools_are_registered():
             return {tool.name for tool in await client.list_tools()}
 
     assert asyncio.run(names()) == {"search_ads", "scrape_library_url", "analyze_top_ads",
-                                    "export_report", "check_breakeven_cpa"}
+                                    "export_report", "check_breakeven_cpa",
+                                    "find_advertiser_pages", "analyze_company"}
 
 
 def test_search_ads_returns_ranked_ads(monkeypatch, cards):

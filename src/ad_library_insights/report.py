@@ -11,9 +11,11 @@ from pathlib import Path
 from . import copy_analysis
 
 CSV_COLUMNS = [
-    "rank", "longevity_score", "days_running", "repetitions", "creative_variants",
-    "advertiser", "status", "started", "media_type", "cta", "landing_domain", "headline",
-    "hook_type", "hook", "promise", "proof_kinds", "body", "library_id", "ad_url",
+    "rank", "longevity_score", "tier", "needs_review", "impression_rank", "days_running", "repetitions",
+    "creative_variants", "advertiser", "status", "started", "media_type", "platforms", "cta",
+    "landing_domain", "headline", "hook_type", "hook", "promise", "proof_kinds",
+    "reach_eu", "reach_country", "reach_uk", "reach_per_day", "age_min", "age_max", "gender",
+    "locations_included", "locations_excluded", "body", "library_id", "ad_url",
 ]
 
 
@@ -36,6 +38,102 @@ def _counts(counter: dict) -> str:
     return ", ".join(f"{key} ({count})" for key, count in counter.items()) or "none"
 
 
+def _number(value) -> str:
+    return f"{value:,}" if isinstance(value, (int, float)) else "-"
+
+
+def _reach_cells(ad: dict) -> dict:
+    """Flat reach and audience columns; empty when the detail view was not read."""
+    reach, audience = ad.get("reach") or {}, ad.get("audience") or {}
+    names = lambda places: ";".join(place["name"] for place in places or [])  # noqa: E731
+    return {
+        "platforms": ";".join(ad.get("platforms") or []),
+        "needs_review": "yes" if ad.get("needs_review") else "",
+        "reach_eu": reach.get("eu_total"),
+        "reach_country": reach.get("country_reach"),
+        "reach_uk": reach.get("uk_total"),
+        "reach_per_day": ad.get("reach_per_day"),
+        "age_min": audience.get("age_min"),
+        "age_max": audience.get("age_max"),
+        "gender": audience.get("gender"),
+        "locations_included": names(audience.get("locations_included")),
+        "locations_excluded": names(audience.get("locations_excluded")),
+    }
+
+
+def _signal_lines(result: dict) -> list[str]:
+    """The code-computed signals of a search or advertiser, as Markdown."""
+    found = result.get("signals")
+    if not found:
+        return []
+    formats = ", ".join(f"{name} {_percent(share)}" for name, share in found["format_share"].items())
+    top = lambda rows, key: ", ".join(f"{r[key]} ({r['ads']})" for r in rows[:5]) or "none"  # noqa: E731
+    out = [
+        "",
+        "## Signals",
+        "",
+        f"- Active ads: {_number(found['active_ads'])} in the library, {found['ads_loaded']} loaded here",
+        f"- Formats: {formats or 'unknown'}",
+        f"- New ads per week (last four weeks): {found['new_per_week']}; "
+        f"started in the last 30 days: {found['started_last_30_days']} "
+        f"({_percent(found['share_started_last_30_days'])})",
+        f"- Languages: {top(found['languages'], 'language')}",
+        f"- Buttons: {top(found['buttons'], 'button')}",
+        f"- Destinations: {top(found['destinations'], 'domain')}",
+        f"- Platforms: {top(found['platforms'], 'platform')}",
+        f"- Score tiers: {_counts(found['tiers'])}; flagged for review: {found['needs_review']}",
+    ]
+    reach = found["reach"]
+    if reach.get("available"):
+        country = f"; {reach['country']}: {_number(reach['country_reach_summed'])}" if reach.get("country") else ""
+        out += [
+            f"- Reach, summed over the {reach['ads_with_reach']} ads read: EU {_number(reach['eu_reach_summed'])}"
+            f"{country}; UK {_number(reach['uk_reach_summed'])} (one person can count in several ads)",
+            f"- Median reach per day: {_number(reach['median_reach_per_day'])}",
+        ]
+    else:
+        out.append(f"- Reach: {reach['note']}")
+    audience = found.get("audience")
+    if audience:
+        places = lambda rows: ", ".join(f"{r['name']} ({r['ads']})" for r in rows[:12]) or "none"  # noqa: E731
+        ages = ", ".join(f"{r['age_min']}-{r['age_max']} ({r['ads']})" for r in audience["age_ranges"])
+        out += [
+            f"- Audience: ages {ages}; gender {_counts(audience['genders'])}; breadth {_counts(audience['breadth'])}",
+            f"- Locations targeted: {places(audience['locations_included'])}",
+            f"- Locations excluded: {places(audience['locations_excluded'])}",
+        ]
+    return out
+
+
+def _reach_table(ads: list[dict], country: str) -> list[str]:
+    read = [ad for ad in ads if "reach" in ad]
+    if not read:
+        return []
+    out = [
+        "",
+        "## Reach and audience of the top ads",
+        "",
+        "Reach is published by Meta for ads delivered in the European Union and the United "
+        "Kingdom. Locations are what the advertiser targeted and can include other areas.",
+        "",
+        f"| # | Advertiser | Days | EU reach | {country or 'Country'} | UK reach | Per day | Age | Gender | Ad |",
+        "|---:|---|---:|---:|---:|---:|---:|---|---|---|",
+    ]
+    for rank, ad in enumerate(ads, start=1):
+        if "reach" not in ad:
+            continue
+        reach, audience = ad["reach"], ad.get("audience") or {}
+        age = f"{audience.get('age_min')}-{audience.get('age_max')}" if audience else "-"
+        flag = " (review)" if ad.get("needs_review") else ""
+        out.append(
+            f"| {rank} | {_cell(ad.get('advertiser'))}{flag} | {ad.get('days_running', '-')} "
+            f"| {_number(reach.get('eu_total')) if reach.get('available') else 'not published'} "
+            f"| {_number(reach.get('country_reach'))} | {_number(reach.get('uk_total'))} "
+            f"| {_number(ad.get('reach_per_day'))} | {age} | {audience.get('gender') or '-'} "
+            f"| [{ad['library_id']}]({ad['ad_url']}) |")
+    return out
+
+
 def csv_rows(ads: list[dict]) -> list[dict]:
     rows = []
     for rank, ad in enumerate(ads, start=1):
@@ -47,6 +145,7 @@ def csv_rows(ads: list[dict]) -> list[dict]:
             "hook": breakdown["hook"]["text"] if breakdown["hook"] else "",
             "promise": breakdown["promise"]["text"] if breakdown["promise"] else "",
             "proof_kinds": ";".join(sorted({k for item in breakdown["proof"] for k in item["kinds"]})),
+            **_reach_cells(ad),
         })
     return rows
 
@@ -101,6 +200,8 @@ def to_markdown(result: dict, copy: dict, top_n: int = 10, generated_on: date | 
                    f"| {ad['repetitions']} | {_cell(ad.get('advertiser'))} | {_cell(opening, 90)} "
                    f"| {_cell(ad.get('cta'))} | [{ad['library_id']}]({ad['ad_url']}) |")
 
+    out += _signal_lines(result)
+    out += _reach_table(ads[:top_n], result.get("country") or "")
     out += [
         "",
         f"## Copy patterns in the top {summary['ads_analyzed']}",
@@ -146,7 +247,11 @@ def to_markdown(result: dict, copy: dict, top_n: int = 10, generated_on: date | 
         "search and one country. It is a sample of the matching ads, not all of them.",
         "- The longevity score (0-100) blends days running (60%, capped at 90 days) with how many "
         "ads reuse the same copy (40%, capped at 10). It is a proxy for what an advertiser keeps "
-        "paying for. The Ad Library publishes no spend, reach or conversions for commercial ads.",
+        "paying for. The Ad Library publishes no spend or conversions for commercial ads, and "
+        "reach only for ads delivered in the European Union or the United Kingdom.",
+        "- Ads are listed by total impressions, highest first, so the sample holds the most "
+        "shown ads. \"Review\" marks ads that ran long on a single use of their copy and, where "
+        "reach is known, reached far fewer people per day than the same advertiser's other ads.",
         "- Hook, promise, proof and CTA are assigned by rules (position, punctuation, digits and "
         "a multilingual phrase list). Read them as a first pass and check the linked ad.",
         "",

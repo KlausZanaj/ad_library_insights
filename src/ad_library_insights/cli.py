@@ -2,6 +2,8 @@
 
     ad-library-insights serve
     ad-library-insights report --country XX --query "<keyword>" [--advertiser NAME] --out DIR
+    ad-library-insights pages --country XX --name "<advertiser>"
+    ad-library-insights company --country XX --name "<advertiser>" [--page-id ID] --deep 10 --out DIR
     ad-library-insights breakeven --price 60 --product-cost 20 --csv ads.csv
 """
 from __future__ import annotations
@@ -15,11 +17,31 @@ from . import breakeven, report, service
 from .client import default_client
 
 
-def _report(args: argparse.Namespace) -> int:
-    result = asyncio.run(service.research(
-        default_client(), args.query, args.country, args.advertiser, args.status,
-        scroll_rounds=args.scroll_rounds, use_cache=not args.no_cache))
-    if not result["ads"]:
+def _duration(seconds: float) -> str:
+    seconds = int(round(seconds))
+    return f"{seconds // 60} min {seconds % 60:02d} s" if seconds >= 60 else f"{seconds} s"
+
+
+def _show_progress(event: dict) -> None:
+    """One line per ad on stderr: how many are done and how long is left."""
+    print(f"  {event['done']}/{event['total']} ads read ({event['status']}), "
+          f"about {_duration(event['eta_seconds'])} left", file=sys.stderr, flush=True)
+
+
+async def _deepen(client, result: dict, args: argparse.Namespace) -> None:
+    if args.deep <= 0 or not result.get("ads"):
+        return
+    plan = service.estimate_deep(result, args.deep, args.frames)
+    print(f"Reading reach and audience of the top {plan['ads']} ads: about "
+          f"{_duration(plan['seconds'])}.", file=sys.stderr, flush=True)
+    await service.deepen(client, result, args.deep, args.frames, _show_progress, not args.no_cache)
+    deep = result["deep"]
+    print(f"Read {deep['read']} of {plan['ads']}; {deep['with_reach']} with reach published"
+          + (f"; failed: {', '.join(deep['failed'])}" if deep["failed"] else "") + ".", file=sys.stderr)
+
+
+def _finish(result: dict, args: argparse.Namespace) -> int:
+    if not result.get("ads"):
         print(result.get("note", "No ads found."), file=sys.stderr)
         return 1
     files = report.write_report(result, service.copy_report(result, args.top), args.out, args.top)
@@ -28,6 +50,50 @@ def _report(args: argparse.Namespace) -> int:
     for path in files.values():
         print(path)
     return 0
+
+
+def _report(args: argparse.Namespace) -> int:
+    async def run() -> dict:
+        client = default_client()
+        result = await service.research(
+            client, args.query, args.country, args.advertiser, args.status,
+            scroll_rounds=args.scroll_rounds, use_cache=not args.no_cache)
+        await _deepen(client, result, args)
+        return result
+    return _finish(asyncio.run(run()), args)
+
+
+def _print_pages(pages: list[dict], suggested: str | None) -> None:
+    for page in pages:
+        followers = f"{page['followers']:,}" if page.get("followers") is not None else "?"
+        mark = "  <- likeliest" if page["page_id"] == suggested else ""
+        print(f"{page['page_id']:>18}  {page.get('name') or '?'}  "
+              f"({followers} followers, {page.get('category') or 'no category'}){mark}")
+
+
+def _pages(args: argparse.Namespace) -> int:
+    found = asyncio.run(service.find_pages(default_client(), args.name, args.country, not args.no_cache))
+    if not found["pages"]:
+        print(f'No advertiser page suggested for "{args.name}" in {found["country"]}.', file=sys.stderr)
+        return 1
+    _print_pages(found["pages"], found["suggested_page_id"])
+    return 0
+
+
+def _company(args: argparse.Namespace) -> int:
+    async def run() -> dict:
+        client = default_client()
+        result = await service.research_company(
+            client, args.country, args.page_id, args.name, args.status,
+            scroll_rounds=args.scroll_rounds, use_cache=not args.no_cache)
+        await _deepen(client, result, args)
+        return result
+    result = asyncio.run(run())
+    if result.get("outcome") == "choose_page":
+        print("Several pages match this name. Run again with --page-id:", file=sys.stderr)
+        _print_pages(result["pages"], result["suggested_page_id"])
+        return 3
+    return _finish(result, args)
 
 
 def _breakeven(args: argparse.Namespace) -> int:
@@ -59,6 +125,27 @@ def main(argv: list[str] | None = None) -> int:
     rep.add_argument("--scroll-rounds", type=int, default=6)
     rep.add_argument("--out", default="reports", help="output directory")
     rep.add_argument("--no-cache", action="store_true", help="ignore cached pages")
+    rep.add_argument("--deep", type=int, default=0,
+                     help="read reach and audience for this many top ads (10, 20, 50)")
+    rep.add_argument("--frames", action="store_true", help="save three stills of each video too")
+
+    pag = commands.add_parser("pages", help="list the advertiser pages matching a name")
+    pag.add_argument("--country", required=True, help="two-letter ISO country code")
+    pag.add_argument("--name", required=True, help="advertiser name to look up")
+    pag.add_argument("--no-cache", action="store_true", help="ignore cached lookups")
+
+    com = commands.add_parser("company", help="analyse every active ad of one advertiser page")
+    com.add_argument("--country", required=True, help="two-letter ISO country code")
+    com.add_argument("--name", default="", help="advertiser name (looked up when --page-id is not given)")
+    com.add_argument("--page-id", default="", help="numeric id of the page, from the pages command")
+    com.add_argument("--status", default="active", choices=("active", "inactive", "all"))
+    com.add_argument("--deep", type=int, default=10,
+                     help="read reach and audience for this many top ads (0, 10, 20, 50)")
+    com.add_argument("--frames", action="store_true", help="save three stills of each video too")
+    com.add_argument("--top", type=int, default=10, help="ads to detail in the report")
+    com.add_argument("--scroll-rounds", type=int, default=40)
+    com.add_argument("--out", default="reports", help="output directory")
+    com.add_argument("--no-cache", action="store_true", help="ignore cached pages")
 
     be = commands.add_parser("breakeven", help="break-even CPA and cut list")
     be.add_argument("--price", type=float, required=True)
@@ -76,6 +163,10 @@ def main(argv: list[str] | None = None) -> int:
             return _report(args)
         if args.command == "breakeven":
             return _breakeven(args)
+        if args.command == "pages":
+            return _pages(args)
+        if args.command == "company":
+            return _company(args)
     except (ValueError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

@@ -74,12 +74,17 @@ class Throttle:
         cutoff = self._clock() - 3600
         return sorted(s for s in stamps if isinstance(s, (int, float)) and s > cutoff)
 
-    def delay_needed(self) -> float:
-        """Seconds to wait before the next render is allowed."""
+    def delay_needed(self, min_interval: float | None = None) -> float:
+        """Seconds to wait before the next render is allowed.
+
+        ``min_interval`` overrides the usual gap for page loads that belong to the
+        same piece of work (a name lookup, then the list, then the detail views).
+        """
         recent, now = self._recent(), self._clock()
         if not recent:
             return 0.0
-        wait = recent[-1] + self.min_interval - now
+        gap = self.min_interval if min_interval is None else min_interval
+        wait = recent[-1] + gap - now
         if len(recent) >= self.max_per_hour:
             wait = max(wait, recent[-self.max_per_hour] + 3600 - now)
         return max(0.0, wait)

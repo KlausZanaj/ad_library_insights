@@ -12,6 +12,8 @@ country are always parameters; nothing about a specific industry is built in.
 | Capability | Detail |
 |---|---|
 | **Search** | Renders the public Ad Library in headless Chromium for a keyword and/or advertiser in a given country. No account, token or API key. |
+| **Company analysis** | Finds the advertiser's page from its name, loads every active ad of that page and summarises how the company advertises: formats, launch pace, languages, buttons, destinations, repeated copy. |
+| **Reach and audience** | For the top-ranked ads, reads the detail view: reach (EU total, the researched country, UK), age, gender and the locations the advertiser targeted or excluded. |
 | **Longevity score** | Ranks ads 0-100 by days running and by how many ads reuse the same copy, the two persistence signals the library exposes. |
 | **Reliable fetching** | Local disk cache, retries with growing pauses, and a request throttle, with a clear distinction between "no results" and "the page did not serve ads". |
 | **Copy breakdown** | Splits the best ads into hook, promise, proof and call to action, as structured output, and summarises the patterns they share. |
@@ -95,7 +97,9 @@ Ask in plain language; the client picks the tools.
 
 | Tool | Purpose |
 |---|---|
-| `search_ads(country, query, advertiser, ...)` | Ranked ads for a keyword and/or advertiser name. |
+| `search_ads(country, query, advertiser, ..., deep_ads)` | Ranked ads for a keyword and/or advertiser name. `deep_ads` adds reach and audience for that many top ads. |
+| `find_advertiser_pages(name, country)` | The pages the library suggests for a name, with followers and category. |
+| `analyze_company(country, page_id \| name, deep_ads, frames)` | Every active ad of one page, ranked, with company signals, reach and audience. |
 | `scrape_library_url(url, ...)` | Same, for an Ad Library URL you already filtered by hand. |
 | `analyze_top_ads(country, query, advertiser, top_n)` | Hook, promise, proof and CTA of the top ads, plus shared patterns. |
 | `export_report(country, output_dir, query, advertiser, top_n, formats)` | Writes the Markdown brief and/or the CSV. |
@@ -140,8 +144,15 @@ And its copy breakdown:
 ```bash
 ad-library-insights report --country DE --query "standing desk" --top 10 --out reports
 ad-library-insights report --country US --advertiser "Northwind" --out reports
+ad-library-insights pages --country US --name "Northwind"
+ad-library-insights company --country US --page-id 123456789012345 --deep 20 --out reports
 ad-library-insights breakeven --price 60 --product-cost 20 --shipping-cost 5 --fee-pct 3 --csv export.csv
 ```
+
+`pages` lists the advertiser pages matching a name; `company` analyses one of them.
+When a name matches several pages, `company --name` stops and lists them so you can
+pick the right `--page-id`. `--deep` is the number of top-ranked ads whose reach and
+audience are read (about three seconds each; progress and time left are printed).
 
 The `examples/` folder contains a report produced by a live run.
 
@@ -150,12 +161,14 @@ The `examples/` folder contains a report produced by a live run.
 1. **Render.** Playwright opens the public Ad Library URL in headless Chromium
    with the interface pinned to English, waits for the first ad, and scrolls
    until no new ads load or `scroll_rounds` is reached.
-2. **Snapshot.** Class names on the page are obfuscated, so cards are found by
-   content: each card is the largest element containing exactly one
-   `Library ID:` label. Text, links and media of every card are captured.
-3. **Parse.** The card's links separate body copy from the link preview
-   (headline, description, button), which keeps the split independent of the
-   language of the ad.
+2. **Read.** The ads are taken from the data the page itself loads: the first
+   batch embedded in the HTML, the next ones as the list scrolls. It carries
+   text, button, destination, format, platforms, start date and how many ads
+   share the creative. The list is ordered by total impressions, highest first.
+3. **Fallback.** If that data is missing, the visible cards are parsed instead.
+   Class names are obfuscated, so cards are found by content: each card is the
+   largest element containing exactly one `Library ID:` label, and its links
+   separate body copy from the link preview.
 4. **Fetch policy.** Results are cached on disk for six hours. Renders are at
    least 20 seconds apart and at most 30 per hour. A page with no ads and no
    "no results" statement is retried twice, after about 20 and 60 seconds,
@@ -166,15 +179,29 @@ The `examples/` folder contains a report produced by a live run.
 6. **Copy breakdown.** Rules based on position, punctuation, digits and a
    small phrase list in English, Italian, Spanish, French and German
    (`src/ad_library_insights/data/lexicon.json`, editable).
+7. **Reach and audience.** For the top-ranked ads only, the detail view is
+   opened and the transparency data it loads is read: one ad at a time, about a
+   second apart, slower when answers get slow, with retries, and stopping early
+   if the page keeps refusing. Thumbnails and page logos of those ads are saved
+   locally, because their addresses expire.
+8. **Signals.** Plain code computes reach per day, audience breadth, format mix,
+   new ads per week, ads started in the last 30 days, languages, most used
+   buttons and destinations, repeated copy, and a "needs review" flag for ads
+   that ran long on a single use of their copy and reached far fewer people per
+   day than the advertiser's other ads. The longevity score is not affected.
 
-Cache and throttle state live in `~/.ad_library_insights`
+Cache, throttle state and saved pictures live in `~/.ad_library_insights`
 (override with the `AD_LIBRARY_INSIGHTS_HOME` environment variable).
 
 ## Technical limits
 
-- **No spend, reach or conversion data.** The Ad Library does not publish
-  them for commercial ads. The longevity score is a proxy for what an
-  advertiser keeps paying for, not a measure of profit.
+- **No spend or conversion data.** The Ad Library does not publish them for
+  commercial ads. The longevity score is a proxy for what an advertiser keeps
+  paying for, not a measure of profit.
+- **Reach exists only for the EU and the UK.** Meta publishes reach and
+  audience for ads delivered in the European Union or the United Kingdom. Ads
+  shown only elsewhere have no such section, and the tool says so. Reach is
+  per ad; summed over ads it counts the same person more than once.
 - **It reads a web page, not an API.** A change in the page layout or wording
   can break parsing until the parser is updated. The page may also refuse
   automated sessions; the tool then retries, and reports `blocked` instead of
@@ -182,9 +209,9 @@ Cache and throttle state live in `~/.ad_library_insights`
 - **Results are a sample.** A search returns the ads loaded by scrolling
   (typically 50 to 150), not every ad the library counts. Recent ads are
   listed first.
-- **Keyword search only.** Advertiser lookups search the name as a keyword and
-  filter by advertiser name, so an advertiser whose ads are not returned for
-  that term is missed. The per-page "all ads" view is not supported.
+- **Company analysis needs the right page.** Several pages can share a name;
+  the tool lists them and you choose. A brand that advertises from more than
+  one page has to be analysed page by page.
 - **Start dates reset on edits.** An advertiser who edits an ad gets a new
   start date; scores for frequently edited ads are understated.
 - **The copy breakdown is heuristic.** It labels sentences by rules, not by
@@ -192,10 +219,10 @@ Cache and throttle state live in `~/.ad_library_insights`
   the phrase list; treat it as a first pass.
 - **Dynamic ads show one variation.** Ads marked as having multiple versions
   expose only one text and one creative.
-- **Speed.** A fresh search takes roughly 10 to 40 seconds, more when the
-  throttle or a retry adds a pause.
-- **Platform list and media details are not extracted**; media type is
-  inferred from the card (video, carousel, image, text).
+- **Speed.** A fresh search takes roughly 10 to 40 seconds, a company with a
+  few hundred ads about a minute, and each detail view about three seconds.
+- **Language detection is a guess** from common words and writing systems;
+  short texts are left unlabelled.
 
 Use it for research on publicly displayed ads, at a modest request rate, and
 in line with the terms of the site you are reading.
