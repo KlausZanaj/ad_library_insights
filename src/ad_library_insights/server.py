@@ -5,7 +5,7 @@ import asyncio
 
 from fastmcp import FastMCP
 
-from . import breakeven, briefs, consumption, history, project, report, service
+from . import breakeven, briefs, compare, consumption, history, project, report, service
 from .client import AdLibraryClient, default_client
 
 mcp = FastMCP(
@@ -143,6 +143,36 @@ async def analyze_company(country: str, page_id: str = "", name: str = "", deep_
     except ValueError as exc:
         return {"ok": False, "error": str(exc)}
     return _trim(result, max_results)
+
+
+@mcp.tool
+async def compare_companies(country: str, page_id_a: str, page_id_b: str, deep_ads: int = 10,
+                            top_ads: int = 5, use_cache: bool = True) -> dict:
+    """Two advertiser pages side by side on the same numbers, computed by code.
+
+    Loads every active ad of both pages in one country and lines up active ads,
+    launch pace, formats, copy, reach and audience (for the top `deep_ads` of each),
+    platforms, buttons and destinations, with the differences worth noting. It names
+    no winner: the Ad Library shows no spend and no sales.
+
+    Args:
+        page_id_a, page_id_b: numeric page ids, from find_advertiser_pages.
+        deep_ads: read reach and audience for this many top-ranked ads of each page.
+        top_ads: how many of each page's best ads to return.
+    """
+    if page_id_a.strip() == page_id_b.strip():
+        return {"ok": False, "error": "pass two different pages"}
+    try:
+        sides = []
+        for page_id in (page_id_a, page_id_b):
+            result = await service.research_company(_get_client(), country, page_id, use_cache=use_cache)
+            if not result.get("ads"):
+                return {k: v for k, v in result.items() if k != "ads"}
+            sides.append(await _deepen(result, deep_ads, False, use_cache))
+    except ValueError as exc:
+        return {"ok": False, "error": str(exc)}
+    return {"ok": True, **compare.compare(*sides),
+            "top_ads": {key: side["ads"][:max(1, top_ads)] for key, side in zip("ab", sides)}}
 
 
 @mcp.tool

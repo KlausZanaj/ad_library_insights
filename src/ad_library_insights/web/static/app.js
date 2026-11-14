@@ -18,7 +18,7 @@ const store = {
 const S = {
   lang: store.get('lang', 'it'), theme: store.get('theme', 'light'),
   mode: 'keyword', level: 'data', deep: 10, frames: false, deepChoices: [10, 20, 50],
-  country: 'IT', query: '', company: '',
+  country: 'IT', query: '', company: '', companyB: '', cmp: null, resultMode: null,
   pages: null, busy: null, job: null, result: null, jobId: null, notice: null,
   project: null, overlay: null, estimate: null, pending: null,
   history: null, news: null,
@@ -108,8 +108,23 @@ function renderSearch() {
   const active = S.mode === 'keyword' || S.mode === 'company';
   const lang = `<div class="switch" role="group" aria-label="${esc(t('lang.label'))}">${toggle('lang', ['it', 'en'], S.lang, (v) => v.toUpperCase())}</div>`;
   let html = `<div class="search-in"><div class="search-head"><div><h1>${esc(t(`mode.${S.mode}`))}</h1><p>${esc(t(`${S.mode}.lead`))}</p></div>${lang}</div>`;
+  if (S.mode === 'compare') {
+    const off = S.job || S.busy ? 'disabled' : '';
+    const name = (bind, label) => `<label class="field"><span>${esc(t(label))}</span>
+      <input type="text" data-bind="${bind}" value="${esc(S[bind])}" placeholder="${esc(t('field.company.hint'))}" ${off} autocomplete="off"></label>`;
+    html += `<div class="fields two">${name('company', 'field.companyA')}${name('companyB', 'field.companyB')}
+      <label class="field"><span>${esc(t('field.country'))}</span><select data-bind="country" ${off}>${countryOptions(S.country)}</select></label>
+      <button class="btn" data-action="submit" ${off}>${esc(t('button.compare'))}</button></div>
+      <div class="options"><span>${esc(t('deep.before'))}</span>
+      <div class="switch" role="group">${toggle('deep', S.deepChoices, S.deep, String)}</div>
+      <span>${esc(t('cmp.deep.after'))}</span><span class="gap"></span><span>${esc(t('cmp.level'))}</span></div>`;
+    if (S.job || S.busy) html += '<div class="progress"><p><span id="ptext"></span><span class="muted num" id="pleft"></span></p><div class="bar" id="pbar"><i></i></div></div>';
+    else if (S.notice) html += `<p class="notice${S.notice.err ? ' err' : ''}">${esc(S.notice.text)}</p>`;
+    $('#search').innerHTML = `${html}</div>`;
+    updateProgress();
+    return;
+  }
   if (!active) {
-    if (S.mode !== 'news') html += `<p class="notice">${esc(t('soon'))}</p>`;
     $('#search').innerHTML = `${html}</div>`;
     return;
   }
@@ -157,8 +172,9 @@ function updateProgress() {
       share = detail.total ? detail.done / detail.total : 0;
       if (detail.eta_seconds) left = t('phase.left', { time: dur(detail.eta_seconds) });
     } else if (phase === 'waiting') label = t('phase.waiting', detail);
-    else if (phase === 'list' && S.job.params.mode === 'company') label = t('phase.list.company');
+    else if (phase === 'list' && S.job.params.mode !== 'keyword') label = t('phase.list.company');
     else label = t(`phase.${phase}`);
+    if (detail.side) label = t('cmp.side', { n: detail.side }) + label;
   }
   text.textContent = label;
   $('#pleft').textContent = left;
@@ -279,10 +295,98 @@ function tableSection(r) {
 function renderResults() {
   const el = $('#results');
   if (S.mode === 'news') { renderNews(); return; }
+  if (S.mode === 'compare') {
+    el.innerHTML = S.cmp ? cmpChooser() : (S.result && S.resultMode === 'compare' && S.result.comparison ? compareSheet(S.result) : '');
+    return;
+  }
   if (S.pages) { el.innerHTML = pagesSheet(); return; }
   const r = S.result;
-  if (!r || !(r.ads || []).length || !(S.mode === 'keyword' || S.mode === 'company')) { el.innerHTML = ''; return; }
+  if (!r || !(r.ads || []).length || S.resultMode !== S.mode) { el.innerHTML = ''; return; }
   el.innerHTML = `<div class="sheet">${headSection(r)}${readySection(r)}${changesSection(r)}${metricsSection(r)}${factsSection(r)}${tableSection(r)}</div>`;
+}
+
+/* ---------- two companies ---------- */
+function cmpChooser() {
+  return S.cmp.sides.map((side, index) => {
+    if (side.picked) return `<div class="sheet"><section><p class="picked">${esc(t('cmp.picked', { name: side.name }))}</p></section></div>`;
+    const rows = side.pages.map((page) => `<tr>
+      <td><div class="who">${avatar(page.logo, page.name)}<div><div>${esc(page.name)}${page.verified ? ` <span class="dim">· ${esc(t('pages.verified'))}</span>` : ''}</div>
+        ${page.instagram ? `<small class="dim">@${esc(page.instagram)}</small>` : ''}</div></div></td>
+      <td>${esc(page.category || '—')}</td><td class="r">${num(page.followers)}</td>
+      <td class="r"><button class="btn small${page.page_id === side.suggested ? '' : ' quiet'}" data-action="cmp-pick" data-side="${index}" data-value="${esc(page.page_id)}">${esc(t('pages.choose'))}</button></td></tr>`).join('');
+    return `<div class="sheet"><section><h2 style="margin-bottom:18px">${esc(t('cmp.pick', { name: side.name }))}</h2><table>
+      <thead><tr><th>${esc(t('pages.page'))}</th><th>${esc(t('pages.category'))}</th><th class="r">${esc(t('pages.followers'))}</th><th></th></tr></thead>
+      <tbody>${rows}</tbody></table></section></div>`;
+  }).join('');
+}
+function cmpValue(row, value) {
+  const list = (items, label) => (items && items.length ? items.map(label).join(', ') : '—');
+  switch (row.kind) {
+    case 'number': return num(value);
+    case 'percent': return value == null ? '—' : pct(value);
+    case 'shares': return esc(list(value, (i) => `${row.key === 'formats' ? t(`format.${i.label}`) : i.label} ${pct(i.share)}`));
+    case 'languages': return esc(list(value, (i) => `${named('language', i.label)} ${pct(i.share)}`));
+    case 'platforms': return esc(list(value, (i) => `${PLATFORMS[i.label] || i.label} ${pct(i.share)}`));
+    case 'genders': return esc(list(value, (g) => t(`gender.${g}`)));
+    case 'breadths': return esc(list(value, (b) => t(`breadth.${b}`)));
+    case 'places': return esc(list(value, placeLabel));
+    default: return esc(value ?? '—');
+  }
+}
+function compareSheet(r) {
+  const c = r.comparison, [a, b] = r.sides;
+  const head = (side) => { const page = side.page || {}; return `<div>${avatar(page.logo, page.name, true)}<div><h1>${esc(page.name || side.query)}</h1>
+    <p>${esc(t('cmp.sub', { category: page.category || '—', followers: num(page.followers), loaded: num(side.ads_parsed) }))}</p></div></div>`; };
+  const fmt = (note, value) => (note.key === 'video_share' ? pct(value) : num(value));
+  const notes = c.highlights.map((note) => `<li>${esc(t(`hl.${note.key}`, {
+    leader: c.names[note.leader], other: c.names[note.leader === 'a' ? 'b' : 'a'],
+    ratio: num(note.ratio), lead: fmt(note, note.lead), trail: fmt(note, note.trail) }))}</li>`).join('');
+  let group = null;
+  const rows = c.rows.map((row) => {
+    const title = row.group !== group ? `<tr class="group"><td colspan="3">${esc(t(`cmp.group.${row.group}`))}</td></tr>` : '';
+    group = row.group;
+    const numeric = row.kind === 'number' || row.kind === 'percent' ? ' class="num"' : '';
+    return `${title}<tr><td>${esc(t(`cmp.row.${row.key}`, { country: region(r.country) }))}</td><td${numeric}>${cmpValue(row, row.a)}</td><td${numeric}>${cmpValue(row, row.b)}</td></tr>`;
+  }).join('');
+  const top = (side) => `<div><table class="ads"><tbody>${side.ads.slice(0, 5).map((ad) => `<tr class="pick" data-action="open-ad" data-value="${esc(ad.library_id)}">
+    <td><div class="adcell">${ad.thumbnail ? `<img class="thumb" src="${esc(ad.thumbnail)}" alt="" loading="lazy">` : '<span class="thumb"></span>'}
+      <div class="adtext"><div>${esc(firstLine(ad) || t('t.notext'))}</div><small>${esc(`${t(`tier.${ad.tier}`)} · ${t('d.days', { days: num(ad.days_running) })} · ${t('d.score.reuse.n', { n: ad.repetitions })}`)}</small></div></div></td>
+    <td class="r">${Math.round(ad.longevity_score)}</td></tr>`).join('')}</tbody></table></div>`;
+  return `<div class="sheet">
+    <section class="cmphead">${head(a)}${head(b)}</section>
+    <section><h2>${esc(t('cmp.highlights'))}</h2>${notes ? `<ul class="notes">${notes}</ul>` : `<p class="muted" style="margin-top:8px">${esc(t('cmp.none'))}</p>`}
+      <p class="tablenote">${esc(t('cmp.note'))}</p></section>
+    <section><table class="cmp"><thead><tr><th></th><th>${esc(c.names.a)}</th><th>${esc(c.names.b)}</th></tr></thead><tbody>${rows}</tbody></table></section>
+    <section><h2 style="margin-bottom:14px">${esc(t('cmp.top'))}</h2><div class="tops">${top(a)}${top(b)}</div>
+      <p class="tablenote"><button class="linklike" data-action="guide">${esc(t('link.guide'))}</button></p></section>
+  </div>`;
+}
+const findAd = (id) => {
+  const pools = S.result ? (S.result.sides ? S.result.sides.map((side) => side.ads) : [S.result.ads]) : [];
+  return pools.flat().find((item) => item.library_id === id);
+};
+async function submitCompare() {
+  const names = [S.company.trim(), S.companyB.trim()];
+  if (!names[0] || !names[1]) return note('error.input', null, true);
+  S.result = null; S.cmp = null; S.busy = 'pages'; render();
+  try {
+    const sides = [];
+    for (const name of names) {
+      const found = await api(`/api/pages?name=${encodeURIComponent(name)}&country=${S.country}`);
+      if (!found.pages.length) { S.busy = null; return note('pages.none.named', { name, country: region(S.country) }); }
+      sides.push({ name, pages: found.pages, suggested: found.suggested_page_id,
+        picked: found.pages.length === 1 ? found.pages[0].page_id : null });
+    }
+    S.busy = null; S.cmp = { sides };
+    if (sides.every((side) => side.picked)) return launchCompare();
+    render();
+  } catch (error) { S.busy = null; note('error.title', null, true); }
+}
+function launchCompare() {
+  const [first, second] = S.cmp.sides;
+  S.pending = { mode: 'compare', page_id: first.picked, page_id_b: second.picked, country: S.country, fresh: false };
+  S.cmp = null;
+  return launch();
 }
 
 /* ---------- what changed ---------- */
@@ -455,7 +559,7 @@ function renderOverlay() {
   if (!overlay) { el.innerHTML = ''; return; }
   let inner = '';
   if (overlay.type === 'ad') {
-    const ad = S.result && S.result.ads.find((item) => item.library_id === overlay.id);
+    const ad = findAd(overlay.id);
     inner = ad ? adDrawer(ad, S.result) : '';
   } else if (overlay.type === 'guide') inner = guideDrawer();
   else if (overlay.type === 'confirm') inner = confirmDialog();
@@ -477,6 +581,7 @@ function note(key, vars, err) { S.notice = { text: t(key, vars), err }; render()
 
 async function submit() {
   S.notice = null;
+  if (S.mode === 'compare') return submitCompare();
   if (S.mode === 'keyword') {
     if (!S.query.trim()) return note('error.input', null, true);
     return gate({ mode: 'keyword', query: S.query.trim() });
@@ -500,7 +605,7 @@ function gate(request) {
 async function launch() {
   S.overlay = null; S.pages = null; S.result = null; S.notice = null;
   try {
-    S.job = await api('/api/jobs', { method: 'POST', body: { ...S.pending, level: S.level, deep: S.deep, frames: S.frames } });
+    S.job = await api('/api/jobs', { method: 'POST', body: { ...S.pending, level: S.pending.mode === 'compare' ? 'data' : S.level, deep: S.deep, frames: S.frames } });
   } catch (error) {
     if (error.data && error.data.error === 'project_required') return openProject(true);
     return note('error.title', null, true);
@@ -513,8 +618,9 @@ async function launch() {
   }
   const job = S.job; S.job = null;
   if (!job || job.status !== 'done') return note('error.title', null, true);
-  if (!job.result.ads || !job.result.ads.length) return note(`error.${job.result.outcome === 'blocked' ? 'blocked' : 'no_results'}`);
-  S.result = job.result; S.jobId = job.id; render();
+  const found = job.result.sides ? job.result.sides.every((side) => (side.ads || []).length) : (job.result.ads || []).length;
+  if (!found) return note(`error.${job.result.outcome === 'blocked' ? 'blocked' : 'no_results'}`);
+  S.result = job.result; S.resultMode = job.params.mode; S.jobId = job.id; render();
   window.scrollTo({ top: $('#results').offsetTop - 12, behavior: 'instant' });
 }
 function openProject(thenSearch) {
@@ -543,7 +649,7 @@ async function makeBrief(options = {}) {
 }
 
 const ACTIONS = {
-  mode(value) { S.mode = value; S.pages = null; S.notice = null; render(); if (value === 'news') loadHistory(); },
+  mode(value) { S.mode = value; S.pages = null; S.cmp = null; S.notice = null; render(); if (value === 'news') loadHistory(); },
   'news-open': openNews, 'news-refresh': refreshSubject,
   theme(value) { S.theme = value; store.set('theme', value); renderTop(); },
   lang(value) { S.lang = value; store.set('lang', value); render(); },
@@ -554,6 +660,10 @@ const ACTIONS = {
   'save-project': saveProject, 'confirm-go': launch, brief() { makeBrief(); },
   'brief-ads'(value) { makeBrief({ ads: Number(value) }); },
   'choose-page'(value) { gate({ mode: 'company', page_id: value }); },
+  'cmp-pick'(value, el) {
+    S.cmp.sides[Number(el.dataset.side)].picked = value;
+    if (S.cmp.sides.every((side) => side.picked)) launchCompare(); else renderResults();
+  },
   'open-ad'(value) { S.overlay = { type: 'ad', id: value }; renderOverlay(); },
   close() { S.overlay = null; renderOverlay(); },
   async 'copy-brief'(value, el) {

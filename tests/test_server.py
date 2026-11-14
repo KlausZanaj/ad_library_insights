@@ -33,7 +33,7 @@ def test_tools_are_registered():
                                     "export_report", "check_breakeven_cpa",
                                     "find_advertiser_pages", "analyze_company",
                                     "what_changed", "estimate_consumption", "prepare_analysis",
-                                    "get_project", "save_project"}
+                                    "get_project", "save_project", "compare_companies"}
 
 
 def test_search_ads_returns_ranked_ads(monkeypatch, cards):

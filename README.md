@@ -57,14 +57,20 @@ browser. On any system, with the environment active:
 ad-library-insights app
 ```
 
-The app runs on your computer only (`127.0.0.1`). Choose a mode (search by
-keyword or analyse a company), a country and a level:
+The app runs on your computer only (`127.0.0.1`). Choose a mode, a country and
+a level. The modes are: search by keyword, analyse a company, compare two
+companies, and what changed since the previous search.
 
 | Level | What you get | What it uses |
 |---|---|---|
 | **Data** | Ranking, days running, reach and audience, company signals. | Nothing: plain code, no AI. |
 | **Analysis** | The same data, plus a ready text for your own assistant to explain why the company gets those results. | Your assistant's limits. |
 | **Plan** | The analysis plus ad ideas, a test plan and a report for your own product. Asks once for your project (product, price, cost, market, goal, main problem). | More of your assistant's limits. |
+
+**Compare two companies** loads both pages and lines them up on the same
+numbers: active ads, launch pace, formats, copy, reach and audience, platforms,
+buttons and destinations, with the differences worth noting written out. It
+names no winner, because the Ad Library shows no spend and no sales.
 
 Every search is saved on your computer. From the second search of the same
 company or keyword, the **What changed** tab lists new ads, ads no longer
@@ -151,6 +157,7 @@ Ask in plain language; the client picks the tools.
 | `find_advertiser_pages(name, country)` | The pages the library suggests for a name, with followers and category. |
 | `analyze_company(country, page_id \| name, deep_ads, frames)` | Every active ad of one page, ranked, with company signals, reach and audience. |
 | `what_changed(country, query \| page_id)` | New, stopped and changed ads since the previous search of the same keyword or page. |
+| `compare_companies(country, page_id_a, page_id_b, deep_ads)` | Two pages side by side on the same numbers, with the notable differences. |
 | `estimate_consumption(level, ads, frames)` | Rough size of an Analysis or Plan, to confirm before collecting. |
 | `prepare_analysis(country, level, page_id \| query, ads, frames)` | Collects the data and writes the pack: one brief and one file per specialist. |
 | `get_project()` / `save_project(...)` | The project card the Plan level is written for. |

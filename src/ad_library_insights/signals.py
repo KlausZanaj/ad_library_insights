@@ -288,6 +288,8 @@ def _audience_summary(ranked: list[dict]) -> dict | None:
                                 if ad.get("audience_breadth")).most_common()),
         "locations_included": places(included),
         "locations_excluded": places(excluded),
+        "locations_included_count": len(included),      # the lists above stop at twenty
+        "locations_excluded_count": len(excluded),
         "note": "Locations are what the advertiser chose to target and can lie outside the "
                 "regions for which reach is published.",
     }

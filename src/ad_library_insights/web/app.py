@@ -19,7 +19,7 @@ from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from .. import __version__, briefs, consumption, details, history, media, project, service
+from .. import __version__, briefs, compare, consumption, details, history, media, project, service
 from ..client import AdLibraryClient, normalise_country
 from ..storage import DiskCache, Throttle
 
@@ -99,37 +99,51 @@ class Workspace:
         job.task = asyncio.create_task(self._run(job))   # keep a reference so it is not collected
         return job
 
+    async def _collect(self, job: Job, params: dict, page_id: str | None = None,
+                       side: int | None = None) -> dict:
+        """One search with its reach reading, thumbnails and saved snapshot."""
+        mark = {"side": side} if side else {}
+        job.phase, job.detail = "list", dict(mark)
+        use_cache = not params.get("fresh")
+        if page_id:
+            result = await service.research_company(self.client, params["country"], page_id=page_id,
+                                                    use_cache=use_cache)
+        else:
+            result = await service.research(self.client, params["query"], params["country"],
+                                            scroll_rounds=KEYWORD_SCROLLS, use_cache=use_cache)
+        if result.get("ads"):
+            plan = service.estimate_deep(result, params["deep"], params["frames"])
+            job.phase = "details"
+            job.detail = {**mark, "done": 0, "total": plan["ads"], "eta_seconds": plan["seconds"]}
+
+            def progress(event: dict) -> None:
+                if job.phase == "details":
+                    job.detail = {**mark, "done": event["done"], "total": event["total"],
+                                  "eta_seconds": event["eta_seconds"]}
+
+            await service.deepen(self.client, result, params["deep"], params["frames"], progress, use_cache)
+            job.phase, job.detail = "media", dict(mark)
+            await asyncio.to_thread(media.save_ad_media, result["ads"][:TABLE_THUMBNAILS], self.client.media)
+            # every search is remembered, so the next one can tell what changed
+            result["changes"] = history.summary(self.history.record(result))
+        return result
+
     async def _run(self, job: Job) -> None:
         params = job.params
         async with self._lock:
             self._current = job
             try:
-                job.phase = "list"
-                use_cache = not params.get("fresh")
-                if params["mode"] == "company":
-                    result = await service.research_company(self.client, params["country"],
-                                                            page_id=params["page_id"], use_cache=use_cache)
+                if params["mode"] == "compare":
+                    first = await self._collect(job, params, params["page_id"], side=1)
+                    second = await self._collect(job, params, params["page_id_b"], side=2)
+                    both = bool(first.get("ads") and second.get("ads"))
+                    job.result = {"mode": "compare", "country": params["country"], "request": params,
+                                  "sides": [present(first, params), present(second, params)],
+                                  "comparison": compare.compare(first, second) if both else None}
                 else:
-                    result = await service.research(self.client, params["query"], params["country"],
-                                                    scroll_rounds=KEYWORD_SCROLLS, use_cache=use_cache)
-                if result.get("ads"):
-                    plan = service.estimate_deep(result, params["deep"], params["frames"])
-                    job.phase = "details"
-                    job.detail = {"done": 0, "total": plan["ads"], "eta_seconds": plan["seconds"]}
-
-                    def progress(event: dict) -> None:
-                        if job.phase == "details":
-                            job.detail = {"done": event["done"], "total": event["total"],
-                                          "eta_seconds": event["eta_seconds"]}
-
-                    await service.deepen(self.client, result, params["deep"], params["frames"], progress,
-                                         use_cache)
-                    job.phase, job.detail = "media", {}
-                    await asyncio.to_thread(media.save_ad_media, result["ads"][:TABLE_THUMBNAILS],
-                                            self.client.media)
-                    # every search is remembered, so the next one can tell what changed
-                    result["changes"] = history.summary(self.history.record(result))
-                job.raw, job.result = result, present(result, params)
+                    result = await self._collect(
+                        job, params, params["page_id"] if params["mode"] == "company" else None)
+                    job.raw, job.result = result, present(result, params)
                 job.status = "done"
             except Exception as exc:  # shown to the user instead of a dead spinner
                 job.status, job.error = "error", f"{type(exc).__name__}: {exc}"
@@ -202,16 +216,21 @@ class Workspace:
                 "frames": bool(body.get("frames")),
                 "query": (body.get("query") or "").strip(),
                 "page_id": str(body.get("page_id") or "").strip(),
+                "page_id_b": str(body.get("page_id_b") or "").strip(),
                 "fresh": bool(body.get("fresh")),      # skip the cache: used to look for changes
             }
-            if params["mode"] not in ("keyword", "company"):
-                raise ValueError("mode must be keyword or company")
+            if params["mode"] not in ("keyword", "company", "compare"):
+                raise ValueError("mode must be keyword, company or compare")
             if params["level"] not in consumption.LEVELS:
                 raise ValueError("unknown level")
             if params["mode"] == "keyword" and not params["query"]:
                 raise ValueError("query must not be empty")
-            if params["mode"] == "company" and not params["page_id"].isdigit():
+            if params["mode"] in ("company", "compare") and not params["page_id"].isdigit():
                 raise ValueError("page_id must be the numeric id of an advertiser page")
+            if params["mode"] == "compare":
+                if not params["page_id_b"].isdigit() or params["page_id_b"] == params["page_id"]:
+                    raise ValueError("page_id_b must be the numeric id of a second, different page")
+                params["level"] = "data"            # a comparison is code only
         except (ValueError, TypeError) as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
         if params["level"] == "plan" and not project.load(self.home):

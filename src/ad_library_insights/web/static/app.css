@@ -73,6 +73,7 @@ button { cursor: pointer; }
 .search-in { max-width: 1240px; margin: 0 auto; padding: 36px 32px 32px; }
 .search-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 32px; }
 .search-head p { margin-top: 8px; max-width: 760px; color: var(--muted); font-size: 1.05rem; }
+.fields.two { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 220px auto; }
 .fields { display: grid; grid-template-columns: minmax(0, 1fr) 240px auto; gap: 16px; align-items: end; margin-top: 28px; }
 label.field { display: block; }
 label.field > span { display: block; font-size: .87rem; color: var(--muted); margin-bottom: 6px; }
@@ -164,6 +165,23 @@ tr.pick:hover td { background: var(--sunken); }
 .rhead h1 { font-size: 1.5rem; }
 .rhead p { color: var(--muted); margin-top: 3px; }
 .rlinks { display: flex; gap: 22px; white-space: nowrap; }
+.cmphead { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+.cmphead > div { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.cmphead h1 { font-size: 1.4rem; }
+.cmphead p { color: var(--muted); margin-top: 2px; }
+.notes { margin: 10px 0 0; padding: 0; list-style: none; }
+.notes li { padding: 5px 0 5px 16px; position: relative; font-size: 1.05rem; }
+.notes li::before { content: ""; position: absolute; left: 0; top: .95em; width: 7px; height: 1.5px; background: var(--accent); }
+table.cmp { table-layout: fixed; }
+table.cmp th:first-child, table.cmp td:first-child { width: 34%; }
+table.cmp td { vertical-align: top; }
+table.cmp td:first-child { color: var(--muted); }
+table.cmp tr.group td { padding-top: 26px; padding-bottom: 8px; color: var(--text); font-weight: 600; border-bottom: 1px solid var(--line); }
+table.cmp tbody tr:first-child.group td { padding-top: 6px; }
+table.cmp td.num { font-variant-numeric: tabular-nums; }
+.tops { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+.tops .adtext div, .tops .adtext small { max-width: 330px; }
+.picked { color: var(--muted); }
 .changes { display: flex; align-items: center; gap: 24px; }
 .changes p { flex: 1; }
 .sheet + .sheet { margin-top: 20px; }
