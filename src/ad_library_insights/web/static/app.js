@@ -254,12 +254,14 @@ function factsSection(r) {
       <dt>${esc(t('f.audience.gender'))}</dt><dd>${Object.keys(audience.genders).map((g) => esc(t(`gender.${g}`))).join(', ')}</dd>
       <dt>${esc(t('f.audience.breadth'))}</dt><dd>${Object.keys(audience.breadth).map((b) => esc(t(`breadth.${b}`))).join(', ') || '—'}</dd></dl>`
     : '<p class="dim">—</p>';
-  const coverage = reach.available ? `<dl>
-      <dt>${esc(t('f.reach.eu'))}</dt><dd class="num">${num(reach.eu_reach_summed)}</dd>
-      ${reach.country_reach_summed != null ? `<dt>${esc(region(reach.country))}</dt><dd class="num">${num(reach.country_reach_summed)}</dd>` : ''}
-      <dt>${esc(t('f.reach.uk'))}</dt><dd class="num">${reach.uk_reach_summed ? num(reach.uk_reach_summed) : '—'}</dd></dl>
-      <p class="note">${esc(t('f.reach.note', { n: reach.ads_with_reach }))}</p>`
-    : `<p class="note" style="margin-top:0">${esc(t('f.reach.none'))}</p>`;
+  const coverage = !reach.available ? `<p class="note" style="margin-top:0">${esc(t('f.reach.none'))}</p>`
+    : !reach.ads_with_market_reach ? `<p class="note" style="margin-top:0">${esc(t('f.reach.elsewhere', { country: region(r.country) }))}</p>`
+    : `<dl>
+      <dt>${esc(t('f.reach.perday.median'))}</dt><dd class="num">${num(reach.median_reach_per_day)}</dd>
+      <dt>${esc(t('f.reach.perday.best'))}</dt><dd class="num">${num(reach.highest_reach_per_day)}</dd>
+      <dt>${esc(t('f.reach.total.median'))}</dt><dd class="num">${num(reach.median_reach_total)}</dd>
+      <dt>${esc(t('f.reach.total.best'))}</dt><dd class="num">${num(reach.highest_reach_total)}</dd></dl>
+      <p class="note">${esc(t('f.reach.note', { n: reach.ads_with_market_reach, country: region(r.country) }))}</p>`;
   const reused = s.copy_patterns.reused_texts.slice(0, 4).map((row) => `<li><span>${esc(row.opening)}</span><span>${esc(t('f.reused.n', { n: row.creatives }))}</span></li>`).join('');
   return `<section class="facts">
     <div class="fact wide"><h2>${esc(t('f.places'))}</h2>${places}</div>
@@ -273,9 +275,10 @@ function factsSection(r) {
   </section>`;
 }
 function reachCells(ad) {
-  if (!ad.reach) return '<td class="r dim">—</td><td class="r dim">—</td><td class="r dim">—</td>';
-  if (!ad.reach.available) return `<td class="r dim" colspan="3">${esc(t('t.nopub'))}</td>`;
-  return `<td class="r">${ad.reach.eu_total == null ? '—' : num(ad.reach.eu_total)}</td><td class="r">${num(ad.reach.country_reach)}</td><td class="r">${num(ad.reach_per_day)}</td>`;
+  if (!ad.reach) return '<td class="r dim">—</td><td class="r dim">—</td>';
+  if (!ad.reach.available) return `<td class="r dim" colspan="2">${esc(t('t.nopub'))}</td>`;
+  if (ad.reach_total == null) return `<td class="r dim" colspan="2">${esc(t('t.elsewhere'))}</td>`;
+  return `<td class="r">${num(ad.reach_total)}</td><td class="r">${num(ad.reach_per_day)}</td>`;
 }
 const SORTS = {
   score: (a, b) => b.score - a.score,
@@ -300,7 +303,7 @@ function tableSection(r) {
   return `<section><div class="sortbar"><span>${esc(t('sort.by'))}</span><div class="switch" role="group">${toggle('sort', ['score', 'perday', 'days'], S.sort, (v) => t(`sort.${v}`))}</div></div>
     <table class="ads${company ? '' : ' mixed'}"><thead><tr><th></th><th>${esc(t('t.ad'))}</th><th>${esc(t('t.tier'))}</th>
     <th class="r">${esc(t('t.score'))}</th><th class="r">${esc(t('t.days'))}</th><th class="r">${esc(t('t.creatives'))}</th>
-    ${company ? '' : `<th>${esc(t('t.format'))}</th>`}<th class="r">${esc(t('t.eu'))}</th><th class="r">${esc(region(r.country))}</th><th class="r">${esc(t('t.perday'))}</th></tr></thead>
+    ${company ? '' : `<th>${esc(t('t.format'))}</th>`}<th class="r">${esc(t('t.reached', { country: region(r.country) }))}</th><th class="r">${esc(t('t.perday'))}</th></tr></thead>
     <tbody>${rows}</tbody></table><p class="tablenote">${esc(t('t.note', { n: read }))}</p></section>`;
 }
 function renderResults() {
@@ -472,7 +475,9 @@ function refreshSubject(key) {
 function adDrawer(ad, r) {
   const points = ad.score_points || { scale: 0, staying: 0, creative: 0 };
   const weights = ad.score_weights || { scale: 60, staying: 25, creative: 15 };
-  const scaleWhy = ad.scale_basis === 'reach' ? t('d.scale.reach', { n: num(ad.reach_per_day) })
+  const where = region(r.country);
+  const rateDays = Math.max(ad.ad_days ?? ad.days_running ?? 0, 7);
+  const scaleWhy = ad.scale_basis === 'reach' ? t('d.scale.reach', { n: num(ad.reach_per_day), country: where, total: num(ad.reach_total) })
     : ad.scale_basis === 'impressions' ? t('d.scale.impressions', { n: num(ad.impression_rank) }) : t('d.scale.none');
   const reach = ad.reach, audience = ad.audience;
   const places = (list) => (list.length ? list.map((p) => esc(placeLabel(p))).join(', ') : esc(t('f.places.none')));
@@ -482,14 +487,17 @@ function adDrawer(ad, r) {
   else {
     const countries = reach.regions.flatMap((g) => g.countries).sort((a, b) => b.reach - a.reach).slice(0, 8);
     reachHtml = `<dl>
+      ${ad.reach_total != null ? `<dt>${esc(t('d.reach.country', { country: where }))}</dt><dd>${num(ad.reach_total)}</dd>
+      <dt>${esc(t('d.reach.perday', { country: where }))}</dt><dd>${num(ad.reach_per_day)} <span class="muted">· ${esc(t('d.reach.perday.x', { total: num(ad.reach_total), days: num(rateDays) }))}</span></dd>` : ''}
       ${reach.eu_total != null ? `<dt>${esc(t('d.reach.total'))}</dt><dd>${num(reach.eu_total)}</dd>` : ''}
-      ${reach.country_reach != null ? `<dt>${esc(region(reach.country))}</dt><dd>${num(reach.country_reach)}</dd>` : ''}
-      ${reach.uk_total != null ? `<dt>${esc(t('d.reach.uk'))}</dt><dd>${num(reach.uk_total)}</dd>` : ''}
-      <dt>${esc(t('d.reach.perday'))}</dt><dd>${num(ad.reach_per_day)}</dd></dl>
+      ${reach.uk_total != null ? `<dt>${esc(t('d.reach.uk'))}</dt><dd>${num(reach.uk_total)}</dd>` : ''}</dl>
       ${ad.reach_in_market === false ? `<p class="smallnote">${esc(t('d.reach.elsewhere'))}</p>` : ''}
+      ${ad.reach_total === 0 ? `<p class="smallnote">${esc(t('d.reach.zero', { country: where }))}</p>` : ''}
+      ${ad.reach_total ? `<p class="smallnote">${esc(t('d.reach.unique'))}</p>` : ''}
       ${countries.length > 1 ? `<h3 style="margin-top:16px">${esc(t('d.reach.bycountry'))}</h3><ul class="rows">${countries.map((c) => `<li><span>${esc(region(c.country))}</span><span>${num(c.reach)}</span></li>`).join('')}</ul>` : ''}`;
   }
   const review = ad.needs_review ? `<p class="review" style="margin-top:12px;font-size:1rem">${esc(t(ad.review && ad.review.basis === 'impressions' ? 'd.review.impressions' : 'd.review'))}</p>` : '';
+  const recent = ad.too_recent ? `<p class="review" style="margin-top:12px;font-size:1rem">${esc(t('d.recent', { days: ad.days_running === 1 ? t('d.recent.days.one') : t('d.recent.days.other', { n: ad.days_running }) }))}</p>` : '';
   return `<aside class="drawer" role="dialog" aria-modal="true"><header><h2>${esc(ad.advertiser || '')}</h2><button class="x" data-action="close">${esc(t('button.close'))}</button></header><div class="body">
     <section><div class="hero">${ad.thumbnail ? `<img src="${esc(ad.thumbnail)}" alt="">` : ''}<div>
       <p><strong>${esc(ad.status === 'inactive' ? t('d.inactive') : t('d.active', { date: ad.started ? day(ad.started) : '—' }))}</strong></p>
@@ -503,7 +511,7 @@ function adDrawer(ad, r) {
         <dt>${esc(t('d.part.staying'))}</dt><dd>${esc(t('d.score.of', { n: num(Math.round(points.staying)), max: weights.staying }))} <span class="muted">· ${esc(t('d.staying.days', { days: num(ad.days_running) }))}</span></dd>
         <dt>${esc(t('d.part.creative'))}</dt><dd>${esc(t('d.score.of', { n: num(Math.round(points.creative)), max: weights.creative }))} <span class="muted">· ${esc(t('d.creative.n', { n: num(ad.creatives) }))}</span></dd>
       </dl>
-      <p class="smallnote">${esc(t(`reliability.${ad.reliability}.x`))}</p>${review}
+      <p class="smallnote">${esc(t(`reliability.${ad.reliability}.x`))}</p>${review}${recent}
       <h3 style="margin-top:18px">${esc(t('d.variants'))}</h3>
       <dl><dt>${esc(t('d.variants.cards'))}</dt><dd>${num(ad.cards)}</dd>
         <dt>${esc(t('d.variants.copies'))}</dt><dd>${num(ad.copies_total)}</dd>
@@ -527,7 +535,7 @@ function adDrawer(ad, r) {
   </div></aside>`;
 }
 function guideDrawer() {
-  const items = [1, 2, 3, 4, 5, 6, 7].map((n) => `<section class="qa"><h3>${esc(t(`guide.q${n}`))}</h3><p>${esc(t(`guide.a${n}`))}</p>${n === 3 ? `<p class="eg muted">${esc(t('guide.example'))}</p>` : ''}</section>`).join('');
+  const items = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => `<section class="qa"><h3>${esc(t(`guide.q${n}`))}</h3><p>${esc(t(`guide.a${n}`))}</p>${n === 3 ? `<p class="eg muted">${esc(t('guide.example'))}</p>` : ''}</section>`).join('');
   return `<aside class="drawer" role="dialog" aria-modal="true"><header><h2>${esc(t('guide.title'))}</h2><button class="x" data-action="close">${esc(t('button.close'))}</button></header><div class="body">${items}</div></aside>`;
 }
 

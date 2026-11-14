@@ -80,13 +80,20 @@ def overview(result: dict, ads: list[dict]) -> str:
         f"- Collected: {result.get('fetched_at') or 'n/a'}; {result.get('ads_parsed')} ads loaded of "
         f"{_n(found.get('active_ads'))} active; {result.get('distinct_ads')} distinct texts",
         f"- In this pack: the top {len(ads)} ads by rating",
-        "- Rating, 0-100, three parts: scale (people reached per day; where reach is not published, the "
-        "position by impressions), staying power (days running, full at 90) and creative investment "
-        "(different creatives for one concept). Scale and creatives are relative to the other ads here.",
-        "- Reliability of a rating: high = reach was read; medium = impression position only; low = neither.",
+        f"- Rating, 0-100, three parts: scale (people reached per day in {result.get('country') or 'the country searched'}; "
+        "where that is not published, the position by impressions), staying power (days running, full at 90) "
+        "and creative investment (different creatives for one concept). Scale and creatives are relative to "
+        "the other ads here.",
+        "- Reach per day = people reached in the country searched, divided by the days the ad has been on "
+        "air (seven at the least). The EU and UK totals are information and do not rate.",
+        "- Reach counts unique people, who grow slower than days: an ad on air for months shows fewer people "
+        "per day than it had at the start. Read the total reached next to the daily figure.",
+        "- Reliability of a rating: high = reach in the country searched was read; medium = impression "
+        "position only; low = neither.",
         "- Verdicts: scaling (reaches many people per day compared with the others), holding (90 days or "
-        "more with scale in the middle or above), testing (under 30 days), review (90 days or more with "
-        "low scale: possibly forgotten), average (the rest).",
+        "more with scale in the middle or above), testing (under 30 days; under 7 days an ad is too recent "
+        "to judge), review (90 days or more with low scale: a small budget that works or a forgotten ad, "
+        "to be checked, not a negative verdict), average (the rest).",
         "- One ad per concept: identical copies, versions of a dynamic ad, catalogue ads and translations "
         "are merged and do not count as creatives.",
         f"- Reach: read for {read} of these ads. Meta publishes it only for ads delivered in the EU or the "
@@ -139,7 +146,8 @@ def creative(result: dict, ads: list[dict], frames: bool) -> tuple[str, list[str
               if frames else "- Video stills: not collected for this pack. Work from thumbnails, formats and copy, and say so."),
              "- Pictures are local files: open them to look at the creative.", ""]
     for rank, ad in enumerate(chosen, start=1):
-        reach = f" · reach per day {_n(ad.get('reach_per_day'))}" if ad.get("reach_per_day") is not None else ""
+        reach = (f" · {_n(ad.get('reach_total'))} people reached in {result.get('country') or 'the country searched'}, "
+                 f"{_n(ad.get('reach_per_day'))} per day" if ad.get("reach_per_day") is not None else "")
         lines += [_head(rank, ad) + reach,
                   f"opening line: \"{(ad.get('body') or '').strip().splitlines()[0][:160] if (ad.get('body') or '').strip() else ''}\""]
         stills = (ad.get("frames") or []) if frames else []
@@ -163,7 +171,9 @@ def reach(result: dict, ads: list[dict]) -> str:
     lines = ["# Reach and audience", "",
              "Reach is published by Meta only for ads delivered in the EU or the UK. Locations are what the "
              "advertiser targeted and can name areas outside those regions.", "",
-             f"| # | id | days | EU reach | {country} reach | UK reach | per day | age | gender | breadth | locations in / out |",
+             f"Per day = reach in {country} divided by the days the ad has been on air, seven at the least. "
+             "Reach counts unique people: over months it grows slower than days, so compare totals too.", "",
+             f"| # | id | days | {country} reach | per day in {country} | EU reach | UK reach | age | gender | breadth | locations in / out |",
              "|---:|---|---:|---:|---:|---:|---:|---|---|---|---|"]
     for rank, ad in enumerate(ads, start=1):
         data, audience = ad.get("reach"), ad.get("audience") or {}
@@ -172,25 +182,27 @@ def reach(result: dict, ads: list[dict]) -> str:
         elif not data.get("available"):
             numbers = "not published | | | "
         else:
-            numbers = (f"{_n(data.get('eu_total'))} | {_n(data.get('country_reach'))} | "
-                       f"{_n(data.get('uk_total'))} | {_n(ad.get('reach_per_day'))}")
+            numbers = (f"{_n(data.get('country_reach'))} | {_n(ad.get('reach_per_day'))} | "
+                       f"{_n(data.get('eu_total'))} | {_n(data.get('uk_total'))}")
         age = f"{audience.get('age_min')}-{audience.get('age_max')}" if audience else ""
         breadth = (ad.get("audience_breadth") or {}).get("label", "")
         places = (f"{len(audience.get('locations_included', []))} / {len(audience.get('locations_excluded', []))}"
                   if audience else "")
-        flag = " (flagged for review)" if ad.get("needs_review") else ""
+        flag = (" (flagged for review)" if ad.get("needs_review")
+                else " (too recent to judge)" if ad.get("too_recent") else "")
         lines.append(f"| {rank} | {ad['library_id']}{flag} | {ad.get('days_running')} | {numbers} | {age} "
                      f"| {audience.get('gender') or ''} | {breadth} | {places} |")
     total, audience = found["reach"], found.get("audience")
     lines.append("")
     if total.get("available"):
-        lines += [f"## Totals over the {total['ads_with_reach']} ads with reach",
-                  f"- EU {_n(total['eu_reach_summed'])}; {total.get('country') or country} "
-                  f"{_n(total.get('country_reach_summed'))}; UK {_n(total['uk_reach_summed'])} "
-                  "(sums over ads: one person can be counted in several)",
-                  f"- Median reach per day: {_n(total['median_reach_per_day'])}; highest: {_n(total['highest_reach_per_day'])}",
-                  "- Countries by summed reach: " + ", ".join(f"{row['country']} {_n(row['reach'])}"
-                                                               for row in total["top_countries"])]
+        lines += [f"## Across the {total['ads_with_reach']} ads with published reach",
+                  "- Figures are unique people per ad. They are not added up: one person can see several ads.",
+                  f"- Per ad, in {total.get('country') or country} ({total.get('ads_with_market_reach', 0)} ads): median "
+                  f"{_n(total['median_reach_per_day'])} people per day ({_n(total.get('median_reach_total'))} in total), "
+                  f"best {_n(total['highest_reach_per_day'])} per day ({_n(total.get('highest_reach_total'))} in total)",
+                  "- Where delivery goes (share of the reach of these ads, by country; the same person can "
+                  "count in several ads): " + ", ".join(
+                      f"{row['country']} {_pct(row.get('share'))}" for row in total["top_countries"])]
     else:
         lines.append(f"## Reach\n- {total['note']}")
     if audience:

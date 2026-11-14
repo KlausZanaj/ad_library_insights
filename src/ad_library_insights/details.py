@@ -29,6 +29,14 @@ NO_REACH_NOTE = ("Meta publishes reach only for ads delivered in the European Un
                  "United Kingdom. This ad has no such section.")
 
 
+# Countries whose reach a section reports country by country. A country of the section
+# that is missing from an ad's breakdown was not reached by that ad.
+SECTION_COUNTRIES = {
+    "EU": frozenset("AT BE BG HR CY CZ DK EE FI FR DE GR HU IE IT LV LT LU MT NL PL PT RO SK SI ES SE".split()),
+    "UK": frozenset({"GB"}),
+}
+
+
 def _region_name(key: str) -> str:
     return key.split("_")[0].upper()
 
@@ -96,6 +104,11 @@ def parse_reach(transparency: dict | None, country: str | None = None) -> dict:
             # of its age and gender cells can differ from it by a few percent.
             country_reach = region["total"] if len(region["countries"]) == 1 else row["reach"]
             break
+    if country_reach is None:
+        for region in regions:
+            if wanted in SECTION_COUNTRIES.get(region["region"], ()) and region["countries"]:
+                country_reach = 0              # the section lists its countries and this one is not there
+                break
     basis = "EU" if "EU" in totals else regions[0]["region"]
     return {
         "available": True,

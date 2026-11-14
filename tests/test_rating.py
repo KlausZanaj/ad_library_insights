@@ -187,6 +187,42 @@ def test_without_reach_or_position_only_days_and_creatives_count():
     assert {item["reliability"] for item in switched_off} == {"low"}
 
 
+def test_an_ad_younger_than_a_week_is_only_ever_a_test():
+    cards = market() + [ad("day-one", started="2026-06-29", body="Text of day-one", advertiser="day-one", impression_rank=7)]
+    ranked = by_id(with_reach(rating.group_concepts(cards, AS_OF), {**REACH, "day-one": 900_000}))
+    young = ranked["day-one"]
+    assert young["days_running"] == 1 and young["reach_per_day"] == 128_571          # 900,000 over seven days, not one
+    assert young["too_recent"] and young["verdict"] == "testing"
+    assert ranked["giant"]["verdict"] == "scaling" and not ranked["giant"]["too_recent"]
+
+
+def test_no_reach_in_the_searched_country_is_scale_zero_not_a_gap():
+    ranked = rating.group_concepts(market(), AS_OF)
+    for item in ranked:
+        total = REACH[item["library_id"]]
+        item["reach"] = {"available": True, "basis": "EU", "basis_total": total, "eu_total": total, "uk_total": None,
+                         "country": "IT", "country_reach": 0 if item["library_id"] == "steady" else total,
+                         "countries_reached": 3, "regions": []}
+    ranked = by_id(signals.annotate(ranked))
+    abroad = ranked["steady"]
+    assert abroad["reach_total"] == 0 and abroad["reach_per_day"] == 0 and abroad["reliability"] == "high"
+    assert abroad["score_parts"]["scale"] == 0.0 and abroad["verdict"] == "review"
+
+
+def test_the_estimate_for_unread_ads_uses_reach_in_the_searched_country():
+    ranked = rating.group_concepts(market(), AS_OF)
+    for item in ranked:
+        if item["library_id"] in ("giant", "steady", "shop"):
+            total = REACH[item["library_id"]]
+            item["reach"] = {"available": True, "basis": "EU", "basis_total": total * 10, "eu_total": total * 10,
+                             "uk_total": None, "country": "IT", "country_reach": total, "countries_reached": 9,
+                             "regions": []}
+    ranked = by_id(signals.annotate(ranked))
+    assert ranked["shop"]["reach_total"] == 98_000 and ranked["shop"]["reach"]["eu_total"] == 980_000
+    unread = ranked["forgotten"]                       # position 4, right after shop: below 98,000 people, not 980,000
+    assert unread["reach_per_day_estimate"] * unread["days_running"] < 98_000
+
+
 def test_too_few_ads_with_reach_cannot_set_a_scale():
     ranked = by_id(with_reach(rating.group_concepts(market(), AS_OF), {"giant": 5_000_000, "shop": 98_000}))
     assert ranked["giant"]["reliability"] == "medium"
@@ -261,9 +297,126 @@ def test_outside_the_eu_reach_is_shown_but_does_not_rate():
     ranked = saved("standing_desk_us")
     assert {item["reliability"] for item in ranked} == {"medium"}
     assert {item["scale_basis"] for item in ranked} == {"impressions"}
-    european = [item for item in ranked if item.get("reach_per_day")]
+    european = [item for item in ranked if item.get("reach_elsewhere_per_day")]
     assert len(european) >= 10 and all(item["reach_in_market"] is False for item in european)
+    assert not any("reach_per_day" in item or "reach_total" in item for item in ranked)
     assert all(item["score_weights"] == {"scale": 50, "staying": 30, "creative": 20} for item in ranked)
     assert ranked[0]["impression_rank"] <= 10 and ranked[0]["days_running"] >= 90
     flagged = [item for item in ranked if item["verdict"] == "review"]
     assert flagged and all(item["review"]["basis"] == "impressions" and item["days_running"] >= 90 for item in flagged)
+
+
+# --- corrections checked on the saved searches ----------------------------------------
+
+def position(ranked, library_id):
+    return next(index for index, item in enumerate(ranked, 1) if item["library_id"] == library_id)
+
+
+ONE_DAY_AD = "1318376673725569"        # Kingshot: 91,509 people in the EU on its first day, 476 of them in Italy
+
+
+def test_scale_is_measured_in_the_searched_country_not_in_the_whole_eu():
+    ranked = saved("kingshot_it")
+    read = [item for item in ranked if item.get("reach", {}).get("available")]
+    assert len(read) == 14
+    for item in read:
+        reach = item["reach"]
+        assert item["reach_total"] == reach["country_reach"] < reach["eu_total"]
+        assert item["reach_per_day"] == round(reach["country_reach"] / max(item["ad_days"], 7))
+    top = ranked[0]
+    assert (top["reach"]["eu_total"], top["reach_total"], top["reach_per_day"]) == (7_398_228, 835_709, 5_844)
+    by_rate = sorted(read, key=lambda item: -item["reach_per_day"])
+    assert [item["score_parts"]["scale"] for item in by_rate] == sorted((item["score_parts"]["scale"] for item in read), reverse=True)
+
+
+def test_no_ad_younger_than_a_week_scales_or_holds():
+    for name in ("kingshot_it", "scarpe_da_corsa_it", "standing_desk_us"):
+        young = [item for item in saved(name) if item["days_running"] is not None and item["days_running"] < 7]
+        assert young and all(item["verdict"] == "testing" and item["too_recent"] for item in young)
+
+
+def test_one_day_with_a_lot_of_reach_does_not_reach_the_top():
+    # Right place: 13th of 14. One day of delivery is not a rate, and in Italy it reached 476 people.
+    ranked = saved("kingshot_it")
+    young = by_id(ranked)[ONE_DAY_AD]
+    assert young["days_running"] == 1 and young["reach"]["eu_total"] == 91_509 and young["reach_total"] == 476
+    assert young["reach_per_day"] == 68 and young["verdict"] == "testing"
+    assert position(ranked, ONE_DAY_AD) == 13                  # it was fifth when the EU total over one day rated
+
+
+def test_keyword_search_keeps_its_top_and_its_bottom():
+    ranked = saved("scarpe_da_corsa_it")
+    assert ranked[0]["advertiser"] == "Zalando"
+    assert ranked.index(named(ranked, "Cappellettoshop")) >= 10
+
+
+def test_search_without_reach_in_the_market_is_unchanged_by_the_corrections():
+    # Right place: the order is Meta's impression order corrected by days and creatives, all at medium reliability.
+    ranked = saved("standing_desk_us")
+    assert [item["library_id"] for item in ranked[:5]] == ["1227451472671864", "2006807903279406", "1621971626261673",
+                                                           "1764904544497154", "1451502250048330"]
+    assert [item["score"] for item in ranked[:5]] == [98.6, 85.8, 82.7, 79.5, 77.8]
+
+
+# --- hard cases, each on real data, with the reason the position is right -------------
+
+def test_hard_case_old_ad_with_few_people():
+    # Right place: 39th of 106, "review". 516 days on air earn full staying power and nothing else:
+    # 91 people a day is the lowest scale of the search, so it cannot sit near the top.
+    ranked = saved("scarpe_da_corsa_it")
+    old = named(ranked, "Gabrieli")
+    assert (old["days_running"], old["reach_per_day"], old["reach_total"]) == (516, 91, 47_011)
+    assert old["verdict"] == "review" and old["score_points"]["staying"] == 25.0 and old["score_points"]["scale"] < 1
+    assert 30 <= ranked.index(old) + 1 <= 50
+
+
+def test_hard_case_ad_shown_almost_only_outside_the_searched_country():
+    # Right place: 12th of 14. 12,402 people in the EU, 966 of them in Italy over 53 days: for someone
+    # studying Italy this is an ad of 18 people a day, whatever it does elsewhere.
+    ranked = saved("kingshot_it")
+    abroad = by_id(ranked)["2888031284866220"]
+    assert abroad["reach"]["eu_total"] == 12_402 and abroad["reach_total"] == 966 and abroad["reach_per_day"] == 18
+    assert position(ranked, "2888031284866220") == 12 and abroad["verdict"] == "average"
+    assert abroad["creatives"] == 38 and abroad["score_points"]["scale"] < abroad["score_points"]["creative"]
+
+
+def test_hard_case_search_without_any_reach_in_the_market():
+    # Right place: nothing is rated "high". Reach read for the EU or the UK says nothing about the
+    # United States, so every rating rests on the impression position and says so.
+    ranked = saved("standing_desk_us")
+    assert {item["reliability"] for item in ranked} == {"medium"}
+    assert sum(1 for item in ranked if item.get("reach", {}).get("available")) == 19
+    assert all(item["score_points"]["scale"] <= 50 for item in ranked)
+
+
+def test_hard_case_catalogue_ad():
+    # Right place: 2nd of 106. Eight catalogue ads count as one creative (no creative points); it is
+    # there for 176 days on air and 10,438 people a day, not for the number of products.
+    ranked = saved("scarpe_da_corsa_it")
+    feed = named(ranked, "HOKA")
+    assert ranked.index(feed) == 1 and feed["kind"] == "catalog" and feed["verdict"] == "holding"
+    assert (feed["cards"], feed["creatives"], feed["score_points"]["creative"]) == (8, 1, 0.0)
+    assert (feed["days_running"], feed["reach_per_day"]) == (176, 10_438)
+
+
+def test_hard_case_one_ad_in_several_languages():
+    # Right place: one line at the top, not four. The German, English and French texts are the same ad;
+    # counted apart they would fill the top of the table with copies of one idea.
+    ranked = saved("kingshot_it")
+    top = ranked[0]
+    assert top["texts"] == 4 and {"de", "en", "fr"} <= set(top["languages"]) and top["cards"] == 58
+    assert sum(1 for item in ranked if item["texts"] > 1) >= 2
+    assert sum(item["texts"] for item in ranked) == 21 and len(ranked) == 14
+
+
+def test_hard_case_small_shop_against_a_large_brand():
+    # Right place: Zalando 1st (116,749 people a day), Cappellettoshop 18th (706 a day, one video copied
+    # 80 times). Yet size alone does not decide: Flexora, 1,795 people a day for 112 days on five
+    # creatives, sits above SHEIN's 13-day catalogue ad that reaches 66,990 a day.
+    ranked = saved("scarpe_da_corsa_it")
+    brand, shop = named(ranked, "Zalando"), named(ranked, "Cappellettoshop")
+    assert (ranked.index(brand) + 1, ranked.index(shop) + 1) == (1, 18)
+    assert brand["reach_per_day"] > 100 * shop["reach_per_day"] and shop["copies_total"] == 80 and shop["creatives"] == 1
+    small, giant = named(ranked, "Flexora"), named(ranked, "SHEIN")
+    assert small["reach_per_day"] < giant["reach_per_day"] / 30 and ranked.index(small) < ranked.index(giant)
+    assert small["verdict"] == "holding" and giant["verdict"] == "scaling"

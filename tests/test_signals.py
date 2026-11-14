@@ -46,7 +46,9 @@ def test_reach_per_day_and_breadth_are_added_when_reach_is_known():
     first = next(a for a in ranked if a["library_id"] == "1")
     first.update(reach=reach(50_000, country=20_000), audience=AUDIENCE)
     signals.annotate(ranked)
-    assert first["reach_per_day"] == 5_000 and first["country_reach_per_day"] == 2_000
+    # the country that was searched is what counts: 20,000 people there, out of 50,000 in the EU
+    assert first["reach_total"] == 20_000 and first["reach_per_day"] == 2_000 and first["reach_in_market"]
+    assert first["reach"]["eu_total"] == 50_000 and "reach_elsewhere_per_day" not in first
     assert first["audience_breadth"]["label"] == "broad"
     other = next(a for a in ranked if a["library_id"] == "2")
     assert "reach_per_day" not in other and other["verdict"] == "testing"
@@ -61,6 +63,22 @@ def test_reach_per_day_uses_the_days_of_the_ad_that_was_opened():
     concept["reach"] = reach(50_000)
     signals.annotate(ranked)
     assert concept["reach_per_day"] == 5_000
+
+
+def test_reach_per_day_is_never_divided_by_fewer_than_seven_days():
+    ranked = rating.group_concepts([ad("1", "2026-06-29", "One day on air")], AS_OF)
+    ranked[0]["reach"] = reach(70_000)
+    signals.annotate(ranked)
+    assert ranked[0]["days_running"] == 1 and ranked[0]["reach_per_day"] == 10_000
+    assert ranked[0]["too_recent"] and ranked[0]["verdict"] == "testing"
+
+
+def test_reach_outside_the_searched_country_is_kept_apart():
+    ranked = rating.group_concepts([ad("1", "2026-06-10", "Twenty days on air")], AS_OF)
+    ranked[0]["reach"] = {**reach(60_000), "country": "US", "country_reach": None}
+    signals.annotate(ranked)
+    assert ranked[0]["reach_in_market"] is False and ranked[0]["reach_elsewhere_per_day"] == 3_000
+    assert "reach_per_day" not in ranked[0] and "reach_total" not in ranked[0]
 
 
 def test_narrow_audience_is_labelled():

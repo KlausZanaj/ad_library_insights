@@ -111,23 +111,30 @@ def audience_breadth(audience: dict | None, reach: dict | None) -> dict | None:
 def annotate(ranked: list[dict], use_impressions: bool = True) -> list[dict]:
     """Add reach per day and audience breadth to the ads, then rate and sort them.
 
-    Reach per day divides the reach of the ad that was opened by that ad's own days;
-    the age of the whole concept (its oldest ad) is what staying power looks at.
+    ``reach_total`` and ``reach_per_day`` are people reached in the country that was
+    searched: that is the market the rating is about. The EU and UK totals stay in
+    ``reach`` as information. When the searched country is not one the published reach
+    covers (a search in the United States, say), neither is set and the EU or UK figure
+    per day goes to ``reach_elsewhere_per_day``, which never rates.
+
+    Reach per day divides the reach of the ad that was opened by that ad's own days,
+    seven at the least; the age of the whole concept (its oldest ad) is what staying
+    power looks at.
     """
     for ad in ranked:
         reach = ad.get("reach") or {}
-        days = max(ad.get("ad_days") or ad.get("days_running") or 0, 1)
+        days = rating.rate_days(ad)
+        for key in ("reach_total", "reach_per_day", "reach_elsewhere_per_day", "reach_in_market"):
+            ad.pop(key, None)
         if reach.get("available"):
-            # Reach is published for the EU and the UK. It measures scale in the market being
-            # researched only when that country is one of those the reach covers.
-            ad["reach_in_market"] = reach.get("country_reach") is not None or not reach.get("country")
-            ad["reach_per_day"] = round(reach["basis_total"] / days)
-            ad["country_reach_per_day"] = (round(reach["country_reach"] / days)
-                                           if reach.get("country_reach") is not None else None)
-        else:
-            ad.pop("reach_per_day", None)
-            ad.pop("country_reach_per_day", None)
-            ad.pop("reach_in_market", None)
+            in_country = reach.get("country_reach")
+            ad["reach_in_market"] = in_country is not None or not reach.get("country")
+            if ad["reach_in_market"]:
+                # no country asked for: the section total is the market
+                ad["reach_total"] = in_country if in_country is not None else reach["basis_total"]
+                ad["reach_per_day"] = round(ad["reach_total"] / days)
+            else:
+                ad["reach_elsewhere_per_day"] = round(reach["basis_total"] / days)
         breadth = audience_breadth(ad.get("audience"), reach)
         if breadth:
             ad["audience_breadth"] = breadth
@@ -188,6 +195,7 @@ def _reach_summary(ranked: list[dict], country: str | None) -> dict:
             for row in region["countries"]:
                 by_country[row["country"]] += row["reach"]
     rates = [ad["reach_per_day"] for ad in known if ad.get("reach_per_day") is not None]
+    totals = [ad["reach_total"] for ad in known if ad.get("reach_total") is not None]
     country_reach = [ad["reach"]["country_reach"] for ad in known
                      if ad["reach"].get("country_reach") is not None]
     return {
@@ -200,9 +208,14 @@ def _reach_summary(ranked: list[dict], country: str | None) -> dict:
         "uk_reach_summed": sum(ad["reach"]["uk_total"] or 0 for ad in known),
         "country": (country or "").upper() or None,
         "country_reach_summed": sum(country_reach) if country_reach else None,
+        # people reached in the searched country, per ad: the figures the rating uses
+        "ads_with_market_reach": len(rates),
         "median_reach_per_day": round(statistics.median(rates)) if rates else None,
         "highest_reach_per_day": max(rates) if rates else None,
-        "top_countries": [{"country": code, "reach": people}
+        "median_reach_total": round(statistics.median(totals)) if totals else None,
+        "highest_reach_total": max(totals) if totals else None,
+        # where delivery goes: each country's share of the reach of these ads
+        "top_countries": [{"country": code, "reach": people, "share": _share(people, sum(by_country.values()))}
                           for code, people in by_country.most_common(10)],
         "note": "Reach is published for the European Union and the United Kingdom only.",
     }

@@ -57,7 +57,7 @@ def _reach_cells(ad: dict) -> dict:
         "reach_eu": reach.get("eu_total"),
         "reach_country": reach.get("country_reach"),
         "reach_uk": reach.get("uk_total"),
-        "reach_per_day": ad.get("reach_per_day"),
+        "reach_per_day": ad.get("reach_per_day"),     # in the country searched, over seven days at least
         "age_min": audience.get("age_min"),
         "age_max": audience.get("age_max"),
         "gender": audience.get("gender"),
@@ -90,11 +90,12 @@ def _signal_lines(result: dict) -> list[str]:
     ]
     reach = found["reach"]
     if reach.get("available"):
-        country = f"; {reach['country']}: {_number(reach['country_reach_summed'])}" if reach.get("country") else ""
         out += [
-            f"- Reach, summed over the {reach['ads_with_reach']} ads read: EU {_number(reach['eu_reach_summed'])}"
-            f"{country}; UK {_number(reach['uk_reach_summed'])} (one person can count in several ads)",
-            f"- Median reach per day: {_number(reach['median_reach_per_day'])}",
+            f"- Reach per ad in {reach.get('country') or 'the market'}: median {_number(reach['median_reach_per_day'])} "
+            f"people per day ({_number(reach.get('median_reach_total'))} in total), best "
+            f"{_number(reach['highest_reach_per_day'])} per day ({_number(reach.get('highest_reach_total'))} in total); "
+            f"{reach.get('ads_with_market_reach', 0)} of the {reach['ads_with_reach']} ads with published reach were reached there. "
+            "Figures are unique people per ad and are not added up: one person can see several ads",
         ]
     else:
         out.append(f"- Reach: {reach['note']}")
@@ -121,7 +122,7 @@ def _reach_table(ads: list[dict], country: str) -> list[str]:
         "Reach is published by Meta for ads delivered in the European Union and the United "
         "Kingdom. Locations are what the advertiser targeted and can include other areas.",
         "",
-        f"| # | Advertiser | Days | EU reach | {country or 'Country'} | UK reach | Per day | Age | Gender | Ad |",
+        f"| # | Advertiser | Days | {country or 'Country'} reach | Per day in {country or 'country'} | EU reach | UK reach | Age | Gender | Ad |",
         "|---:|---|---:|---:|---:|---:|---:|---|---|---|",
     ]
     for rank, ad in enumerate(ads, start=1):
@@ -132,9 +133,9 @@ def _reach_table(ads: list[dict], country: str) -> list[str]:
         flag = " (review)" if ad.get("needs_review") else ""
         out.append(
             f"| {rank} | {_cell(ad.get('advertiser'))}{flag} | {ad.get('days_running', '-')} "
-            f"| {_number(reach.get('eu_total')) if reach.get('available') else 'not published'} "
-            f"| {_number(reach.get('country_reach'))} | {_number(reach.get('uk_total'))} "
-            f"| {_number(ad.get('reach_per_day'))} | {age} | {audience.get('gender') or '-'} "
+            f"| {_number(reach.get('country_reach')) if reach.get('available') else 'not published'} "
+            f"| {_number(ad.get('reach_per_day'))} | {_number(reach.get('eu_total'))} "
+            f"| {_number(reach.get('uk_total'))} | {age} | {audience.get('gender') or '-'} "
             f"| [{ad['library_id']}]({ad['ad_url']}) |")
     return out
 
@@ -195,15 +196,16 @@ def to_markdown(result: dict, copy: dict, top_n: int = 10, generated_on: date | 
         "",
         "Rated on scale, staying power and creative investment (see Method).",
         "",
-        "| # | Rating | Verdict | Reliability | Per day | Days | Creatives | Advertiser | Opening line | Ad |",
-        "|---:|---:|---|---|---:|---:|---:|---|---|---|",
+        "| # | Rating | Verdict | Reliability | Reached | Per day | Days | Creatives | Advertiser | Opening line | Ad |",
+        "|---:|---:|---|---|---:|---:|---:|---:|---|---|---|",
     ]
     for rank, ad in enumerate(ads[:top_n], start=1):
         opening = (ad.get("body") or ad.get("headline") or "").split("\n")[0]
         days = ad["days_running"] if ad["days_running"] is not None else "-"
         kind = f" ({ad['kind']})" if ad.get("kind") not in (None, "standard") else ""
         out.append(f"| {rank} | {ad['score']} | {VERDICTS.get(ad['verdict'], ad['verdict'])} | {ad['reliability']} "
-                   f"| {_number(ad.get('reach_per_day'))} | {days} | {ad.get('creatives', 1)}{kind} "
+                   f"| {_number(ad.get('reach_total'))} | {_number(ad.get('reach_per_day'))} | {days} "
+                   f"| {ad.get('creatives', 1)}{kind} "
                    f"| {_cell(ad.get('advertiser'))} | {_cell(opening, 80)} "
                    f"| [{ad['library_id']}]({ad['ad_url']}) |")
 
@@ -252,16 +254,22 @@ def to_markdown(result: dict, copy: dict, top_n: int = 10, generated_on: date | 
         "",
         "- Data is what the public Ad Library page showed at generation time, for one keyword "
         "search and one country. It is a sample of the matching ads, not all of them.",
-        "- The rating (0-100) adds three parts: scale (people reached per day, or the position by "
-        "impressions where reach is not published), staying power (days running, full at 90) and "
-        "creative investment (different creatives carrying the same concept). Scale and creatives "
-        "are measured against the other ads of this search. Reliability is high when reach was "
-        "read, medium when only the impression position is known, low otherwise.",
+        "- The rating (0-100) adds three parts: scale (people reached per day in the country "
+        "searched, or the position by impressions where that is not published), staying power "
+        "(days running, full at 90) and creative investment (different creatives carrying the same "
+        "concept). Scale and creatives are measured against the other ads of this search. "
+        "Reliability is high when reach in the country searched was read, medium when only the "
+        "impression position is known, low otherwise.",
+        "- Reach per day divides the people reached in the country searched by the days the ad has "
+        "been on air, seven at the least; an ad younger than seven days is too recent to judge. "
+        "Reach counts unique people, who grow slower than days: an ad on air for months shows "
+        "fewer people per day than it really had, so the total reached is printed beside it.",
         "- Identical copies, versions of one dynamic ad, catalogue ads and translations of the same "
         "ad are grouped into one ad with variants and do not count as creative investment.",
         "- The Ad Library publishes no spend or sales for commercial ads, and reach only for ads "
         "delivered in the European Union or the United Kingdom. \"Check\" marks ads that ran long "
-        "and reach far fewer people per day than the other ads here: they may have been forgotten.",
+        "and reach far fewer people per day than the other ads here: a small budget that works or "
+        "a forgotten ad. It asks for a look, it is not a negative verdict.",
         "- Hook, promise, proof and CTA are assigned by rules (position, punctuation, digits and "
         "a multilingual phrase list). Read them as a first pass and check the linked ad.",
         "",

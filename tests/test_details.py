@@ -43,6 +43,13 @@ def test_single_country_reach_matches_the_section_total():
     assert reach["uk_total"] is None and reach["countries_reached"] == 1
 
 
+def test_a_covered_country_missing_from_the_breakdown_was_not_reached():
+    # the ad was delivered in Italy only: Germany is an EU country the section would list
+    assert details.parse_details(payload("eu_one_country"), "DE")["reach"]["country_reach"] == 0
+    # the United States are in no section: nothing can be said, which is not the same as zero
+    assert details.parse_details(payload("eu_one_country"), "US")["reach"]["country_reach"] is None
+
+
 def test_sections_are_read_by_presence_not_by_a_country_list():
     # delivered in the United Kingdom only: no EU section, yet reach is there
     reach = details.parse_details(payload("no_eu_reach"), "US")["reach"]

@@ -47,7 +47,7 @@ def test_markdown_sections_and_content(cards):
     for heading in ("## Top advertisers", "## Top ads", "## Copy patterns in the top 2",
                     "## Copy breakdown", "## Method and limits"):
         assert heading in md
-    assert "| 1 | 60.0 | Holding up | low | - | 90 | 1 (dynamic) | Northwind Desks | Still working hunched over a laptop? " \
+    assert "| 1 | 60.0 | Holding up | low | - | - | 90 | 1 (dynamic) | Northwind Desks | Still working hunched over a laptop? " \
            "| [1001](https://www.facebook.com/ads/library/?id=1001) |" in md
     assert "The rating (0-100) adds three parts" in md
     assert "- **Hook** (question): Still working hunched over a laptop?" in md

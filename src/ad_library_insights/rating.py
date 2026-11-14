@@ -3,11 +3,14 @@
 The Ad Library shows no spend and no sales, so no single number is the truth. Three
 things can be read from it, and they are kept apart:
 
-* **Scale**: how many people an ad reaches per day. It is the closest thing to spend,
-  because Meta does not show an ad to more people without budget. Where reach is
-  published (ads delivered in the EU or the UK) it comes from there. Where it is not,
-  the position in the library's own list is used instead, since that list is ordered
-  by total impressions, highest first.
+* **Scale**: how many people an ad reaches per day in the country that was searched.
+  It is the closest thing to spend, because Meta does not show an ad to more people
+  without budget. Meta publishes reach for ads delivered in the EU or the UK, country
+  by country: the figure of the searched country is the one that rates, the EU total
+  is shown beside it. Where the searched country has no such figure, the position in
+  the library's own list is used instead, since that list is ordered by total
+  impressions, highest first. Reach per day is never divided by fewer than seven
+  days: a figure from one or two days says nothing about a rate.
 * **Staying power**: days running, full marks at 90 days. Time is not relative: three
   months of spend are three months for a corner shop and for a marketplace.
 * **Creative investment**: how many different creatives carry the same concept.
@@ -35,6 +38,8 @@ from . import scoring
 
 HORIZON_DAYS = 90                 # staying power is full from here on
 TESTING_DAYS = 30                 # younger than this, an ad is still a test
+MIN_RATE_DAYS = 7                 # reach per day is never computed over fewer days than this,
+                                  # and an ad younger than this is too recent to judge
 WEIGHTS = {                       # points each part can give, by what is known about scale
     "high": {"scale": 60, "staying": 25, "creative": 15},
     "medium": {"scale": 50, "staying": 30, "creative": 20},
@@ -186,7 +191,13 @@ def _log_position(value: float, low: float, high: float) -> float:
     return round(100 * min(max(share, 0.0), 1.0), 1)
 
 
+def too_recent(days: int | None) -> bool:
+    return days is not None and days < MIN_RATE_DAYS
+
+
 def _verdict(days: int | None, scale: float | None, reliability: str, leading: bool = True) -> str:
+    if too_recent(days):
+        return "testing"                           # a few days of delivery cannot be called anything else
     long_running = days is not None and days >= HORIZON_DAYS
     if scale is not None:
         if long_running and scale <= LOW_SCALE:
@@ -203,19 +214,27 @@ def _verdict(days: int | None, scale: float | None, reliability: str, leading: b
 
 
 def _market_reach(ad: dict) -> float | None:
-    """People reached per day, when the reach read belongs to the market being researched."""
+    """People reached per day in the country being researched; None when that is not known."""
     return ad.get("reach_per_day") if ad.get("reach_in_market", True) else None
 
 
+def rate_days(ad: dict) -> int:
+    """Days the reach of an ad is spread over: its own days on air, seven at the least."""
+    own = ad.get("ad_days") if ad.get("ad_days") is not None else ad.get("days_running")
+    return max(own or 0, MIN_RATE_DAYS)
+
+
 def _reach_by_position(ranked: list[dict]):
-    """Estimate total reach from the impression position, using the ads whose reach is known.
+    """Estimate reach in the searched country from the impression position.
+
+    It uses the ads whose reach in that country is known (the same figure the scale uses).
 
     The list is ordered by total impressions, so between two ads with known reach an ad
     is given a reach in between (on a log scale); past the last known one it falls off
     in proportion to the position. Returns a function, or None when nothing is known.
     """
-    known = sorted((ad["impression_rank"], ad["reach"]["basis_total"]) for ad in ranked
-                   if ad.get("impression_rank") and _market_reach(ad) and ad["reach"]["basis_total"] > 0)
+    known = sorted((ad["impression_rank"], ad["reach_total"]) for ad in ranked
+                   if ad.get("impression_rank") and _market_reach(ad) and ad.get("reach_total"))
     if not known:
         return None
 
@@ -259,10 +278,10 @@ def evaluate(ranked: list[dict], use_impressions: bool = True) -> list[dict]:
         staying = round(100 * min((days or 0) / HORIZON_DAYS, 1.0), 1)
         creative = _log_position(ad.get("creatives", 1), 1, most_creatives) if ad.get("creatives", 1) > 1 else 0.0
         ad.pop("reach_per_day_estimate", None)
-        if reach_scale and _market_reach(ad):
+        if reach_scale and _market_reach(ad) is not None:
             scale, basis, reliability = _log_position(_market_reach(ad), low_reach, high_reach), "reach", "high"
         elif estimate_reach and ad.get("impression_rank"):
-            guess = estimate_reach(ad["impression_rank"]) / max(ad.get("ad_days") or days or 0, 1)
+            guess = estimate_reach(ad["impression_rank"]) / rate_days(ad)
             ad["reach_per_day_estimate"] = round(guess)
             scale, basis, reliability = _log_position(guess, low_reach, high_reach), "impressions", "medium"
         elif use_impressions and ad["library_id"] in position:
@@ -294,6 +313,7 @@ def evaluate(ranked: list[dict], use_impressions: bool = True) -> list[dict]:
             reliability=reliability,
             verdict=verdict,
             needs_review=verdict == "review",
+            too_recent=too_recent(days),
         )
         if verdict == "review":
             ad["review"] = {"reason": "long_running_low_scale", "basis": basis}
