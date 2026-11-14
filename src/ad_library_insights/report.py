@@ -11,12 +11,16 @@ from pathlib import Path
 from . import copy_analysis
 
 CSV_COLUMNS = [
-    "rank", "longevity_score", "tier", "needs_review", "impression_rank", "days_running", "repetitions",
-    "creative_variants", "advertiser", "status", "started", "media_type", "platforms", "cta",
+    "rank", "score", "verdict", "reliability", "kind", "needs_review", "impression_rank", "days_running",
+    "creatives", "cards", "copies_total", "languages", "longevity_score", "advertiser", "status", "started", "media_type", "platforms", "cta",
     "landing_domain", "headline", "hook_type", "hook", "promise", "proof_kinds",
     "reach_eu", "reach_country", "reach_uk", "reach_per_day", "age_min", "age_max", "gender",
     "locations_included", "locations_excluded", "body", "library_id", "ad_url",
 ]
+
+
+VERDICTS = {"scaling": "Scaling", "holding": "Holding up", "testing": "Testing", "review": "Check",
+            "average": "Average"}
 
 
 def slugify(text: str) -> str:
@@ -49,6 +53,7 @@ def _reach_cells(ad: dict) -> dict:
     return {
         "platforms": ";".join(ad.get("platforms") or []),
         "needs_review": "yes" if ad.get("needs_review") else "",
+        "languages": ";".join(ad.get("languages") or []),
         "reach_eu": reach.get("eu_total"),
         "reach_country": reach.get("country_reach"),
         "reach_uk": reach.get("uk_total"),
@@ -81,7 +86,7 @@ def _signal_lines(result: dict) -> list[str]:
         f"- Buttons: {top(found['buttons'], 'button')}",
         f"- Destinations: {top(found['destinations'], 'domain')}",
         f"- Platforms: {top(found['platforms'], 'platform')}",
-        f"- Score tiers: {_counts(found['tiers'])}; flagged for review: {found['needs_review']}",
+        f"- Verdicts: {_counts(found['verdicts'])}; rating reliability: {_counts(found['reliability'])}",
     ]
     reach = found["reach"]
     if reach.get("available"):
@@ -186,19 +191,21 @@ def to_markdown(result: dict, copy: dict, top_n: int = 10, generated_on: date | 
 
     out += [
         "",
-        "## Longest-running ads",
+        "## Top ads",
         "",
-        "Ranked by longevity score (days running and copy reuse; see Method).",
+        "Rated on scale, staying power and creative investment (see Method).",
         "",
-        "| # | Score | Days | Reuse | Advertiser | Opening line | CTA | Ad |",
-        "|---:|---:|---:|---:|---|---|---|---|",
+        "| # | Rating | Verdict | Reliability | Per day | Days | Creatives | Advertiser | Opening line | Ad |",
+        "|---:|---:|---|---|---:|---:|---:|---|---|---|",
     ]
     for rank, ad in enumerate(ads[:top_n], start=1):
         opening = (ad.get("body") or ad.get("headline") or "").split("\n")[0]
         days = ad["days_running"] if ad["days_running"] is not None else "-"
-        out.append(f"| {rank} | {ad['longevity_score']} | {days} "
-                   f"| {ad['repetitions']} | {_cell(ad.get('advertiser'))} | {_cell(opening, 90)} "
-                   f"| {_cell(ad.get('cta'))} | [{ad['library_id']}]({ad['ad_url']}) |")
+        kind = f" ({ad['kind']})" if ad.get("kind") not in (None, "standard") else ""
+        out.append(f"| {rank} | {ad['score']} | {VERDICTS.get(ad['verdict'], ad['verdict'])} | {ad['reliability']} "
+                   f"| {_number(ad.get('reach_per_day'))} | {days} | {ad.get('creatives', 1)}{kind} "
+                   f"| {_cell(ad.get('advertiser'))} | {_cell(opening, 80)} "
+                   f"| [{ad['library_id']}]({ad['ad_url']}) |")
 
     out += _signal_lines(result)
     out += _reach_table(ads[:top_n], result.get("country") or "")
@@ -226,7 +233,7 @@ def to_markdown(result: dict, copy: dict, top_n: int = 10, generated_on: date | 
         out += [
             "",
             f"### {rank}. {_cell(ad.get('advertiser') or 'Unknown advertiser')} "
-            f"(score {ad['longevity_score']}, {days})",
+            f"(rating {ad['score']}, {VERDICTS.get(ad['verdict'], ad['verdict'])}, {days})",
             "",
             f"- **Hook** ({item['hook']['type']}): {_cell(item['hook']['text'], 240)}"
             if item["hook"] else "- **Hook**: no body copy",
@@ -245,13 +252,16 @@ def to_markdown(result: dict, copy: dict, top_n: int = 10, generated_on: date | 
         "",
         "- Data is what the public Ad Library page showed at generation time, for one keyword "
         "search and one country. It is a sample of the matching ads, not all of them.",
-        "- The longevity score (0-100) blends days running (60%, capped at 90 days) with how many "
-        "ads reuse the same copy (40%, capped at 10). It is a proxy for what an advertiser keeps "
-        "paying for. The Ad Library publishes no spend or conversions for commercial ads, and "
-        "reach only for ads delivered in the European Union or the United Kingdom.",
-        "- Ads are listed by total impressions, highest first, so the sample holds the most "
-        "shown ads. \"Review\" marks ads that ran long on a single use of their copy and, where "
-        "reach is known, reached far fewer people per day than the same advertiser's other ads.",
+        "- The rating (0-100) adds three parts: scale (people reached per day, or the position by "
+        "impressions where reach is not published), staying power (days running, full at 90) and "
+        "creative investment (different creatives carrying the same concept). Scale and creatives "
+        "are measured against the other ads of this search. Reliability is high when reach was "
+        "read, medium when only the impression position is known, low otherwise.",
+        "- Identical copies, versions of one dynamic ad, catalogue ads and translations of the same "
+        "ad are grouped into one ad with variants and do not count as creative investment.",
+        "- The Ad Library publishes no spend or sales for commercial ads, and reach only for ads "
+        "delivered in the European Union or the United Kingdom. \"Check\" marks ads that ran long "
+        "and reach far fewer people per day than the other ads here: they may have been forgotten.",
         "- Hook, promise, proof and CTA are assigned by rules (position, punctuation, digits and "
         "a multilingual phrase list). Read them as a first pass and check the linked ad.",
         "",

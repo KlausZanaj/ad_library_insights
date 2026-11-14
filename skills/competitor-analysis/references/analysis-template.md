@@ -35,7 +35,7 @@ Video stills: {looked at for n ads | not collected}.
 
 ## What this data cannot tell
 
-- {No spend, no sales: which ads actually pay is inferred from longevity and reuse.}
+- {No spend, no sales: which ads actually pay is inferred from scale and staying power.}
 - {What was missing here: reach for some ads, stills, a second search to compare.}
 
 ## To test or verify, in order

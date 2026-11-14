@@ -27,7 +27,7 @@ The coordinator gives you the folder of a data pack. Read `overview.md` first, t
 
 ## Method
 
-1. Rank the ads by reach per day and set that against days running and copy reuse.
+1. Rank the ads by reach per day and set that against days running and creatives.
    Do the longest-running ads also reach the most per day, or are they small and steady?
 2. Read the targeting: age span, gender, how many locations, whole countries or
    regions and cities, exclusions. Broad or narrow, and is it the same on every ad?

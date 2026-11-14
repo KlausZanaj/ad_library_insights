@@ -1,12 +1,11 @@
 """Signals computed from the ads, by plain code: no model, no network.
 
-They sit next to the longevity score and never change it:
+They feed the rating and describe a search as a whole:
 
-* per ad: score tier, reach per day, how broad the audience is, a "needs review" flag;
+* per ad: reach per day and how broad the audience is (the rating itself is in ``rating``);
 * per search or advertiser: format mix, launch pace, languages, buttons, destinations,
   repeated copy patterns, and reach and audience summaries where Meta publishes them.
 
-Every threshold used for the flag is relative to the other ads in the same set.
 """
 from __future__ import annotations
 
@@ -17,16 +16,10 @@ from collections import Counter, defaultdict
 from datetime import date, timedelta
 from importlib import resources
 
-from . import copy_analysis, scoring
+from . import copy_analysis, rating
 
-TIERS = (("strong", 70), ("good", 40), ("testing", 0))
 AGE_FLOOR, AGE_CEILING = 18, 65      # the age range Meta's targeting spans
 _WORD = re.compile(r"[^\W\d_]+")
-
-
-def tier(score: float) -> str:
-    """Strong from 70, good from 40, testing below."""
-    return next(name for name, floor in TIERS if score >= floor)
 
 
 def _stopwords() -> dict[str, frozenset]:
@@ -59,8 +52,11 @@ def detect_language(text: str) -> str | None:
     counts = Counter(_WORD.findall(text.casefold()))
     scores = {code: sum(counts[w] for w in words) for code, words in _STOPWORDS.items()}
     ranked = sorted(scores.items(), key=lambda item: -item[1])
-    if ranked[0][1] < 2 or ranked[0][1] == ranked[1][1]:
+    best, runner_up = ranked[0][1], ranked[1][1]
+    if best == 0 or best == runner_up:
         return None
+    if best == 1 and (runner_up or sum(counts.values()) > 12):
+        return None                       # one common word settles it only in a short text
     return ranked[0][0]
 
 
@@ -112,79 +108,30 @@ def audience_breadth(audience: dict | None, reach: dict | None) -> dict | None:
     }
 
 
-def score_parts(ad: dict) -> dict:
-    """How the longevity score splits into its two parts, for display.
+def annotate(ranked: list[dict], use_impressions: bool = True) -> list[dict]:
+    """Add reach per day and audience breadth to the ads, then rate and sort them.
 
-    The parts come from the scoring function itself (days with no reuse, reuse with
-    no days), so they always follow its rules.
+    Reach per day divides the reach of the ad that was opened by that ad's own days;
+    the age of the whole concept (its oldest ad) is what staying power looks at.
     """
-    return {"days": scoring.longevity_score(ad.get("days_running"), 1),
-            "reuse": scoring.longevity_score(0, ad.get("repetitions", 1))}
-
-
-def annotate(ranked: list[dict]) -> list[dict]:
-    """Add tier, reach per day and audience breadth to ranked ads, then the review flag."""
     for ad in ranked:
-        ad["tier"] = tier(ad["longevity_score"])
-        ad["score_parts"] = score_parts(ad)
         reach = ad.get("reach") or {}
-        days = max(ad.get("days_running") or 0, 1)
+        days = max(ad.get("ad_days") or ad.get("days_running") or 0, 1)
         if reach.get("available"):
+            # Reach is published for the EU and the UK. It measures scale in the market being
+            # researched only when that country is one of those the reach covers.
+            ad["reach_in_market"] = reach.get("country_reach") is not None or not reach.get("country")
             ad["reach_per_day"] = round(reach["basis_total"] / days)
             ad["country_reach_per_day"] = (round(reach["country_reach"] / days)
                                            if reach.get("country_reach") is not None else None)
         else:
             ad.pop("reach_per_day", None)
             ad.pop("country_reach_per_day", None)
+            ad.pop("reach_in_market", None)
         breadth = audience_breadth(ad.get("audience"), reach)
         if breadth:
             ad["audience_breadth"] = breadth
-    flag_needs_review(ranked)
-    return ranked
-
-
-def flag_needs_review(ranked: list[dict]) -> int:
-    """Flag ads that have run long on a single use of their copy and reach few people.
-
-    An ad left running is not always an ad that pays: it may simply have been forgotten.
-    The flag marks ads that, compared with the same advertiser's other ads,
-
-    * have been active longer than three quarters of them (and longer than the median),
-    * use a text that no other ad repeats, and
-    * where reach is known, reach per day at most a quarter of the advertiser's median.
-
-    Advertisers with fewer than four ads are compared with the whole set instead.
-    Without reach data the first two conditions decide, and the reason says so.
-    """
-    by_advertiser: dict[str, list[dict]] = defaultdict(list)
-    for ad in ranked:
-        by_advertiser[(ad.get("advertiser") or "").casefold()].append(ad)
-
-    flagged = 0
-    for ad in ranked:
-        ad.pop("review", None)
-        ad["needs_review"] = False
-        group = by_advertiser[(ad.get("advertiser") or "").casefold()]
-        if len(group) < 4:
-            group = ranked
-        days = [a["days_running"] for a in group if a.get("days_running") is not None]
-        if len(days) < 4 or ad.get("days_running") is None or ad.get("status") == "inactive":
-            continue
-        days_bar = _quantile(days, 0.75)
-        if not (ad["days_running"] >= days_bar and ad["days_running"] > statistics.median(days)
-                and ad.get("repetitions", 1) == 1):
-            continue
-        rates = [a["reach_per_day"] for a in group if a.get("reach_per_day") is not None]
-        review = {"reason": "long_running_single_use", "days_threshold": days_bar}
-        if ad.get("reach_per_day") is not None and len(rates) >= 3:
-            reach_bar = 0.25 * statistics.median(rates)
-            if ad["reach_per_day"] > reach_bar:
-                continue
-            review.update(reason="long_running_single_use_low_reach",
-                          reach_per_day_threshold=round(reach_bar))
-        ad["needs_review"], ad["review"] = True, review
-        flagged += 1
-    return flagged
+    return rating.evaluate(ranked, use_impressions)
 
 
 # --- per search or advertiser -----------------------------------------------------
@@ -207,11 +154,12 @@ def _copy_patterns(ranked: list[dict]) -> dict:
     with_copy = [ad for ad in ranked if (ad.get("body") or "").strip()]
     summary = copy_analysis.summarize([copy_analysis.analyze_ad(ad) for ad in with_copy])
     openers = Counter(" ".join(_WORD.findall(ad["body"].casefold())[:3]) for ad in with_copy)
-    reused = sorted((ad for ad in with_copy if ad.get("repetitions", 1) > 1),
-                    key=lambda a: -a["repetitions"])[:5]
+    reused = sorted((ad for ad in with_copy if ad.get("creatives", 1) > 1),
+                    key=lambda a: -a["creatives"])[:5]
     return {
         "texts_analyzed": len(with_copy),
-        "reused_texts": [{"library_id": ad["library_id"], "ads": ad["repetitions"],
+        "reused_texts": [{"library_id": ad["library_id"], "creatives": ad["creatives"],
+                          "ads": ad.get("cards", 1),
                           "opening": ad["body"].strip().splitlines()[0][:140]} for ad in reused],
         "repeated_openers": [{"opener": words, "texts": count}
                              for words, count in openers.most_common(5) if words and count > 1],
@@ -321,7 +269,8 @@ def summarize(ads: list[dict], ranked: list[dict], as_of: date | None = None,
         "destinations": _table(Counter(ad["landing_domain"] for ad in ads if ad.get("landing_domain")),
                                total, "domain"),
         "platforms": _table(platforms, total, "platform"),
-        "tiers": dict(Counter(tier(ad["longevity_score"]) for ad in ranked)),
+        "verdicts": dict(Counter(ad["verdict"] for ad in ranked).most_common()),
+        "reliability": dict(Counter(ad["reliability"] for ad in ranked).most_common()),
         "needs_review": sum(bool(ad.get("needs_review")) for ad in ranked),
         "copy_patterns": _copy_patterns(ranked),
         "reach": _reach_summary(ranked, country),
@@ -332,5 +281,7 @@ def summarize(ads: list[dict], ranked: list[dict], as_of: date | None = None,
 def refresh(summary: dict, ranked: list[dict], country: str | None = None) -> dict:
     """Update the parts of a summary that depend on reach, after detail views were read."""
     summary.update(needs_review=sum(bool(ad.get("needs_review")) for ad in ranked),
+                   verdicts=dict(Counter(ad["verdict"] for ad in ranked).most_common()),
+                   reliability=dict(Counter(ad["reliability"] for ad in ranked).most_common()),
                    reach=_reach_summary(ranked, country), audience=_audience_summary(ranked))
     return summary

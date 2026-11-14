@@ -53,9 +53,17 @@ def subject_name(result: dict) -> str:
 
 
 def _head(rank: int, ad: dict) -> str:
+    extra = []
+    if ad.get("kind") not in (None, "standard"):
+        extra.append("catalogue ad" if ad["kind"] == "catalog" else "dynamic ad with versions")
+    if len(ad.get("languages") or []) > 1:
+        extra.append(f"translated: {', '.join(ad['languages'])}")
+    if ad.get("copies_total", 1) > ad.get("cards", 1):
+        extra.append(f"{ad['copies_total']} identical copies in all")
     return (f"### {rank}. {ad.get('advertiser') or 'Unknown'} · id {ad['library_id']}\n"
-            f"score {ad['longevity_score']} ({ad.get('tier')}) · {ad.get('days_running')} days · "
-            f"copy used in {ad.get('repetitions', 1)} ads · {ad.get('media_type') or 'unknown format'}")
+            f"rating {ad['score']} ({ad.get('verdict')}, reliability {ad.get('reliability')}) · "
+            f"{ad.get('days_running')} days · {ad.get('creatives', 1)} creatives in {ad.get('cards', 1)} ads · "
+            f"{ad.get('media_type') or 'unknown format'}" + (" · " + "; ".join(extra) if extra else ""))
 
 
 def overview(result: dict, ads: list[dict]) -> str:
@@ -71,13 +79,19 @@ def overview(result: dict, ads: list[dict]) -> str:
     lines += [
         f"- Collected: {result.get('fetched_at') or 'n/a'}; {result.get('ads_parsed')} ads loaded of "
         f"{_n(found.get('active_ads'))} active; {result.get('distinct_ads')} distinct texts",
-        f"- In this pack: the top {len(ads)} ads by longevity score",
-        "- Longevity score, 0-100: 60 points from days running (full at 90 days) plus 40 from how many "
-        "ads reuse the same text (full at 10). Strong from 70, good 40-69, testing below 40. An ad whose "
-        "text is used once cannot pass 60.",
+        f"- In this pack: the top {len(ads)} ads by rating",
+        "- Rating, 0-100, three parts: scale (people reached per day; where reach is not published, the "
+        "position by impressions), staying power (days running, full at 90) and creative investment "
+        "(different creatives for one concept). Scale and creatives are relative to the other ads here.",
+        "- Reliability of a rating: high = reach was read; medium = impression position only; low = neither.",
+        "- Verdicts: scaling (reaches many people per day compared with the others), holding (90 days or "
+        "more with scale in the middle or above), testing (under 30 days), review (90 days or more with "
+        "low scale: possibly forgotten), average (the rest).",
+        "- One ad per concept: identical copies, versions of a dynamic ad, catalogue ads and translations "
+        "are merged and do not count as creatives.",
         f"- Reach: read for {read} of these ads. Meta publishes it only for ads delivered in the EU or the "
         "UK, per ad. Ads sharing one text are listed once; their reach is that of one ad of the group.",
-        "- Meta publishes no spend and no sales. Longevity is a clue that an ad pays, not proof.",
+        "- Meta publishes no spend and no sales. Scale and staying power are clues that an ad pays, not proof.",
         "- The list on Meta is ordered by total impressions, highest first.",
     ]
     return "\n".join(lines) + "\n"
@@ -92,7 +106,7 @@ def copy(result: dict, ads: list[dict]) -> str:
              f"- Texts with proof: {_pct(patterns['share_with_proof'])}; with urgency: "
              f"{_pct(patterns['share_with_urgency'])}; naming an offer: {_pct(patterns['share_mentioning_offer'])}; "
              f"naming a price: {_pct(patterns['share_mentioning_price'])}",
-             "- Most reused texts: " + ("; ".join(f"\"{row['opening']}\" (in {row['ads']} ads, id {row['library_id']})"
+             "- Concepts with most creatives: " + ("; ".join(f"\"{row['opening']}\" ({row['creatives']} creatives, id {row['library_id']})"
                                                    for row in patterns["reused_texts"]) or "none"),
              "- Openers that repeat: " + (", ".join(f"\"{row['opener']}\" ({row['texts']} texts)"
                                                     for row in patterns["repeated_openers"]) or "none"),
@@ -200,7 +214,7 @@ def testing(result: dict, ads: list[dict]) -> str:
              f"- New ads per week (last four weeks): {found['new_per_week']}; started in the last 30 days: "
              f"{found['started_last_30_days']} ({_pct(found['share_started_last_30_days'])} of loaded)",
              f"- Launches per week, oldest to newest (week start: ads): {weeks}",
-             f"- Score tiers of the distinct texts: {_counts(found['tiers'])}; flagged for review: {found['needs_review']}",
+             f"- Verdicts of the ads: {_counts(found['verdicts'])}; flagged for review: {found['needs_review']}",
              f"- Platforms: {_top(found['platforms'], 'platform')}",
              f"- Buttons: {_top(found['buttons'], 'button')}",
              f"- Destinations: {_top(found['destinations'], 'domain')}"]
@@ -211,11 +225,11 @@ def testing(result: dict, ads: list[dict]) -> str:
                      f"({counts['new_texts']} with new copy), {counts['stopped']} stopped, {counts['changed']} changed")
     else:
         lines.append("- Changes since a previous search: none recorded yet (this is the first saved search)")
-    lines += ["", f"## Top {len(ads)} ads", "| # | id | started | days | copy used | format | button | destination |",
+    lines += ["", f"## Top {len(ads)} ads", "| # | id | started | days | creatives | format | button | destination |",
               "|---:|---|---|---:|---:|---|---|---|"]
     for rank, ad in enumerate(ads, start=1):
         lines.append(f"| {rank} | {ad['library_id']} | {ad.get('started') or ''} | {ad.get('days_running')} "
-                     f"| {ad.get('repetitions', 1)} | {ad.get('media_type') or ''} | {ad.get('cta') or ''} "
+                     f"| {ad.get('creatives', 1)} | {ad.get('media_type') or ''} | {ad.get('cta') or ''} "
                      f"| {ad.get('landing_domain') or ''} |")
     return "\n".join(lines) + "\n"
 

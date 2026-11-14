@@ -27,12 +27,13 @@ def company(tmp_path):
 
 
 def smaller(result):
-    """A second company: a quarter of the ads, half of them video, slower, no strong ad."""
+    """A second company: a quarter of the ads, half of them video, slower, nothing scaling."""
     other = copy.deepcopy(result)
     other["page"]["name"] = "Northwind Desks"
     found = other["signals"]
     found.update(active_ads=found["active_ads"] // 4, video_share=0.5, new_per_week=2.0,
-                 tiers={"good": 1, "testing": 4})
+                 verdicts={"testing": 5})
+    result["signals"]["verdicts"] = {"scaling": 2, "holding": 1}
     found["reach"]["median_reach_per_day"] = found["reach"]["median_reach_per_day"] // 10
     return other
 
@@ -59,7 +60,8 @@ def test_rows_follow_one_order_in_four_groups(company):
 
 def test_differences_worth_noting_name_the_leading_side(company):
     notes = {note["key"]: note for note in compare.compare(company, smaller(company))["highlights"]}
-    assert set(notes) == {"active_ads", "median_reach_per_day", "video_share", "strong_ads"}
+    assert set(notes) == {"active_ads", "median_reach_per_day", "video_share", "scaling_ads", "holding_ads"}
+    assert notes["scaling_ads"] == {"key": "scaling_ads", "leader": "a", "lead": 2, "trail": 0}
     assert notes["active_ads"] == {"key": "active_ads", "leader": "a", "ratio": 4.0, "lead": 194, "trail": 48}
     assert notes["median_reach_per_day"]["leader"] == "a" and notes["median_reach_per_day"]["ratio"] >= 9.9
     assert notes["video_share"]["lead"] == 1.0 and notes["video_share"]["trail"] == 0.5
@@ -85,7 +87,7 @@ def test_every_row_group_and_highlight_has_a_label_in_both_languages():
     for words in strings.values():
         for group, key, _ in compare.ROWS:
             assert f"cmp.row.{key}" in words and f"cmp.group.{group}" in words
-        for key in ("active_ads", "new_per_week", "median_reach_per_day", "video_share", "strong_ads"):
+        for key in ("active_ads", "new_per_week", "median_reach_per_day", "video_share", "scaling_ads", "holding_ads"):
             assert f"hl.{key}" in words
 
 

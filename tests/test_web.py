@@ -116,7 +116,9 @@ def test_company_job_returns_ranked_ads_with_local_pictures(app):
     assert result["signals"]["active_ads"] == 194 and result["request"]["level"] == "data"
     top = result["ads"][0]
     assert top["reach"]["eu_total"] == 7398228 and top["thumbnail"].startswith("/media/ad_")
-    assert top["score_parts"]["days"] + top["score_parts"]["reuse"] == pytest.approx(top["longevity_score"], abs=0.11)
+    assert sum(top["score_points"].values()) == pytest.approx(top["score"], abs=0.11)
+    assert top["longevity_parts"]["days"] + top["longevity_parts"]["reuse"] == pytest.approx(top["longevity_score"], abs=0.11)
+    assert top["reliability"] in ("high", "medium") and top["verdict"]
     assert "image_url" not in top and "reach" not in result["ads"][-1]
     assert result["ads"][-1]["thumbnail"]                       # thumbnails cover the whole table
     assert client.get(top["thumbnail"]).status_code == 200
@@ -190,12 +192,16 @@ def test_every_text_exists_in_both_languages():
     assert all(value.strip() for language in strings.values() for value in language.values())
 
 
-def test_guide_explains_the_score_with_the_worked_example():
+def test_guide_explains_the_rating_in_both_languages():
     strings = json.loads((STATIC / "strings.json").read_text(encoding="utf-8"))
     for language in ("it", "en"):
-        example = strings[language]["guide.example"]
-        assert "68" in example and "45" in example and "31" in example and "76" in example
-        assert "60" in strings[language]["guide.a3"] and "40" in strings[language]["guide.a3"]
+        words = strings[language]
+        assert all(f"guide.q{n}" in words and f"guide.a{n}" in words for n in range(1, 8))
+        assert "60" in words["guide.a3"] and "25" in words["guide.a3"] and "15" in words["guide.a3"]
+        assert "50, 30" in words["guide.a4"]                      # the points when only the position is known
+        assert "60" in words["guide.example"] and "44" in words["guide.example"]
+        for verdict in ("scaling", "holding", "testing", "review", "average"):
+            assert words[f"verdict.{verdict}"] in words["guide.a5"]
 
 
 def test_page_uses_only_texts_that_exist():

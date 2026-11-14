@@ -27,11 +27,11 @@ Searches that could not be fetched: {none | list}.
 |---|---|---|---|
 | {name} | {days} days | {first line} | [{library_id}]({ad_url}) |
 
-## Longest-running ads still live
+## Strongest ads still live
 
-| Advertiser | Score | Days | Reuse | Opening line | Ad |
-|---|---:|---:|---:|---|---|
-| {name} | {longevity_score} | {days_running} | {repetitions} | {first line} | [{library_id}]({ad_url}) |
+| Advertiser | Rating | Verdict | Per day | Days | Creatives | Opening line | Ad |
+|---|---:|---|---:|---:|---:|---|---|
+| {name} | {score} | {verdict} | {reach_per_day} | {days_running} | {creatives} | {first line} | [{library_id}]({ad_url}) |
 
 ## Messaging shifts
 

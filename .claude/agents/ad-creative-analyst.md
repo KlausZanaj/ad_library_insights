@@ -28,8 +28,8 @@ For each ad you can see:
 2. **Development**: what changed by the middle still.
 3. **Close**: what the last still shows. Offer, product, call to action, logo.
 
-Then look across the ads: which openings recur among the ads with the most days and
-reuse, which formats dominate, and whether the long-running ads look different from
+Then look across the ads: which openings recur among the ads that scale or hold up,
+which formats dominate, and whether the long-running ads look different from
 the recent ones.
 
 ## Output

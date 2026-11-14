@@ -58,7 +58,7 @@ _T = {
         ],
         "rules.title": "Rules of evidence",
         "rules": [
-            "Meta publishes no spend and no sales. The longevity score (days running and copy reuse) is a clue, not proof.",
+            "Meta publishes no spend and no sales. The rating (scale, staying power, creative investment) is a clue, not proof.",
             "Reach exists only for ads delivered in the European Union or the United Kingdom. Where it is "
             "missing, say so and work from copy and dates.",
             "Reach is per ad, and for a group of ads sharing one text it is the reach of one of them. "
@@ -147,7 +147,7 @@ _T = {
         ],
         "rules.title": "Regole sulle prove",
         "rules": [
-            "Meta non pubblica spesa né vendite. Il punteggio di longevità (giorni attivi e riuso del testo) è un indizio, non una prova.",
+            "Meta non pubblica spesa né vendite. La valutazione (scala, tenuta, investimento creativo) è un indizio, non una prova.",
             "La copertura esiste solo per gli annunci mostrati nell'Unione europea o nel Regno Unito. Dove "
             "manca, dillo e lavora su testi e date.",
             "La copertura è per annuncio, e per un gruppo di annunci con lo stesso testo è quella di uno "

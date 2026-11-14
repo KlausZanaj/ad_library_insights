@@ -52,9 +52,9 @@ def _lite(ad: dict) -> dict:
         "dynamic": bool(ad.get("multiple_versions")),
         "started": ad.get("started"),
         "days_running": ad.get("days_running"),
-        "repetitions": ad.get("repetitions", 1),
-        "longevity_score": ad.get("longevity_score"),
-        "tier": ad.get("tier"),
+        "creatives": ad.get("creatives", 1),
+        "score": ad.get("score"),
+        "verdict": ad.get("verdict"),
         "thumbnail_path": ad.get("thumbnail_path"),
     }
 

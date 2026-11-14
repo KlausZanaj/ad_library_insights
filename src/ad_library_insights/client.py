@@ -171,6 +171,8 @@ class AdLibraryClient:
             result.total_count = page.total_count
             if not result.ads:
                 result.ads = parser.parse_cards(page.cards)
+                for position, ad in enumerate(result.ads, start=1):     # the page order is by impressions
+                    ad.setdefault("impression_rank", position)
             if result.ads:
                 result.outcome = "ok"
                 if self.cache:  # empty or blocked pages are never cached

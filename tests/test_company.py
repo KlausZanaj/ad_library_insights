@@ -127,7 +127,8 @@ def test_company_ads_come_from_the_page_data(tmp_path):
     assert result["page"]["page_id"] == PAGE_ID and result["page"]["name"] == "Kingshot"
     assert result["signals"]["active_ads"] == 194 and result["signals"]["video_share"] == 1.0
     assert result["signals"]["reach"]["available"] is False
-    assert all(ad["tier"] in ("strong", "good", "testing") for ad in result["ads"])
+    assert all(ad["verdict"] in ("scaling", "holding", "testing", "review", "average") for ad in result["ads"])
+    assert all(ad["reliability"] == "medium" and ad["scale_basis"] == "impressions" for ad in result["ads"])
     assert "view_all_page_id" in studio.renders[0]
 
 

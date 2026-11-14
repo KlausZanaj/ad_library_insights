@@ -21,7 +21,21 @@
   "more",
   "what",
   "all",
-  "out"
+  "out",
+  "is",
+  "it",
+  "to",
+  "of",
+  "in",
+  "on",
+  "i",
+  "my",
+  "we",
+  "be",
+  "now",
+  "its",
+  "how",
+  "do"
  ],
  "it": [
   "il",
@@ -47,7 +61,20 @@
   "come",
   "tutti",
   "ogni",
-  "subito"
+  "subito",
+  "è",
+  "e",
+  "un",
+  "la",
+  "le",
+  "del",
+  "al",
+  "nel",
+  "ti",
+  "si",
+  "ha",
+  "da",
+  "i"
  ],
  "es": [
   "el",
@@ -71,7 +98,20 @@
   "todos",
   "muy",
   "ahora",
-  "cada"
+  "cada",
+  "no",
+  "se",
+  "es",
+  "en",
+  "y",
+  "lo",
+  "un",
+  "al",
+  "he",
+  "mi",
+  "te",
+  "de",
+  "la"
  ],
  "fr": [
   "le",
@@ -95,7 +135,19 @@
   "tous",
   "très",
   "et",
-  "dans"
+  "dans",
+  "je",
+  "ne",
+  "ce",
+  "un",
+  "au",
+  "sur",
+  "qui",
+  "il",
+  "en",
+  "de",
+  "la",
+  "à"
  ],
  "de": [
   "der",
@@ -119,7 +171,20 @@
   "jetzt",
   "zum",
   "zur",
-  "bei"
+  "bei",
+  "ich",
+  "dass",
+  "habe",
+  "kann",
+  "du",
+  "es",
+  "den",
+  "dem",
+  "von",
+  "auf",
+  "wir",
+  "im",
+  "so"
  ],
  "pt": [
   "o",
@@ -144,7 +209,17 @@
   "como",
   "todos",
   "muito",
-  "agora"
+  "agora",
+  "e",
+  "um",
+  "em",
+  "no",
+  "na",
+  "de",
+  "se",
+  "é",
+  "ao",
+  "eu"
  ],
  "nl": [
   "de",
@@ -166,6 +241,14 @@
   "van",
   "zijn",
   "naar",
-  "meer"
+  "meer",
+  "ik",
+  "dat",
+  "is",
+  "op",
+  "te",
+  "in",
+  "er",
+  "wat"
  ]
 }

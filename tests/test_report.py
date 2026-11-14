@@ -21,7 +21,7 @@ def test_assemble_ranks_and_counts(cards):
     assert result["ok"] and result["ads_parsed"] == 3 and result["distinct_ads"] == 2
     assert [row["advertiser"] for row in result["advertisers"]] == ["Northwind Desks", "Caffè Aurora"]
     assert result["advertisers"][0] == {"advertiser": "Northwind Desks", "ads": 2,
-                                        "oldest_start": "2026-01-05", "top_score": 72.0}
+                                        "oldest_start": "2026-01-05", "top_score": 60.0}
     assert result["fetched_at"].startswith("2026-")
 
 
@@ -44,11 +44,12 @@ def test_markdown_sections_and_content(cards):
     result, copy = build(cards)
     md = report.to_markdown(result, copy, top_n=5, generated_on=AS_OF)
     assert md.startswith('# Ad Library report: "standing desk" in DE')
-    for heading in ("## Top advertisers", "## Longest-running ads", "## Copy patterns in the top 2",
+    for heading in ("## Top advertisers", "## Top ads", "## Copy patterns in the top 2",
                     "## Copy breakdown", "## Method and limits"):
         assert heading in md
-    assert "| 1 | 72.0 | 90 | 2 | Northwind Desks | Still working hunched over a laptop? | Shop Now " \
+    assert "| 1 | 60.0 | Holding up | low | - | 90 | 1 (dynamic) | Northwind Desks | Still working hunched over a laptop? " \
            "| [1001](https://www.facebook.com/ads/library/?id=1001) |" in md
+    assert "The rating (0-100) adds three parts" in md
     assert "- **Hook** (question): Still working hunched over a laptop?" in md
     assert "- Library total for this search: ~300 results" in md
     assert "no spend" in md

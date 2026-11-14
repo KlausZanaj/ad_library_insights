@@ -14,7 +14,7 @@ country are always parameters; nothing about a specific industry is built in.
 | **Search** | Renders the public Ad Library in headless Chromium for a keyword and/or advertiser in a given country. No account, token or API key. |
 | **Company analysis** | Finds the advertiser's page from its name, loads every active ad of that page and summarises how the company advertises: formats, launch pace, languages, buttons, destinations, repeated copy. |
 | **Reach and audience** | For the top-ranked ads, reads the detail view: reach (EU total, the researched country, UK), age, gender and the locations the advertiser targeted or excluded. |
-| **Longevity score** | Ranks ads 0-100 by days running and by how many ads reuse the same copy, the two persistence signals the library exposes. |
+| **Rating** | Merges ads one per concept and rates them 0-100 on scale (people reached per day, or impression position where reach is not published), staying power and creative investment, relative to the search, with a reliability level and a plain verdict. See [docs/valutazione.md](docs/valutazione.md) for before and after on real searches. |
 | **Reliable fetching** | Local disk cache, retries with growing pauses, and a request throttle, with a clear distinction between "no results" and "the page did not serve ads". |
 | **Copy breakdown** | Splits the best ads into hook, promise, proof and call to action, as structured output, and summarises the patterns they share. |
 | **Reports** | Exports a Markdown brief and a CSV with one row per ad. |
@@ -176,9 +176,15 @@ One ranked ad looks like this:
   "status": "active",
   "started": "2026-01-05",
   "days_running": 90,
-  "repetitions": 2,
-  "creative_variants": 2,
-  "longevity_score": 72.0,
+  "score": 61.4,
+  "score_points": { "scale": 32.0, "staying": 25.0, "creative": 4.4 },
+  "reliability": "high",
+  "verdict": "holding",
+  "kind": "standard",
+  "creatives": 2,
+  "cards": 2,
+  "copies_total": 2,
+  "reach_per_day": 1800,
   "body": "Still working hunched over a laptop?\nRaise your desk in 3 seconds. ...",
   "headline": "Sit-stand desk, oak top",
   "cta": "Shop Now",
@@ -234,9 +240,15 @@ The `examples/` folder contains a report produced by a live run.
    least 20 seconds apart and at most 30 per hour. A page with no ads and no
    "no results" statement is retried twice, after about 20 and 60 seconds,
    with a longer wait each time. Empty pages are never cached.
-5. **Score.** `score = 100 x (0.6 x min(days / 90, 1) + 0.4 x min(log(repetitions) / log(10), 1))`.
-   Ads from one advertiser with identical copy are merged and their counters
-   summed. Weights and caps are function parameters.
+5. **Rate.** Cards are merged one per concept: identical copies, versions
+   of a dynamic ad, catalogue ads and translations become one ad with
+   variants. Each ad then gets up to 60 points for scale (people reached per
+   day; without reach, the impression position, worth up to 50), 25 for
+   staying power (days running, full at 90; 30 without reach) and 15 for
+   creative investment (different creatives for the concept; 20 without
+   reach). Scale and creatives are relative to the other ads of the search,
+   on a log scale. The rating carries a reliability (high, medium, low) and a
+   verdict: scaling, holding, testing, worth checking, average.
 6. **Copy breakdown.** Rules based on position, punctuation, digits and a
    small phrase list in English, Italian, Spanish, French and German
    (`src/ad_library_insights/data/lexicon.json`, editable).
@@ -249,7 +261,7 @@ The `examples/` folder contains a report produced by a live run.
    new ads per week, ads started in the last 30 days, languages, most used
    buttons and destinations, repeated copy, and a "needs review" flag for ads
    that ran long on a single use of their copy and reached far fewer people per
-   day than the advertiser's other ads. The longevity score is not affected.
+   day than the advertiser's other ads.
 
 Cache, throttle state, saved pictures and saved searches live in `~/.ad_library_insights`
 (override with the `AD_LIBRARY_INSIGHTS_HOME` environment variable).
@@ -257,8 +269,8 @@ Cache, throttle state, saved pictures and saved searches live in `~/.ad_library_
 ## Technical limits
 
 - **No spend or conversion data.** The Ad Library does not publish them for
-  commercial ads. The longevity score is a proxy for what an advertiser keeps
-  paying for, not a measure of profit.
+  commercial ads. The rating is a clue about what an advertiser keeps paying
+  for, not a measure of profit.
 - **Reach exists only for the EU and the UK.** Meta publishes reach and
   audience for ads delivered in the European Union or the United Kingdom. Ads
   shown only elsewhere have no such section, and the tool says so. Reach is

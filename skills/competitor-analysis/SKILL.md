@@ -68,7 +68,7 @@ answer backed by evidence. A generic summary is a failed analysis.
 ## Rules
 
 -   Every claim carries a number or a quote from the pack, with the ad id.
--   Meta publishes no spend and no sales. Longevity and copy reuse are clues
+-   Meta publishes no spend and no sales. Scale and staying power are clues
     that an ad pays, not proof. Never state returns.
 -   Reach exists only for ads delivered in the EU or the UK, per ad. Where it
     is missing, say so and work from copy and dates.

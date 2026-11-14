@@ -1,37 +1,68 @@
 # Reading the results
 
-## Fields that carry the signal
+## One ad per concept
 
-| Field | What it tells you |
+The tool merges the cards of a search before rating them, so that one idea is
+one row:
+
+| Merged into one ad | Why it is not creative investment |
 |---|---|
-| `days_running` | Days since the start date. Long runs mean the advertiser chose not to turn the ad off. |
-| `repetitions` | Ads carrying the same copy from the same advertiser (the card's own counter, summed over identical copies in the sample). High values mean the copy is being scaled across creatives or audiences. |
-| `creative_variants` | Distinct cards sharing that copy. Many variants with one copy means the advertiser is testing visuals, not words. |
-| `multiple_versions` | The ad uses dynamic variations. The text shown is one of several. |
-| `cta`, `landing_domain` | Where the click goes and what it is asked to do. Compare across advertisers to see who sells directly and who collects leads. |
-| `results_label` | The library's own total for the search. The parsed sample is usually a fraction of it. |
+| Identical copies ("N ads use this creative and text") | The same ad in several ad sets |
+| Versions of one dynamic ad | Meta mixes texts and pictures inside one ad |
+| Catalogue ads | The same text with a different product behind each ad |
+| Translations of the same ad | The same video under texts in other languages, or the same emoji and digits in texts of different languages |
 
-## How the score is built
+What was merged is reported, not scored: `cards` (ads carrying the concept),
+`copies_total` (identical copies included), `languages`, `kind` (`standard`,
+`catalog`, `dynamic`) and, for catalogues, `products`.
 
-    age        = min(days_running / 90, 1)
-    repetition = min(log(repetitions) / log(10), 1)
-    score      = 100 * (0.6 * age + 0.4 * repetition)
+## Fields of a rated ad
 
-Everything running longer than 90 days gets the full age component; ties are
-broken by the earlier start date. An ad that started last week can still rank
-high if its copy is reused many times.
+| Field | Meaning |
+|---|---|
+| `score` | The rating, 0-100 |
+| `score_points` | Points from `scale`, `staying` and `creative`; they add up to `score` |
+| `reliability` | `high`: reach was read. `medium`: scale estimated from the impression position. `low`: only days and creatives |
+| `verdict` | `scaling`, `holding`, `testing`, `review`, `average` (see below) |
+| `days_running` | Days since the oldest ad of the concept started |
+| `creatives` | Different videos or pictures carrying the concept |
+| `reach_per_day` | Reach of the ad that was opened, divided by its own days. Only after reach is read |
+| `impression_rank` | Position in the library's list, which is ordered by total impressions, highest first |
+| `longevity_score` | The earlier score (days and copy reuse). Informative only |
+
+## How the rating is built
+
+| Part | Measures | Points with reach | Points without |
+|---|---|---:|---:|
+| Scale | People reached per day; without reach, the impression position | 60 | 50 |
+| Staying power | Days running, full at 90 | 25 | 30 |
+| Creative investment | Different creatives for one concept | 15 | 20 |
+
+Scale and creatives are relative to the other ads of the same search, on a log
+scale. Staying power uses a fixed 90 days.
+
+## Verdicts
+
+| Verdict | When |
+|---|---|
+| `scaling` | In the top third of the search for scale, with scale at 70 of 100 or more |
+| `holding` | 90 days or more, with scale at 40 or more |
+| `testing` | Under 30 days |
+| `review` | 90 days or more with scale at 25 or less: possibly forgotten |
+| `average` | Everything else |
 
 ## Traps
 
--   **Big brands run everything for a long time.** A long-running ad from an
-    advertiser with a large budget is weaker evidence than one from a small
-    shop. Weigh the advertiser, not only the score.
--   **Recency bias of the sample.** The library lists recent ads first, so a
-    shallow scroll under-represents old ads. If the ranking looks young, rerun
-    with a higher `scroll_rounds`.
--   **Keyword search matches text anywhere.** Results can include ads that
-    only mention the keyword in passing. Drop off-topic advertisers before
-    drawing conclusions.
--   **A start date is the date of this version.** An advertiser who edits an
-    ad restarts the clock. `repetitions` partly compensates.
--   **Inactive ads** have an end date; their `days_running` is the full run.
+-   **Reach belongs to a market.** Meta publishes reach for ads delivered in
+    the EU or the UK. For a search in another country the reach read is about
+    those regions, so it is shown but does not rate; reliability stays medium.
+-   **Medium is an estimate.** Without reach, old ads look bigger than they
+    are, because total impressions grow with time.
+-   **Very young ads.** Reach per day of a one-day-old ad is high by
+    construction. Read `scaling` on such an ad as "pushed hard at launch".
+-   **Reach is per ad.** For a merged concept it is the reach of its most
+    shown ad, not of the group.
+-   **No spend, no sales.** The rating is a clue about what an advertiser
+    keeps paying for, never proof of profit.
+-   **A keyword search is a sample.** It loads the most shown ads, not all of
+    them. Say how many were loaded and how many the library counts.

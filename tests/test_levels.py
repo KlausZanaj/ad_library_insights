@@ -52,7 +52,8 @@ def test_test_budget_comes_from_break_even():
 def test_slices_cover_the_four_lenses(company):
     slices, images = packs.sections(company, ads=3, frames=True)
     assert tuple(slices) == packs.SLICES
-    assert "60 points from days running" in slices["overview"] and "cannot pass 60" in slices["overview"]
+    assert "three parts: scale" in slices["overview"] and "Reliability of a rating" in slices["overview"]
+    assert "do not count as creatives" in slices["overview"]
     assert "Meta publishes no spend and no sales" in slices["overview"]
     top = company["ads"][0]
     assert f"id {top['library_id']}" in slices["copy"] and "> " in slices["copy"]

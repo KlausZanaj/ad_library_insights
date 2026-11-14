@@ -5,7 +5,7 @@ import asyncio
 from collections import defaultdict
 from datetime import date, datetime, timezone
 
-from . import copy_analysis, details, media, scoring, signals
+from . import copy_analysis, details, media, rating, signals
 from .client import (AdLibraryClient, FetchResult, build_page_url, build_search_url,
                      normalise_country)
 
@@ -23,8 +23,8 @@ def advertiser_table(ranked: list[dict]) -> list[dict]:
     rows: dict[str, dict] = defaultdict(lambda: {"ads": 0, "oldest_start": None, "top_score": 0.0})
     for ad in ranked:
         row = rows[ad.get("advertiser") or "unknown"]
-        row["ads"] += ad.get("repetitions", 1)
-        row["top_score"] = max(row["top_score"], ad["longevity_score"])
+        row["ads"] += ad.get("copies_total", 1)
+        row["top_score"] = max(row["top_score"], ad["score"])
         if ad.get("started") and (row["oldest_start"] is None or ad["started"] < row["oldest_start"]):
             row["oldest_start"] = ad["started"]
     return sorted(({"advertiser": name, **row} for name, row in rows.items()),
@@ -33,12 +33,12 @@ def advertiser_table(ranked: list[dict]) -> list[dict]:
 
 def assemble(fetch: FetchResult, query: str, country: str, advertiser: str = "",
              as_of: date | None = None) -> dict:
-    """Shape a fetch into the research result: filtered by advertiser, ranked by longevity."""
+    """Shape a fetch into the research result: filtered by advertiser, one ad per concept, rated."""
     ads = fetch.ads
     if advertiser:
         needle = advertiser.casefold()
         ads = [ad for ad in ads if needle in (ad.get("advertiser") or "").casefold()]
-    ranked = signals.annotate(scoring.rank_ads(ads, as_of=as_of))
+    ranked = signals.annotate(rating.group_concepts(ads, as_of))
     result = {
         "ok": fetch.ok,
         "outcome": fetch.outcome,
@@ -158,7 +158,9 @@ async def deepen(client: AdLibraryClient, result: dict, top_n: int = 10, frames:
                  on_progress=None, use_cache: bool = True) -> dict:
     """Read reach and audience for the ``top_n`` best-ranked ads of a result, in place.
 
-    Only the top of the ranking is opened, to keep the number of page requests small.
+    Before reach is known the ranking leans on the impression position, so the ads
+    opened are the most shown ones. Once reach is read the ads are rated again and
+    the list is re-sorted. Only the top is opened, to keep page requests few.
     Thumbnails and page logos of those ads are saved locally at the same time; with
     ``frames`` three stills of each video are saved too.
     """

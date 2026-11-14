@@ -46,10 +46,13 @@ Ask only for what is missing:
     | `no_results` | The library has nothing for this search | Try a broader or translated keyword |
     | `blocked` | The page refused automated sessions after all retries | Tell the user, wait several minutes, do not loop |
 
-3.  **Read the ranking as persistence, not performance.** Ads are sorted by
-    `longevity_score` (0-100): days running plus how many ads reuse the same
-    copy. See [reading the results](references/reading-the-results.md) for
-    how to interpret each field and the traps to avoid.
+3.  **Read the ranking as a media buyer would.** Ads are merged one per
+    concept and rated on scale (people reached per day, or the impression
+    position where reach is not published), staying power and creative
+    investment. Each rating carries a reliability and a plain verdict. Pass
+    `deep_ads` to read reach for the top ads: without it every rating is an
+    estimate. See [reading the results](references/reading-the-results.md)
+    for each field and the traps to avoid.
 
 4.  **Break down the top ads.** Call `analyze_top_ads` with the same
     arguments. It returns hook, promise, proof and CTA per ad plus the shared
@@ -70,8 +73,8 @@ Ask only for what is missing:
 
 ## Rules
 
--   Never present longevity as proof of profit. Say "has been running for N
-    days", not "is profitable".
+-   Never present a rating as proof of profit. Say "reaches N people a day
+    and has run for N days", not "is profitable". State the reliability.
 -   Quote competitor copy only as short excerpts for analysis. Write new
     creatives from the patterns, never by copying an ad.
 -   State the keyword, country and date of every search you report on.

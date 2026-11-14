@@ -1,9 +1,9 @@
-"""Signals computed by code next to the longevity score."""
+"""Signals computed by code: language, audience breadth, reach per day, search summaries."""
 from datetime import date
 
 import pytest
 
-from ad_library_insights import scoring, signals
+from ad_library_insights import rating, signals
 
 AS_OF = date(2026, 6, 30)
 
@@ -17,7 +17,7 @@ def ad(library_id, started, body, advertiser="Northwind Desks", copies=1, **extr
 
 def reach(total, country=None, countries=1):
     return {"available": True, "basis": "EU", "basis_total": total, "eu_total": total,
-            "uk_total": None, "country": "DE", "country_reach": country,
+            "uk_total": None, "country": "DE", "country_reach": total if country is None else country,
             "countries_reached": countries, "regions": [{"region": "EU", "total": total,
                                                          "countries": [{"country": "DE", "reach": country or total}]}]}
 
@@ -27,23 +27,12 @@ AUDIENCE = {"age_min": 18, "age_max": 65, "gender": "All",
             "locations_excluded": []}
 
 
-@pytest.mark.parametrize("score, expected", [(100, "strong"), (70, "strong"), (69.9, "good"),
-                                             (40, "good"), (39.9, "testing"), (0, "testing")])
-def test_tiers(score, expected):
-    assert signals.tier(score) == expected
-
-
-def test_score_rules_are_untouched_and_single_use_copy_tops_out_at_sixty():
-    assert scoring.longevity_score(90, 1) == 60.0
-    assert scoring.longevity_score(5000, 1) == 60.0
-    assert scoring.longevity_score(68, 6) == 76.5        # 45.3 from days + 31.1 from reuse
-    assert scoring.longevity_score(90, 10) == 100.0
-
-
 @pytest.mark.parametrize("text, expected", [
     ("The best desk for your home and your back", "en"),
     ("Scopri la scrivania più comoda per la tua schiena, con il nostro sconto", "it"),
     ("Die beste Lösung für dein Büro und deine Gesundheit", "de"),
+    ("Ich kann nicht glauben, dass ich acht Stunden gespielt habe", "de"),
+    ("Heroes Needed for Survival!", "en"),          # a short text: one common word is enough
     ("생존을 위한 영웅이 필요하다", "ko"),
     ("OK!", None),
 ])
@@ -52,15 +41,26 @@ def test_language_guess(text, expected):
 
 
 def test_reach_per_day_and_breadth_are_added_when_reach_is_known():
-    ranked = scoring.rank_ads([ad("1", "2026-06-20", "Ten days of reach"),
-                               ad("2", "2026-06-25", "No detail view read")], as_of=AS_OF)
+    ranked = rating.group_concepts([ad("1", "2026-06-20", "Ten days of reach"),
+                                    ad("2", "2026-06-25", "No detail view read")], AS_OF)
     first = next(a for a in ranked if a["library_id"] == "1")
     first.update(reach=reach(50_000, country=20_000), audience=AUDIENCE)
     signals.annotate(ranked)
     assert first["reach_per_day"] == 5_000 and first["country_reach_per_day"] == 2_000
     assert first["audience_breadth"]["label"] == "broad"
     other = next(a for a in ranked if a["library_id"] == "2")
-    assert "reach_per_day" not in other and other["tier"] == "testing"
+    assert "reach_per_day" not in other and other["verdict"] == "testing"
+
+
+def test_reach_per_day_uses_the_days_of_the_ad_that_was_opened():
+    # the concept started in January; the most shown ad of the group started ten days ago
+    ranked = rating.group_concepts([ad("old", "2026-01-01", "Same text", impression_rank=9),
+                                    ad("new", "2026-06-20", "Same text", impression_rank=1)], AS_OF)
+    concept = ranked[0]
+    assert concept["library_id"] == "new" and concept["days_running"] == 180 and concept["ad_days"] == 10
+    concept["reach"] = reach(50_000)
+    signals.annotate(ranked)
+    assert concept["reach_per_day"] == 5_000
 
 
 def test_narrow_audience_is_labelled():
@@ -71,41 +71,17 @@ def test_narrow_audience_is_labelled():
 
 
 def company(reaches=None):
-    """Five ads of one advertiser; "old" has run longest on a text nobody repeats."""
+    """Five ads of one advertiser; "old" has run longest."""
     ads = [ad("old", "2026-01-01", "An old single ad"),
            ad("a", "2026-04-01", "Repeated text", copies=4),
            ad("b", "2026-05-20", "Fresh idea one"),
            ad("c", "2026-06-01", "Fresh idea two"),
            ad("d", "2026-06-10", "Fresh idea three")]
-    ranked = scoring.rank_ads(ads, as_of=AS_OF)
+    ranked = rating.group_concepts(ads, AS_OF)
     for item in ranked:
         if reaches and item["library_id"] in reaches:
             item["reach"] = reach(reaches[item["library_id"]])
     return signals.annotate(ranked)
-
-
-def flagged(ranked):
-    return {a["library_id"]: a["review"]["reason"] for a in ranked if a["needs_review"]}
-
-
-def test_long_single_use_ad_is_flagged_when_reach_is_unknown():
-    assert flagged(company()) == {"old": "long_running_single_use"}
-
-
-def test_flag_needs_low_reach_per_day_when_reach_is_known():
-    low = company({"old": 1_800, "a": 900_000, "b": 400_000, "c": 300_000})
-    assert flagged(low) == {"old": "long_running_single_use_low_reach"}
-    healthy = company({"old": 9_000_000, "a": 900_000, "b": 400_000, "c": 300_000})
-    assert flagged(healthy) == {}
-
-
-def test_flag_thresholds_are_relative_to_the_set():
-    same_age = signals.annotate(scoring.rank_ads(
-        [ad(str(n), "2026-01-01", f"Text {n}") for n in range(5)], as_of=AS_OF))
-    assert flagged(same_age) == {}                     # nobody stands out, however old
-    few = signals.annotate(scoring.rank_ads(
-        [ad("1", "2025-01-01", "Old"), ad("2", "2026-06-01", "New")], as_of=AS_OF))
-    assert flagged(few) == {}                          # too few ads to compare
 
 
 def test_summary_of_a_search():
@@ -118,7 +94,7 @@ def test_summary_of_a_search():
            cta="Learn more", landing_domain="aurora.example"),
         ad("4", "2026-01-15", "The desk that grows with you and your team.", copies=3),
     ]
-    ranked = signals.annotate(scoring.rank_ads(cards, as_of=AS_OF))
+    ranked = signals.annotate(rating.group_concepts(cards, AS_OF))
     found = signals.summarize(cards, ranked, AS_OF, library_total=40, country="DE")
     assert found["active_ads"] == 40 and found["ads_loaded"] == 4 and found["distinct_texts"] == 3
     assert found["video_share"] == 0.5 and found["format_share"] == {"video": 0.5, "image": 0.5}
@@ -129,8 +105,9 @@ def test_summary_of_a_search():
     assert found["destinations"][0]["domain"] == "northwind.example"
     assert found["platforms"][0] == {"platform": "facebook", "ads": 4, "share": 1.0}
     patterns = found["copy_patterns"]
-    assert patterns["reused_texts"][0]["ads"] == 3
+    assert patterns["reused_texts"][0]["creatives"] == 2 and patterns["reused_texts"][0]["ads"] == 2
     assert patterns["repeated_openers"] == []          # merged texts count once
+    assert sum(found["verdicts"].values()) == 3 and found["reliability"] == {"low": 3}
     assert found["reach"]["available"] is False and "detail view" in found["reach"]["note"]
     assert found["audience"] is None
     assert signals.summarize(cards, ranked, AS_OF)["active_ads"] == 6   # sums the counters
@@ -149,7 +126,8 @@ def test_summary_reports_reach_and_locations_after_details_were_read():
     assert found["reach"]["ads_with_reach"] == 3 and found["reach"]["ads_without_reach"] == 1
     assert found["reach"]["eu_reach_summed"] == 1_301_800
     assert found["reach"]["top_countries"][0]["country"] == "DE"
-    assert found["needs_review"] == 1
+    assert found["needs_review"] == 1 and found["verdicts"]["review"] == 1      # the old ad, ten people a day
+    assert found["reliability"]["high"] == 3
     places = {p["name"]: p for p in found["audience"]["locations_included"]}
     assert places["South America"] == {"name": "South America", "type": "country_groups", "ads": 3}
     assert found["audience"]["locations_excluded"][0]["name"] == "Bavaria"

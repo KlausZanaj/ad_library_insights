@@ -221,10 +221,14 @@ table.cmp td.num { font-variant-numeric: tabular-nums; }
 .thumb { width: 44px; height: 44px; border-radius: 4px; object-fit: cover; flex: none; background: var(--sunken); border: 1px solid var(--line-soft); }
 .adtext { min-width: 0; }
 .adtext div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 380px; }
-.ads.mixed .adtext div, .ads.mixed .adtext small { max-width: 300px; }
+.ads.mixed .adtext div, .ads.mixed .adtext small { max-width: 262px; }
 .adtext small { color: var(--muted); font-size: .87rem; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 400px; }
 .ads td.tier, .ads td.fmt { white-space: nowrap; }
-.tier-strong { font-weight: 600; }
+.v-scaling, .v-holding { font-weight: 600; }
+.v-review { color: var(--warn); font-weight: 600; }
+.v-testing, .v-average { color: var(--muted); }
+.rel { display: block; color: var(--muted); font-size: .8rem; }
+.sortbar { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; color: var(--muted); }
 .tier-testing { color: var(--muted); }
 .review { display: block; color: var(--warn); font-size: .87rem; }
 .dim { color: var(--muted); font-size: .9rem; }
@@ -256,6 +260,8 @@ table.cmp td.num { font-variant-numeric: tabular-nums; }
 .scorebar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--line-soft); margin: 10px 0 14px; }
 .scorebar i { display: block; background: var(--accent); }
 .scorebar i + i { opacity: .5; }
+.scorebar.three i:nth-child(2) { opacity: .6; }
+.scorebar.three i:nth-child(3) { opacity: .3; }
 .qa h3 { font-size: 1rem; font-weight: 600; color: var(--text); margin-bottom: 6px; }
 .qa .eg { margin-top: 10px; padding-left: 14px; border-left: 2px solid var(--accent); }
 

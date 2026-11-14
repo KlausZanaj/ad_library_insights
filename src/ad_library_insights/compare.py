@@ -32,9 +32,10 @@ def profile(result: dict) -> dict:
         "new_per_week": found["new_per_week"],
         "started_last_30_days": found["started_last_30_days"],
         "share_started_last_30_days": found["share_started_last_30_days"],
-        "strong_ads": found["tiers"].get("strong", 0),
+        "scaling_ads": found["verdicts"].get("scaling", 0),
+        "holding_ads": found["verdicts"].get("holding", 0),
         "longest_running_days": max(days) if days else None,
-        "most_reused_text": max((ad.get("repetitions", 1) for ad in ads), default=None),
+        "most_creatives": max((ad.get("creatives", 1) for ad in ads), default=None),
         "needs_review": found["needs_review"],
         "video_share": found["video_share"],
         "formats": [{"label": name, "share": share} for name, share in list(found["format_share"].items())[:3]],
@@ -62,10 +63,11 @@ def profile(result: dict) -> dict:
 ROWS = (
     ("pace", "active_ads", "number"), ("pace", "new_per_week", "number"),
     ("pace", "started_last_30_days", "number"), ("pace", "share_started_last_30_days", "percent"),
-    ("pace", "strong_ads", "number"), ("pace", "longest_running_days", "number"),
+    ("pace", "scaling_ads", "number"), ("pace", "holding_ads", "number"),
+    ("pace", "longest_running_days", "number"),
     ("pace", "needs_review", "number"),
     ("creative", "video_share", "percent"), ("creative", "formats", "shares"),
-    ("creative", "distinct_texts", "number"), ("creative", "most_reused_text", "number"),
+    ("creative", "distinct_texts", "number"), ("creative", "most_creatives", "number"),
     ("creative", "share_with_proof", "percent"), ("creative", "share_mentioning_offer", "percent"),
     ("creative", "languages", "languages"),
     ("reach", "median_reach_per_day", "number"), ("reach", "eu_reach_summed", "number"),
@@ -94,11 +96,10 @@ def _highlights(a: dict, b: dict) -> list[dict]:
         notes.append({"key": "video_share", "leader": leader,
                       "lead": max(a["video_share"], b["video_share"]),
                       "trail": min(a["video_share"], b["video_share"])})
-    if a["strong_ads"] != b["strong_ads"]:
-        leader = "a" if a["strong_ads"] > b["strong_ads"] else "b"
-        notes.append({"key": "strong_ads", "leader": leader,
-                      "lead": max(a["strong_ads"], b["strong_ads"]),
-                      "trail": min(a["strong_ads"], b["strong_ads"])})
+    for key in ("scaling_ads", "holding_ads"):
+        if a[key] != b[key]:
+            leader = "a" if a[key] > b[key] else "b"
+            notes.append({"key": key, "leader": leader, "lead": max(a[key], b[key]), "trail": min(a[key], b[key])})
     return notes
 
 

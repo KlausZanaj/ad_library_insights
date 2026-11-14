@@ -39,7 +39,7 @@ def test_tools_are_registered():
 def test_search_ads_returns_ranked_ads(monkeypatch, cards):
     data = call(monkeypatch, cards, "search_ads", {"country": "de", "query": "standing desk"})
     assert data["ok"] and data["country"] == "DE" and data["distinct_ads"] == 2
-    scores = [ad["longevity_score"] for ad in data["ads"]]
+    scores = [ad["score"] for ad in data["ads"]]
     assert scores == sorted(scores, reverse=True)
 
 

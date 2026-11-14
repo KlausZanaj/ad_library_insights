@@ -57,7 +57,7 @@ report folder:
     |---|---|
     | New | In this week's CSV, not in the previous one, `started` within the period |
     | Stopped | In the previous CSV, missing now |
-    | Still running | In both; report the ones with the highest `longevity_score` |
+    | Still running | In both; report the ones with the highest `score` and their verdict |
 
     A missing row is only evidence that an ad stopped. The page shows a
     sample, so confirm notable disappearances by opening the ad link.

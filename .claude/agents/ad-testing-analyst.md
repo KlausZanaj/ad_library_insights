@@ -18,7 +18,7 @@ The coordinator gives you the folder of a data pack. Read `overview.md` first, t
 1. **Pace**: new ads per week, launches week by week, share of ads started in the
    last 30 days. Steady, accelerating or slowing?
 2. **Survival**: set the number of recent ads against the number of strong ones
-   (score 70 and above). Many launches and few survivors means heavy testing with a
+   (verdict scaling or holding). Many launches and few survivors means heavy testing with a
    high cut rate; few launches and many old ads means a stable account.
 3. **Offer route**: which buttons, which destinations. One landing page or several,
    store or site, app install or lead form.

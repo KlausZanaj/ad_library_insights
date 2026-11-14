@@ -17,13 +17,14 @@ belong to other specialists.
 
 ## Method
 
-1. Sort what you see by evidence of staying power: days running and how many ads
-   reuse the text. A text used once on a recent ad is a test, not a finding.
+1. Sort what you see by evidence that the ad is paid for: its verdict and
+   reliability, people reached per day, days running, and how many different
+   creatives carry the text. A text on one recent ad is a test, not a finding.
 2. For the texts that hold, write down the hook as it is worded, the offer, the
    proof, and the order they come in. The hook, promise and proof labels in the file
    were assigned by rules; correct them when the text says otherwise.
-3. Compare the texts reused many times with those used once. What do the first have
-   that the second lack?
+3. Compare the texts carried by many creatives with those on a single one. What do
+   the first have that the second lack?
 4. Note what is absent: no price, no proof, no urgency can be as telling as their
    presence.
 
@@ -42,4 +43,4 @@ Close with one line: what the copy alone cannot tell.
 
 - No general advice on copywriting. Only what this data shows.
 - Never invent a number or a quote. If the pack does not contain it, say so.
-- Meta publishes no sales: longevity and reuse are clues that an ad pays, not proof.
+- Meta publishes no sales: scale and staying power are clues that an ad pays, not proof.

@@ -12,7 +12,9 @@ mcp = FastMCP(
     name="Ad Library Insights",
     instructions=(
         "Research competitor ads in the public Meta Ad Library for any keyword, advertiser "
-        "and country. Results are ranked by a longevity score (days running and copy reuse), "
+        "and country. Ads are grouped one per concept and rated on scale (people reached per day, or "
+        "impression position where reach is not published), staying power and creative investment, "
+        "each rating with a reliability level and a plain verdict, "
         "the best ads can be broken down into hook, promise, proof and CTA, and everything "
         "can be exported to Markdown and CSV. A whole advertiser can be analysed by page: "
         "find_advertiser_pages lists the pages matching a name, analyze_company loads every "
@@ -72,7 +74,7 @@ async def search_ads(country: str, query: str = "", advertiser: str = "",
                      active_status: str = "active", media_type: str = "all",
                      max_results: int = 25, scroll_rounds: int = 6, wait_seconds: int = 8,
                      use_cache: bool = True, deep_ads: int = 0, frames: bool = False) -> dict:
-    """Search the Ad Library and return ads ranked by longevity score.
+    """Search the Ad Library and return ads rated and ranked, one per concept.
 
     Args:
         country: two-letter ISO code of the country the ads are delivered in, or ALL.
@@ -131,8 +133,8 @@ async def analyze_company(country: str, page_id: str = "", name: str = "", deep_
         scroll_rounds: maximum scroll steps; 40 covers about 400 ads.
 
     The result carries "signals" (format mix, launches per week, languages, buttons,
-    destinations, copy patterns, reach and audience summaries) and, per ad, tier,
-    reach, audience, chosen locations and a needs_review flag.
+    destinations, copy patterns, reach and audience summaries) and, per ad, the rating
+    with its parts, reliability and verdict, reach, audience and chosen locations.
     """
     try:
         result = await service.research_company(_get_client(), country, page_id, name,
