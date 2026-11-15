@@ -20,7 +20,7 @@ CSV_COLUMNS = [
 
 
 VERDICTS = {"scaling": "Scaling", "holding": "Holding up", "testing": "Testing", "review": "Check",
-            "average": "Average"}
+            "average": "Average", "ended": "Ended"}
 
 
 def slugify(text: str) -> str:
@@ -256,9 +256,10 @@ def to_markdown(result: dict, copy: dict, top_n: int = 10, generated_on: date | 
         "- Data is what the public Ad Library page showed at generation time, for one keyword "
         "search and one country. It is a sample of the matching ads, not all of them.",
         "- The rating (0-100) adds three parts: scale (people reached per day in the country "
-        "searched, or the position by impressions where that is not published), staying power "
-        "(days running, full at 90) and creative investment (different creatives carrying the same "
-        "concept). Scale and creatives are measured against the other ads of this search. "
+        "searched, or the position by impressions where that is not published; up to 60 points), "
+        "staying power (days running, full at 90; up to 25) and creative investment (different "
+        "creatives carrying the same concept, full at 10; up to 15). Scale is measured against the "
+        "best ad of this search: 100 for it, 0 for an ad reaching a thousand times fewer people. "
         "Reliability is high when reach in the country searched was read, medium when only the "
         "impression position is known, low otherwise.",
         "- Reach per day divides the people reached in the country searched by the days the ad has "

@@ -299,7 +299,7 @@ function tableSection(r) {
     <td class="tier">${verdictCell(ad)}</td>
     <td class="r">${Math.round(ad.score)}</td><td class="r">${num(ad.days_running)}</td><td class="r">${num(ad.creatives)}</td>
     ${company ? '' : `<td class="fmt">${esc(t(`format.${ad.media_type || 'unknown'}`))}</td>`}${reachCells(ad)}</tr>`).join('');
-  const read = r.ads.filter((ad) => ad.reach).length;
+  const read = r.ads.reduce((sum, ad) => sum + (ad.reach ? 1 : 0) + Object.keys(ad.card_reach || {}).length, 0);
   return `<section><div class="sortbar"><span>${esc(t('sort.by'))}</span><div class="switch" role="group">${toggle('sort', ['score', 'perday', 'days'], S.sort, (v) => t(`sort.${v}`))}</div></div>
     <table class="ads${company ? '' : ' mixed'}"><thead><tr><th></th><th>${esc(t('t.ad'))}</th><th>${esc(t('t.tier'))}</th>
     <th class="r">${esc(t('t.score'))}</th><th class="r">${esc(t('t.days'))}</th><th class="r">${esc(t('t.creatives'))}</th>
@@ -476,8 +476,13 @@ function adDrawer(ad, r) {
   const points = ad.score_points || { scale: 0, staying: 0, creative: 0 };
   const weights = ad.score_weights || { scale: 60, staying: 25, creative: 15 };
   const where = region(r.country);
-  const rateDays = Math.max(ad.ad_days ?? ad.days_running ?? 0, 7);
+  const rateDays = ad.reach_days ?? Math.max(ad.ad_days ?? ad.days_running ?? 0, 7);
+  const cardsNote = ad.reach_total == null || (ad.cards || 1) < 2 ? ''
+    : (ad.reach_cards_read || 1) > 1 ? t('d.reach.cards', { k: ad.reach_cards_read, n: ad.cards }) : t('d.reach.cards.one', { n: ad.cards });
+  const ageNote = ad.ad_days != null && ad.days_running != null && ad.days_running - ad.ad_days >= 30
+    ? t('d.concept.age', { days: num(ad.days_running), ad: num(ad.ad_days) }) : '';
   const scaleWhy = ad.scale_basis === 'reach' ? t('d.scale.reach', { n: num(ad.reach_per_day), country: where, total: num(ad.reach_total) })
+    : ad.reach_per_day_estimate != null ? t('d.scale.estimate', { n: num(ad.reach_per_day_estimate), rank: num(ad.impression_rank) })
     : ad.scale_basis === 'impressions' ? t('d.scale.impressions', { n: num(ad.impression_rank) }) : t('d.scale.none');
   const reach = ad.reach, audience = ad.audience;
   const places = (list) => (list.length ? list.map((p) => esc(placeLabel(p))).join(', ') : esc(t('f.places.none')));
@@ -488,11 +493,12 @@ function adDrawer(ad, r) {
     const countries = reach.regions.flatMap((g) => g.countries).sort((a, b) => b.reach - a.reach).slice(0, 8);
     reachHtml = `<dl>
       ${ad.reach_total != null ? `<dt>${esc(t('d.reach.country', { country: where }))}</dt><dd>${num(ad.reach_total)}</dd>
-      <dt>${esc(t('d.reach.perday', { country: where }))}</dt><dd>${num(ad.reach_per_day)} <span class="muted">· ${esc(t('d.reach.perday.x', { total: num(ad.reach_total), days: num(rateDays) }))}</span></dd>` : ''}
+      <dt>${esc(t('d.reach.perday', { country: where }))}</dt><dd>${num(ad.reach_per_day)}${(ad.reach_cards_read || 1) > 1 ? '' : ` <span class="muted">· ${esc(t('d.reach.perday.x', { total: num(ad.reach_total), days: num(rateDays) }))}</span>`}</dd>` : ''}
       ${reach.eu_total != null ? `<dt>${esc(t('d.reach.total'))}</dt><dd>${num(reach.eu_total)}</dd>` : ''}
       ${reach.uk_total != null ? `<dt>${esc(t('d.reach.uk'))}</dt><dd>${num(reach.uk_total)}</dd>` : ''}</dl>
       ${ad.reach_in_market === false ? `<p class="smallnote">${esc(t('d.reach.elsewhere'))}</p>` : ''}
       ${ad.reach_total === 0 ? `<p class="smallnote">${esc(t('d.reach.zero', { country: where }))}</p>` : ''}
+      ${cardsNote ? `<p class="smallnote">${esc(cardsNote)}</p>` : ''}
       ${ad.reach_total ? `<p class="smallnote">${esc(t('d.reach.unique'))}</p>` : ''}
       ${countries.length > 1 ? `<h3 style="margin-top:16px">${esc(t('d.reach.bycountry'))}</h3><ul class="rows">${countries.map((c) => `<li><span>${esc(region(c.country))}</span><span>${num(c.reach)}</span></li>`).join('')}</ul>` : ''}`;
   }
@@ -511,7 +517,7 @@ function adDrawer(ad, r) {
         <dt>${esc(t('d.part.staying'))}</dt><dd>${esc(t('d.score.of', { n: num(Math.round(points.staying)), max: weights.staying }))} <span class="muted">· ${esc(t('d.staying.days', { days: num(ad.days_running) }))}</span></dd>
         <dt>${esc(t('d.part.creative'))}</dt><dd>${esc(t('d.score.of', { n: num(Math.round(points.creative)), max: weights.creative }))} <span class="muted">· ${esc(t('d.creative.n', { n: num(ad.creatives) }))}</span></dd>
       </dl>
-      <p class="smallnote">${esc(t(`reliability.${ad.reliability}.x`))}</p>${review}${recent}
+      <p class="smallnote">${esc(t(`reliability.${ad.reliability}.x`))}</p>${ageNote ? `<p class="smallnote">${esc(ageNote)}</p>` : ''}${review}${recent}
       <h3 style="margin-top:18px">${esc(t('d.variants'))}</h3>
       <dl><dt>${esc(t('d.variants.cards'))}</dt><dd>${num(ad.cards)}</dd>
         <dt>${esc(t('d.variants.copies'))}</dt><dd>${num(ad.copies_total)}</dd>

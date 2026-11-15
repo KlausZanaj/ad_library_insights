@@ -226,7 +226,7 @@ table.cmp td.num { font-variant-numeric: tabular-nums; }
 .ads td.tier, .ads td.fmt { white-space: nowrap; }
 .v-scaling, .v-holding { font-weight: 600; }
 .v-review { color: var(--warn); font-weight: 600; }
-.v-testing, .v-average { color: var(--muted); }
+.v-testing, .v-average, .v-ended { color: var(--muted); }
 .rel { display: block; color: var(--muted); font-size: .8rem; }
 .sortbar { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; color: var(--muted); }
 .tier-testing { color: var(--muted); }

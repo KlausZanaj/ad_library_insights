@@ -196,12 +196,13 @@ def test_guide_explains_the_rating_in_both_languages():
     strings = json.loads((STATIC / "strings.json").read_text(encoding="utf-8"))
     for language in ("it", "en"):
         words = strings[language]
-        assert all(f"guide.q{n}" in words and f"guide.a{n}" in words for n in range(1, 8))
+        assert all(f"guide.q{n}" in words and f"guide.a{n}" in words for n in range(1, 9))
         assert "60" in words["guide.a3"] and "25" in words["guide.a3"] and "15" in words["guide.a3"]
-        assert "50, 30" in words["guide.a4"]                      # the points when only the position is known
+        assert "50, 30" not in words["guide.a4"]                  # the points no longer change with what is known
         assert "60" in words["guide.example"] and "44" in words["guide.example"]
-        for verdict in ("scaling", "holding", "testing", "review", "average"):
+        for verdict in ("scaling", "holding", "testing", "review", "average", "ended"):
             assert words[f"verdict.{verdict}"] in words["guide.a5"]
+        assert "7" in words["guide.a3"] and "7" in words["guide.a5"]         # never over fewer than seven days
 
 
 def test_page_uses_only_texts_that_exist():
