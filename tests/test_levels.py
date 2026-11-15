@@ -338,6 +338,122 @@ def test_each_specialist_agent_reads_only_its_slice():
     assert "start, middle" in (folder / "ad-creative-analyst.md").read_text(encoding="utf-8")
 
 
+def _flat(text: str) -> str:
+    return re.sub(r"\s+", " ", text)
+
+
+def pack_texts(company, tmp_path) -> tuple[dict[str, str], set[str]]:
+    """Everything the code can write in a pack, per file, over the cases that change the wording.
+
+    Returns the text of each slice (all cases joined) and the names of the files of a plan pack.
+    """
+    import copy as copies
+    from ad_library_insights import signals
+
+    def refresh(result):
+        signals.annotate(result["ads"])
+        signals.refresh(result["signals"], result["ads"], result["country"])
+
+    cases = [(company, True), (company, False)]
+    trap = copies.deepcopy(company)                    # a one-day ad, an ad not delivered in the country, an unread one
+    trap["ads"][1].update(days_running=1, ad_days=1, newest_days=1)
+    trap["ads"][2]["reach"] = {**trap["ads"][2]["reach"], "country_reach": None}
+    refresh(trap)
+    cases.append((trap, True))
+    marked = copies.deepcopy(company)                  # ended, off topic, flagged, two ages, a video without stills
+    marked["ads"][2]["status"] = "inactive"
+    refresh(marked)
+    marked["ads"][0].update(query_match=False, ad_days=11, needs_review=True)
+    marked["signals"]["off_query"] = 1
+    marked["ads"][1].pop("frames", None)
+    marked["ads"][2]["frames"] = []
+    marked["ads"][2]["thumbnail_path"] = None
+    marked["changes"] = {"available": True, "previous_taken_at": "2026-11-06T09:00:00+00:00", "days_between": 7.0,
+                         "counts": {"new": 4, "new_texts": 2, "stopped": 3, "changed": 0},
+                         "survival": {"measurable": True, "groups": [
+                             {"age": "under 7 days", "listed_before": 4, "still_listed": 1, "stopped": 3}]}}
+    cases.append((marked, True))
+    unread = copies.deepcopy(company)                  # reach not read at all, then not published in the country
+    for ad in unread["ads"]:
+        ad.pop("reach", None)
+        ad.pop("card_reach", None)
+    refresh(unread)
+    cases.append((unread, False))
+    nowhere = copies.deepcopy(company)
+    for ad in nowhere["ads"]:
+        ad["reach"] = {**ad["reach"], "country_reach": None}
+        ad.pop("card_reach", None)
+    refresh(nowhere)
+    cases.append((nowhere, False))
+
+    texts = {key: "" for key in packs.SLICES}
+    for result, frames in cases:
+        for key, text in packs.sections(result, ads=3, frames=frames)[0].items():
+            texts[key] += _flat(text) + " "
+    made = briefs.prepare("plan", company, 3, True, CARD, "en", tmp_path / "packs", TODAY)
+    texts["project"] = _flat(Path(made["files"]["project"]).read_text(encoding="utf-8"))
+    files = {p.name for p in Path(made["folder"]).iterdir()}
+    return texts, files
+
+
+def _quoted(text: str) -> set[str]:
+    """What a file puts between backticks, outside its fenced examples."""
+    text = re.sub(r"```.*?```", "", text, flags=re.S)
+    return {_flat(token) for token in re.findall(r"`([^`]+)`", text) if "{" not in token}
+
+
+def test_specialists_quote_only_what_the_pack_writes(company, tmp_path):
+    # a specialist told to look for a line the pack never writes will invent it or miss the real one
+    texts, files = pack_texts(company, tmp_path)
+    for name, data_file in AGENTS.items():
+        body = (ROOT / ".claude" / "agents" / f"{name}.md").read_text(encoding="utf-8")
+        own = texts["overview"] + texts[data_file[:-3]]
+        for token in _quoted(body):
+            if token in files:
+                assert token in ("overview.md", data_file, packs.FRAMES_FOLDER), (name, token)
+            else:
+                assert token in own, (name, token)
+        for stale in ("one ad of the group", "local paths", "single use of the text", "thumbnail"):
+            assert stale not in body, (name, stale)
+    for name in ("ad-copy-analyst", "ad-creative-analyst"):
+        body = (ROOT / ".claude" / "agents" / f"{name}.md").read_text(encoding="utf-8")
+        assert "**Types**" in body and "Ad types" in body and "## Ad types" in texts["overview"]
+    reach = _flat((ROOT / ".claude" / "agents" / "ad-reach-analyst.md").read_text(encoding="utf-8"))
+    assert "Localisation" in reach and "added up" in reach and "seven at the least" in reach
+    testing = _flat((ROOT / ".claude" / "agents" / "ad-testing-analyst.md").read_text(encoding="utf-8"))
+    assert "State a survival or cut rate only from that table" in testing
+
+
+def test_level_skills_quote_only_what_the_code_makes(company, tmp_path):
+    texts, files = pack_texts(company, tmp_path)
+    everything = " ".join(texts.values())
+    tools = tool_names()
+    skills = {p.name for p in (ROOT / "skills").iterdir() if p.is_dir()}
+    for name in ("competitor-analysis", "competitor-plan"):
+        folder = ROOT / "skills" / name
+        for path in (folder / "SKILL.md", *sorted((folder / "references").glob("*.md"))):
+            for token in _quoted(path.read_text(encoding="utf-8")):
+                known = (token in files or token in AGENTS or token in skills or token in tools
+                         or token in briefs.LEVELS or token in everything)
+                assert known, (path.name, token)
+    plan = _flat((ROOT / "skills" / "competitor-plan" / "SKILL.md").read_text(encoding="utf-8"))
+    for step in ("Check before spending", "campaign structure", "creative pace", "Conversions API", "Use them as they are"):
+        assert step in plan, step
+    template = (ROOT / "skills" / "competitor-plan" / "references" / "plan-template.md").read_text(encoding="utf-8")
+    assert "copy used" not in template and "EU and UK ads read" not in template
+    analysis = _flat((ROOT / "skills" / "competitor-analysis" / "SKILL.md").read_text(encoding="utf-8"))
+    assert "which lenses confirm it" in analysis and "Give every ad one type" in analysis
+
+
+def test_skills_and_specialists_carry_no_example_of_a_sector():
+    # keyword, company and country are parameters: names from the saved searches stay in tests, docs and examples
+    names = {"kingshot", "zalando", "hoka", "decathlon", "flexora", "cappelletto", "gabrieli", "standing desk",
+             "scarpe", "fitness", "padel"}
+    for path in [*(ROOT / "skills").rglob("*.md"), *(ROOT / ".claude" / "agents").glob("*.md")]:
+        text = path.read_text(encoding="utf-8").casefold()
+        assert not [word for word in names if word in text], path
+
+
 def tool_names():
     async def names():
         async with Client(server.mcp) as client:
