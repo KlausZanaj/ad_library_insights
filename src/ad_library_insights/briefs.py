@@ -27,8 +27,12 @@ IDEAS = 5                          # ad ideas in a plan, and ads in the first te
 TEST_MULTIPLIER = 2.5              # spend allowed per test ad, in break-even CPAs (range 2-3)
 TEST_SHARE = 0.2                   # rule of thumb: the part of ad spend kept for testing new ads
 
-_ORDERS = re.compile(r"(\d+(?:[.,]\d+)?)\s*(?:ordini|orders|vendite|sales|acquisti|purchases)", re.I)
-_PERIODS = (("settiman", 7), ("week", 7), ("mese", 30), ("mensil", 30), ("month", 30))
+_ORDERS = re.compile(r"(?<![\d.,])(\d+(?:[.,]\d+)*)\s*(?:ordini|ordine|orders?|vendite|vendita|sales?|acquisti|acquisto|"
+                     r"purchases?)\b(.{0,14})", re.I)
+# the period is read only in the words right after the noun: "a day", "al mese", "/week", "per month"
+_PERIODS = (("giorn", 1), ("day", 1), ("daily", 1), ("dì", 1), ("settiman", 7), ("week", 7), ("mese", 30),
+            ("mensil", 30), ("month", 30))
+_RANGE = re.compile(r"\d\s*(?:-|–|—|\ba\b|\bto\b|\bo\b|\bor\b)\s*$", re.I)
 
 _T = {
     "en": {
@@ -304,15 +308,37 @@ _T = {
 }
 
 
+def _number(text: str) -> float | None:
+    """A figure as people write it: "12,5", "1.500", "1,500", "2.5". A separator before three digits is thousands."""
+    parts = re.split(r"[.,]", text)
+    if len(parts) == 1:
+        return float(text)
+    if all(len(part) == 3 for part in parts[1:]):
+        return float("".join(parts))
+    if len(parts) == 2:
+        return float(".".join(parts))
+    return None
+
+
 def orders_per_day(goal: str) -> float | None:
-    """The number of orders a day named in a goal such as "20 ordini al giorno", or None."""
-    found = _ORDERS.search(goal or "")
-    if not found:
+    """The number of orders a day named in a goal such as "20 ordini al giorno", or None.
+
+    None means "ask": the goal names no orders, no period right after them (a day, a week,
+    a month), a range, or more than one figure of orders. A wrong guess here would size
+    the whole budget of the plan, so anything unclear is not guessed.
+    """
+    goal = goal or ""
+    found = list(_ORDERS.finditer(goal))
+    if len(found) != 1:
         return None
-    orders = float(found.group(1).replace(",", "."))
-    rest = (goal or "")[found.end():].casefold()
-    days = next((span for word, span in _PERIODS if word in rest), 1)
-    return round(orders / days, 2) if orders > 0 else None
+    figure, after = found[0].group(1), found[0].group(2).casefold()
+    if _RANGE.search(goal[:found[0].start()]):
+        return None                                   # "20-30 orders a day": which one?
+    orders = _number(figure)
+    days = next((span for word, span in _PERIODS if word in after), None)
+    if not orders or orders <= 0 or days is None:
+        return None
+    return round(orders / days, 2)
 
 
 def test_numbers(project: dict, ideas: int = IDEAS, multiplier: float = TEST_MULTIPLIER,
@@ -322,6 +348,8 @@ def test_numbers(project: dict, ideas: int = IDEAS, multiplier: float = TEST_MUL
     ``pace`` is the competitor's new ads per week, when a search result is at hand.
     The goal figures are there only when the goal names a number of orders.
     """
+    if project["product_cost"] < 0 or project["price"] <= 0:
+        raise ValueError("price must be above zero and product cost cannot be negative")
     cpa = breakeven.breakeven_cpa(project["price"], project["product_cost"])
     if cpa <= 0:
         raise ValueError("the product cost leaves no margin: no test budget can be computed")

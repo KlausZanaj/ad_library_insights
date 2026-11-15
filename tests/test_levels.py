@@ -50,11 +50,21 @@ def test_test_budget_comes_from_break_even():
     assert "orders" not in briefs.test_numbers({**CARD, "goal": "Grow the brand"})
     with pytest.raises(ValueError):
         briefs.test_numbers({**CARD, "product_cost": 349.0})
+    with pytest.raises(ValueError):
+        briefs.test_numbers({**CARD, "product_cost": -10.0})         # a negative cost gave a break-even above the price
+    # a goal that cannot be read for sure gives no spend at the level of the goal: the plan asks for it
+    unclear = briefs.project_section({**CARD, "goal": "20-30 orders a day"}, "en")
+    assert "ask me for it" in unclear and "Goal of" not in unclear
 
 
 @pytest.mark.parametrize("goal, expected", [
     ("20 ordini al giorno", 20.0), ("140 orders a week", 20.0), ("600 vendite al mese", 20.0),
     ("Arrivare a 12,5 acquisti al giorno", 12.5), ("Farmi conoscere", None), ("", None),
+    # second review: these were read as 0.07, 0.05, 0.05, 1.67, 0.33, 600, 600 and 30 orders a day
+    ("2 orders a day in 3 months", 2.0), ("1.500 ordini al mese", 50.0), ("1,500 orders a month", 50.0),
+    ("50 ordini al giorno entro un mese", 50.0), ("10 ordini al giorno, oggi 2 vendite al mese", None),
+    ("al mese 600 vendite", None), ("600 orders a year", None), ("20-30 orders a day", None),
+    ("da 20 a 30 ordini al giorno", None), ("30 orders", None), ("100 orders/day", 100.0), ("2.5 sales a day", 2.5),
 ])
 def test_orders_per_day_are_read_from_the_goal(goal, expected):
     assert briefs.orders_per_day(goal) == expected
