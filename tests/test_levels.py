@@ -258,6 +258,9 @@ def test_analysis_brief_works_in_a_single_pass(company):
     assert "social media manager" not in text and "which passes confirm it" in text
     assert "Give every ad a type" in text and "compare only ads of the same age" in text
     assert "An estimate is not a figure." in text
+    assert "The reach of a concept is the sum of its ads that were read, up to three" in text
+    assert "Do not add reach across concepts" in text and "the reach of one of them" not in text
+    assert "do not divide a reach by the age of the concept" in text
     for heading in ("### Copy", "### Creative", "### Reach and audience", "### Testing and destinations"):
         assert heading in text
     assert text.count("\n1. ") >= 2 and "finding · evidence" in text
@@ -285,6 +288,12 @@ def test_plan_brief_starts_from_the_project(company):
     assert "Goal of 30 orders a day: at break-even the most to spend is 6,870 a day (30 × 229), 48,090 a week" in text
     assert "9,618 a week, enough for 16 new ads a week at 572.5 each" in text
     assert "Pace of Kingshot:" in text and "VAT, shipping, payment fees and returns are not included" in text
+    # the pace was counted on 5 ads of 194: the plan must not size production on it as if it were the whole account
+    assert "The list of Kingshot was read in part (5 ads of 194 active): the real pace is higher" in text
+    company["signals"]["ads_loaded"] = 194
+    assert "read in part" not in briefs.project_section(CARD, "en", company)
+    assert "letto in parte (5 annunci su 194 attivi)" in briefs.project_section(
+        CARD, "it", {**company, "signals": {**company["signals"], "ads_loaded": 5}})
     assert text.index("## Steps") < text.index("## My project") < text.index("## Numbers for the test") < text.index("## Data")
     assert "Five ad ideas for my product" in text and "Not copies" in text
     assert "Report for whoever decides: one page." in text

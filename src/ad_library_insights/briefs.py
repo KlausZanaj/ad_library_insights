@@ -82,8 +82,10 @@ _T = {
             "An estimate is not a figure. If something is your inference, call it a hypothesis and say how to check it.",
             "An ad on air for less than 7 days is too recent to judge: do not build a conclusion on it.",
             "Reach counts unique people, who grow slower than days: read the total next to the daily figure.",
-            "Reach is per ad, and for a group of ads sharing one text it is the reach of one of them. "
-            "Do not add reach across ads: the same person can be counted more than once.",
+            "The reach of a concept is the sum of its ads that were read, up to three; the data says how many "
+            "of how many. Do not add reach across concepts: the same person can be counted more than once.",
+            "When a concept shows two ages (the concept and its most shown ad), the reach belongs to the ads "
+            "that were read: do not divide a reach by the age of the concept.",
             "Hook, promise and proof labels in the data were assigned by rules: correct them when the text says otherwise.",
             "If the data does not support a conclusion, say what is missing instead of guessing.",
         ],
@@ -149,6 +151,8 @@ _T = {
                           "before computing spend at the level of the goal.",
         "numbers.pace": "Pace of {name}: {pace} new ads a week among those still on air (ads already stopped "
                         "are not visible, so the real pace is the same or higher)",
+        "numbers.pace.part": "The list of {name} was read in part ({loaded} ads of {active} active): the real "
+                             "pace is higher than this figure. Do not size my production on it without saying so.",
         "numbers.costs": "These numbers use product cost only. VAT, shipping, payment fees and returns are not "
                          "included: if the price includes VAT or those costs are not in the product cost, the "
                          "real break-even is lower. Say so in the plan and ask me for the values.",
@@ -212,8 +216,11 @@ _T = {
             "Una stima non è un dato. Se una cosa è una tua deduzione, chiamala ipotesi e scrivi come verificarla.",
             "Un annuncio acceso da meno di 7 giorni è troppo recente per giudicare: non costruirci sopra una conclusione.",
             "La copertura conta persone uniche, che crescono meno dei giorni: leggi il totale accanto al dato al giorno.",
-            "La copertura è per annuncio, e per un gruppo di annunci con lo stesso testo è quella di uno "
-            "solo. Non sommare la copertura di più annunci: la stessa persona può essere contata più volte.",
+            "La copertura di un concetto è la somma dei suoi annunci letti, fino a tre; nei dati è scritto "
+            "quanti su quanti. Non sommare la copertura di concetti diversi: la stessa persona può essere "
+            "contata più volte.",
+            "Quando un concetto mostra due età (quella del concetto e quella del suo annuncio più mostrato), "
+            "la copertura è degli annunci letti: non dividere una copertura per l'età del concetto.",
             "Le etichette hook, promise e proof nei dati sono assegnate da regole: correggile quando il testo dice altro.",
             "Se i dati non reggono una conclusione, indica cosa manca invece di tirare a indovinare.",
         ],
@@ -282,6 +289,9 @@ _T = {
                           "chiedimelo prima di calcolare la spesa a regime.",
         "numbers.pace": "Ritmo di {name}: {pace} annunci nuovi a settimana tra quelli ancora attivi (quelli già "
                         "spenti non si vedono, quindi il ritmo vero è uguale o più alto)",
+        "numbers.pace.part": "L'elenco di {name} è stato letto in parte ({loaded} annunci su {active} attivi): "
+                             "il ritmo vero è più alto di questo numero. Non dimensionare la mia produzione su "
+                             "questo dato senza dirlo.",
         "numbers.costs": "Questi numeri usano solo il costo del prodotto. IVA, spedizione, commissioni di pagamento "
                          "e resi non sono compresi: se il prezzo è IVA inclusa o quei costi non sono nel costo del "
                          "prodotto, il pareggio reale è più basso. Scrivilo nel piano e chiedimi i valori.",
@@ -353,7 +363,8 @@ def _money(value) -> str:
 def project_section(project: dict, lang: str, result: dict | None = None) -> str:
     """The project card and the numbers computed from it, as Markdown."""
     words = _T[lang]
-    pace = ((result or {}).get("signals") or {}).get("new_per_week")
+    found = (result or {}).get("signals") or {}
+    pace = found.get("new_per_week")
     raw = test_numbers(project, pace=pace)
     numbers = {key: _money(value) for key, value in raw.items()}
     values = [project["product"], _money(float(project["price"])), _money(float(project["product_cost"])),
@@ -367,6 +378,9 @@ def project_section(project: dict, lang: str, result: dict | None = None) -> str
         lines.append(f"- {words['numbers.nogoal']}")
     if pace is not None:
         lines.append("- " + words["numbers.pace"].format(name=packs.subject_name(result), pace=numbers["pace"]))
+        if packs.partly_loaded(found):
+            lines.append("- " + words["numbers.pace.part"].format(
+                name=packs.subject_name(result), loaded=_money(found["ads_loaded"]), active=_money(found["active_ads"])))
     lines.append(f"- {words['numbers.costs']}")
     return "\n".join(lines) + "\n"
 
