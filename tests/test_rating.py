@@ -568,3 +568,77 @@ def test_hard_case_fewer_than_five_ads_read_get_no_label_that_compares_them():
     assert not {"scaling", "review"} & {item["verdict"] for item in four.values()}
     six = by_id(with_reach(rating.group_concepts(market(), AS_OF), REACH))
     assert six["giant"]["verdict"] == "scaling" and six["forgotten"]["verdict"] == "review"
+
+
+# --- what the second independent review found --------------------------------------------
+
+def _without_reach(ranked, library_id, total):
+    """The same search with the reach of one concept taken away, rated again."""
+    import copy
+    again = copy.deepcopy(ranked)
+    twin = next(item for item in again if item["library_id"] == library_id)
+    twin.pop("reach", None)
+    twin.pop("card_reach", None)
+    return by_id(signals.annotate(again, library_total=total))[library_id]
+
+
+@pytest.mark.parametrize("name, total, allowed", [("scarpe_da_corsa_it", 50_001, 0), ("kingshot_it", 216, 1)])
+def test_not_reading_an_ad_never_helps_it_on_the_saved_searches(name, total, allowed):
+    # Before: 22 of 47 read concepts scored higher once their reach was taken away (Kingshot 2888031284866220:
+    # 18 people a day read, 2,492 estimated from its position, rating from 36.4 to 79.3). The estimate is now
+    # capped at the weakest ad read, so only that one ad can gain, and only up to the next weakest.
+    ranked = saved(name)
+    read = [item for item in ranked if item["reliability"] == "high"]
+    weakest = min(read, key=lambda item: item["reach_per_day"])
+    gained = [item["library_id"] for item in read
+              if _without_reach(ranked, item["library_id"], total)["score"] > item["score"]]
+    assert len(gained) <= allowed and set(gained) <= {weakest["library_id"]}
+
+
+def test_an_estimate_is_never_above_the_weakest_ad_that_was_read():
+    # "fresh" is seven days old and sits between ads that reach many people: its position says nothing sure
+    known = {key: REACH[key] for key in ("giant", "steady", "shop", "forgotten", "small")}
+    ranked = by_id(with_reach(rating.group_concepts(market(), AS_OF), known))
+    unread = ranked["fresh"]
+    lowest = min(item["score_parts"]["scale"] for item in ranked.values() if item["reliability"] == "high")
+    assert unread["reliability"] == "medium" and unread["score_parts"]["scale"] <= lowest
+    assert unread["reach_per_day_estimate"] <= min(ranked[key]["reach_per_day"] for key in known)
+
+
+def test_an_ad_too_recent_to_judge_does_not_set_the_scale_for_the_others():
+    # one day on air and seven million people: divided by seven it would be the best ad and push a
+    # hundred-day ad with 500,000 people from scale 100 down to 23
+    cards = [ad("old", started="2026-03-21", body="Old text", advertiser="old", impression_rank=1),
+             ad("mid", started="2026-04-01", body="Mid text", advertiser="mid", impression_rank=2),
+             ad("low", started="2026-04-10", body="Low text", advertiser="low", impression_rank=3),
+             ad("burst", started="2026-06-28", body="Burst text", advertiser="burst", impression_rank=4)]
+    ranked = by_id(with_reach(rating.group_concepts(cards, AS_OF), {"old": 500_000, "mid": 90_000, "low": 20_000,
+                                                                    "burst": 7_000_000}))
+    assert ranked["burst"]["too_recent"] and ranked["burst"]["verdict"] == "testing"
+    assert ranked["old"]["score_parts"]["scale"] == 100.0 and ranked["burst"]["score_parts"]["scale"] == 100.0
+
+
+def test_reach_without_a_start_date_is_kept_but_gives_no_rate():
+    # an unknown age was counted as seven days: 100,000 people became 14,286 a day and the best ad of the search
+    cards = market() + [ad("undated", started=None, body="Undated text", advertiser="undated", impression_rank=7)]
+    ranked = by_id(with_reach(rating.group_concepts(cards, AS_OF), {**REACH, "undated": 100_000}))
+    undated = ranked["undated"]
+    assert undated["reach_total"] == 100_000 and undated.get("reach_per_day") is None
+    assert undated["reliability"] != "high"
+    assert ranked["giant"]["score_parts"]["scale"] == 100.0
+
+
+def test_odd_figures_do_not_break_or_bend_the_rating():
+    ranked = rating.group_concepts(market(), AS_OF)
+    ranked[0]["reach"] = {"available": True, "country": "IT", "country_reach": float("inf")}
+    ranked[1]["days_running"] = -5
+    rated = by_id(signals.annotate(ranked))
+    assert all(0 <= item["score"] <= 100 and item["score_parts"]["staying"] >= 0 for item in rated.values())
+    assert signals.market_total(ranked[0]["reach"]) is None
+    # no more than three ads of a concept are added up, whatever is handed in
+    one = rating.group_concepts([ad(f"c{n}", body="One text", impression_rank=n, video_url=f"https://v/{n}.mp4")
+                                 for n in range(1, 7)], AS_OF)
+    figure = {"available": True, "country": "IT", "country_reach": 1_000}
+    one[0]["reach"] = figure
+    one[0]["card_reach"] = {f"c{n}": figure for n in range(2, 7)}
+    assert signals.annotate(one)[0]["reach_total"] == 3_000 and one[0]["reach_cards_read"] == 3

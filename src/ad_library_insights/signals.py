@@ -10,6 +10,7 @@ They feed the rating and describe a search as a whole:
 from __future__ import annotations
 
 import json
+import math
 import re
 import statistics
 from collections import Counter, defaultdict
@@ -111,7 +112,7 @@ def audience_breadth(audience: dict | None, reach: dict | None) -> dict | None:
 
 def _people(value) -> int | None:
     """A reach figure as a whole number of people, or None when it is not a usable number."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or value != value:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
         return None
     return max(0, int(value))
 
@@ -147,7 +148,7 @@ def annotate(ranked: list[dict], use_impressions: bool = True, library_total: in
         own_days = ad.get("ad_days") if ad.get("ad_days") is not None else ad.get("days_running")
         readings = [(ad["library_id"], reach, own_days)]
         readings += [(card_id, found, (cards.get(card_id) or {}).get("days"))
-                     for card_id, found in (ad.get("card_reach") or {}).items()]
+                     for card_id, found in (ad.get("card_reach") or {}).items()][:rating.CARDS_PER_CONCEPT - 1]
         for key in ("reach_total", "reach_per_day", "reach_elsewhere_per_day", "reach_in_market",
                     "reach_cards_read", "reach_points", "reach_days"):
             ad.pop(key, None)
@@ -156,7 +157,9 @@ def annotate(ranked: list[dict], use_impressions: bool = True, library_total: in
         if known:
             ad["reach_in_market"] = True
             ad["reach_total"] = sum(total for _, total, _ in known)
-            ad["reach_per_day"] = round(sum(total / rating.rate_days(days) for _, total, days in known))
+            dated = [(total, days) for _, total, days in known if days is not None]
+            if dated:                       # without a start date there is no rate: the total stays, unrated
+                ad["reach_per_day"] = round(sum(total / rating.rate_days(days) for total, days in dated))
             ad["reach_cards_read"] = len(known)
             ad["reach_days"] = rating.rate_days(own_days)
             # what the estimate for unread ads is calibrated on: position and reach of each card read

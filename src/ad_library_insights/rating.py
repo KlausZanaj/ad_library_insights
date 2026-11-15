@@ -23,11 +23,15 @@ things can be read from it, and they are kept apart:
 
 Scale is measured against the best ad of the same search, on a log scale, because
 reach runs from hundreds to millions: 100 for the ad that reaches the most people per
-day, 0 for one that reaches a thousand times fewer. The three parts always weigh the
-same (60, 25, 15), so an ad whose reach was not read can never gain from that. Every
-rating carries a reliability: high when reach was read, medium when scale rests on
-the impression position, low when neither is known. The labels that compare ads with
-each other ("scaling", "review") are given only on reach that was read.
+day, 0 for one that reaches a thousand times fewer. An ad younger than seven days is
+too recent to judge and does not set that yardstick. The three parts always weigh the
+same (60, 25, 15). An ad whose reach was not read gets a prudent estimate from its
+position in the list: never more than the lowest reach read among the ads listed
+before it, and never a scale above the lowest scale among the ads that were read, so
+that missing data is not an advantage. Every rating carries a reliability: high when
+reach was read, medium when scale rests on the impression position, low when neither
+is known. The labels that compare ads with each other ("scaling", "review") are given
+only on reach that was read.
 
 The older longevity score (days and copy reuse) is still computed and shown in the
 detail of an ad. It no longer decides the ranking.
@@ -271,9 +275,11 @@ def _reach_by_position(ranked: list[dict]):
     """Estimate reach in the searched country from the impression position.
 
     It uses the cards whose reach in that country was read (the same figures the scale
-    uses). The list is ordered by total impressions, so between two cards with known
-    reach an ad is given a reach in between (on a log scale); past the last known one it
-    falls off in proportion to the position. Returns a function, or None when nothing is known.
+    uses). The list is ordered by total impressions, in every country together, so a
+    position says little about one country: an ad between two that reach many people
+    there can reach almost nobody. The estimate is therefore the prudent one: the lowest
+    reach read among the cards listed before it; past the last card read it falls off in
+    proportion to the position. Returns a function, or None when nothing is known.
     """
     known = sorted((rank, total) for ad in ranked for rank, total in ad.get("reach_points") or []
                    if rank and total > 0)
@@ -283,16 +289,10 @@ def _reach_by_position(ranked: list[dict]):
     def estimate(rank: int) -> float:
         before = [point for point in known if point[0] <= rank]
         after = [point for point in known if point[0] >= rank]
-        if before and after:
-            (r0, t0), (r1, t1) = before[-1], after[0]
-            if r0 == r1:
-                return float(t0)
-            share = (rank - r0) / (r1 - r0)
-            return math.exp(math.log(t0) + share * (math.log(t1) - math.log(t0)))
-        if after:
+        if not before:
             return float(after[0][1])
-        r0, t0 = before[-1]
-        return t0 * r0 / rank
+        lowest = float(min(total for _, total in before))
+        return lowest if after else lowest * before[-1][0] / rank
 
     return estimate
 
@@ -335,7 +335,10 @@ def evaluate(ranked: list[dict], use_impressions: bool = True, library_total: in
     rates = [_market_reach(ad) for ad in ranked if _market_reach(ad)]
     everything_read = bool(rates) and len(rates) == len(ranked)
     reach_scale = len(rates) >= MIN_REACH_SAMPLE or everything_read
-    best = max(rates) if reach_scale else 0
+    # an ad of a few days is too recent to judge: it does not set the yardstick for the others
+    settled = [_market_reach(ad) for ad in ranked if _market_reach(ad) and not too_recent(ad.get("days_running"))]
+    best = max(settled or rates) if reach_scale else 0
+    lowest_read = min(rates) if reach_scale else 0
     estimate_reach = _reach_by_position(ranked) if reach_scale and use_impressions else None
     positions = [ad["impression_rank"] for ad in ranked if ad.get("impression_rank")]
     listed = max([library_total or 0, *positions, 1])
@@ -343,14 +346,16 @@ def evaluate(ranked: list[dict], use_impressions: bool = True, library_total: in
     rated = []
     for ad in ranked:
         days = ad.get("days_running")
-        staying = round(100 * min((days or 0) / HORIZON_DAYS, 1.0), 1)
+        staying = round(100 * min(max(days or 0, 0) / HORIZON_DAYS, 1.0), 1)
         creative = round(100 * min(math.log(max(ad.get("creatives", 1), 1)) / math.log(FULL_CREATIVES), 1.0), 1)
         ad.pop("reach_per_day_estimate", None)
         rank = ad.get("impression_rank")
         if reach_scale and _market_reach(ad) is not None:
             scale, basis, reliability = _scale_from_rate(_market_reach(ad), best), "reach", "high"
         elif estimate_reach and rank:
-            guess = estimate_reach(rank) / rate_days(ad.get("ad_days") if ad.get("ad_days") is not None else days)
+            # never more than the weakest ad that was read: not reading an ad must not help it
+            guess = min(estimate_reach(rank) / rate_days(ad.get("ad_days") if ad.get("ad_days") is not None else days),
+                        lowest_read)
             ad["reach_per_day_estimate"] = round(guess)
             scale, basis, reliability = _scale_from_rate(guess, best), "impressions", "medium"
         elif use_impressions and rank:
