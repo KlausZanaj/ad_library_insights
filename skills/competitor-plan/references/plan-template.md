@@ -3,6 +3,10 @@
 Replace every `{placeholder}`. Page one is the report: it must stand on its
 own. Everything after it is there to be consulted, not read in order.
 
+Numbers marked "from the project file" are copied from the project file of
+the pack as they are written there. Numbers of the competitor are copied from
+the pack, with the country they refer to.
+
 ```markdown
 # {Product}: plan against {competitor}, {country}, {date}
 
@@ -20,23 +24,35 @@ own. Everything after it is there to be consulted, not read in order.
 
 | | |
 |---|---:|
-| Margin per order | {margin} |
-| Break-even CPA | {cpa} |
+| Margin per order (from the project file) | {margin} |
+| Break-even CPA (from the project file) | {cpa} |
 | Budget, first test round ({n} ads) | up to {round_total} |
 | Cut an ad after spending | {cut_low} to {cut_high} with no add to cart, no sale |
-| {Competitor}: active ads / new per week | {active} / {new_per_week} |
-| {Competitor}: median reach per day (EU and UK ads read) | {reach_per_day} |
+| Spend at the level of the goal, at break-even | {daily_max} a day, {weekly_max} a week; or "goal has no number of orders" |
+| {Competitor}: active ads / new per week among those still on air | {active} / {new_per_week}, counted on {loaded} ads loaded |
+| {Competitor}: people reached per day in {country}, median per concept | {median} over {k} concepts read; or "not published" |
 
 ## Risks and what we do not know
 
 - {The assumption the plan leans on most, and how it gets checked.}
-- {What the competitor data cannot show: spend, sales.}
+- {What the competitor data cannot show: spend, sales; and what was missing in this pack.}
 
 ## Next seven days
 
 | Day | What | Who |
 |---|---|---|
-| {day} | {action} | {owner} |
+| {day} | {action} | {You, or the person named; in brackets to whom it can be handed over} |
+```
+
+## Check before spending
+
+```markdown
+## Check before spending
+
+- **Pixel and Conversions API:** {both active | what is missing}.
+- **Purchase event:** {arrives with value and currency | what is missing}.
+- **How to verify:** {a test purchase, and where to see it in Events Manager}.
+- **If it fails:** {what to fix first}. The plan starts only after this check passes.
 ```
 
 ## Ad ideas
@@ -46,7 +62,8 @@ Five ideas. One table row each is not enough; use this block per idea.
 ```markdown
 ### Idea {n}: {angle in a few words}
 
-- **Borrows from:** {the pattern, in one line} (ad {library_id}, {days} days, copy used {n} times)
+- **Type:** {one of the ad types listed in the overview of the pack}
+- **Borrows from:** {the pattern, in one line} (ad {library_id}: {days} days, {creatives} creatives, {people per day in the country | reach not published})
 - **Hook:** {first line, or what the first three seconds show}
 - **Development:** {point 1} / {point 2} / {point 3}
 - **Proof to show:** {review, number, demonstration, guarantee: what exactly}
@@ -58,6 +75,16 @@ Five ideas. One table row each is not enough; use this block per idea.
 An idea is not a copy when it keeps the mechanism (a question that names the
 problem, a demonstration in the first seconds, a guarantee at the close) and
 changes everything specific: words, brand, claims, numbers.
+
+## Campaign structure
+
+```markdown
+## Campaign structure
+
+- **Audience:** {broad | narrow}, because {what the competitor does: age range, gender, locations, breadth; or "audience data missing"}.
+- **Campaigns and ad sets:** {how many, and what each is for}.
+- **Where tests run, where winners go:** {rule}.
+```
 
 ## Test plan
 
@@ -71,6 +98,7 @@ changes everything specific: words, brand, claims, numbers.
 - **Raise the budget:** {rule, for example +20% every two days while cost per purchase stays under {cpa}}.
 - **If nothing holds:** {what changes first: offer, landing page, or audience, and why in that order}.
 - **Round 2:** {what the winners of round 1 are varied on}.
+- **New creatives per week:** {number}. {Competitor} launches {new_per_week} a week among the ads still on air{, list read in part: the real pace is higher}; the test share at the level of the goal carries {capacity}; one person can keep up {number}. {The calculation.}
 ```
 
 ## Appendix

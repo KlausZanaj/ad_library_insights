@@ -1,7 +1,7 @@
 ---
 name: competitor-analysis
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
   category: AdvertisingResearch
 description: >-
   Explains why a competitor gets the reach it gets on Meta, from its own ads:
@@ -17,8 +17,9 @@ description: >-
 # Competitor Analysis
 
 The program collects the data with plain code. This skill is the reading: four
-specialists look at one slice each, then their findings are joined into one
-answer backed by evidence. A generic summary is a failed analysis.
+specialists look at one slice each, then you join their findings into one
+answer backed by evidence. A summary that would fit any advertiser is a failed
+analysis.
 
 ## Workflow
 
@@ -34,18 +35,32 @@ answer backed by evidence. A generic summary is a failed analysis.
     credits, so promise no percentage. Offer the cheaper setting (fewer ads,
     no stills). Continue only when they confirm.
 
-3.  **Collect.** Call `prepare_analysis` with level `analysis`. It returns a
-    folder with `brief.md` and one data file per specialist. Do not paste the
-    files into the conversation; pass the folder path on.
+3.  **Collect.** Call `prepare_analysis` with level `analysis`. It writes a
+    pack and returns its folder. Inside: `brief.md`, `overview.md`, one data
+    file per specialist, `manifest.json` and, when stills were asked for, the
+    pictures in the folder `frames`. Do not paste the files into the
+    conversation; pass the folder path on. If the call returns no pack, tell
+    the user what it says and stop.
 
-4.  **Read through four lenses.**
+4.  **Read `overview.md` yourself.** It is short. It says how the rating
+    works, what each verdict means, the list of ad types, and what limits this
+    pack. Three lines change how everything else is read:
 
-    | Lens | Sub-agent | File |
-    |---|---|---|
-    | Copy | `ad-copy-analyst` | `copy.md` |
-    | Creative | `ad-creative-analyst` | `creative.md` and the pictures it lists |
-    | Reach and audience | `ad-reach-analyst` | `reach.md` |
-    | Testing and destinations | `ad-testing-analyst` | `testing.md` |
+    -   `NO REACH IN`: reach in the country searched is not published. The
+        analysis then explains what the advertiser runs and for how long, not
+        how many people it reaches, and it says so in the answer.
+    -   `Reach in`: for how many of the concepts the reach was read.
+    -   `do not show the words searched`: a keyword search brought back ads
+        that may be off topic.
+
+5.  **Read through four lenses.**
+
+    | Lens | Sub-agent | File | Returns |
+    |---|---|---|---|
+    | Copy | `ad-copy-analyst` | `copy.md` | findings, and a type per ad from the text |
+    | Creative | `ad-creative-analyst` | `creative.md` and the pictures in `frames` | findings, and a type per ad from the pictures |
+    | Reach and audience | `ad-reach-analyst` | `reach.md` | findings on scale, audience and localisation |
+    | Testing and destinations | `ad-testing-analyst` | `testing.md` | findings on pace, survival and destinations |
 
     -   **With sub-agents:** start the four in parallel. Give each the pack
         folder and the language to answer in. Each reads `overview.md` and
@@ -54,14 +69,34 @@ answer backed by evidence. A generic summary is a failed analysis.
     -   **Without sub-agents:** read `brief.md` and follow it. It holds the
         same four passes and the data in one text.
 
-5.  **Join the findings.** Follow the
-    [template](references/analysis-template.md). Lead with the answer, then
-    the causes ordered by weight. A cause backed by two lenses (the same hook
-    in the longest-running copy and in the opening still of the most-reached
-    video) outranks one seen through a single lens. Drop findings that
-    contradict each other only after saying which evidence is stronger.
+6.  **Join the findings.** Follow the
+    [template](references/analysis-template.md).
 
-6.  **State the limits** as the template asks, then stop. Offer the plan
+    -   Lead with the answer, then the causes ordered by weight.
+    -   A fact two specialists confirm (the same hook in the copy that holds
+        and in the start still of the most reached video) weighs more than
+        one seen through a single lens. Next to each cause write which
+        lenses confirm it. A fact seen through one lens stays, marked as such.
+    -   Give every ad one type. When copy and creative disagree, the picture
+        decides if it was looked at; otherwise keep the type from the text
+        and mark it "to confirm".
+    -   When two findings contradict each other, say which evidence is
+        stronger before dropping one.
+
+7.  **Check the answer against the pack before delivering.**
+
+    -   Every number in the answer is written in a file of the pack, with
+        the same meaning: people reached in the country searched are not the
+        EU total, and a position by impressions is not a number of people.
+    -   No conclusion rests on an ad marked `too recent to judge`.
+    -   Survival or cut rates appear only if `testing.md` has the table
+        under `Survival`. If it says `NOT MEASURABLE`, the answer says that
+        it cannot be measured yet and why.
+    -   The launch pace is quoted with what it was counted on. When
+        `the list was read in part`, say that the real pace is higher.
+    -   Anything you inferred is called a hypothesis, with the way to check it.
+
+8.  **State the limits** as the template asks, then stop. Offer the plan
     (`competitor-plan`) only if the user has a product of their own to apply
     this to.
 
@@ -70,9 +105,11 @@ answer backed by evidence. A generic summary is a failed analysis.
 -   Every claim carries a number or a quote from the pack, with the ad id.
 -   Meta publishes no spend and no sales. Scale and staying power are clues
     that an ad pays, not proof. Never state returns.
--   Reach exists only for ads delivered in the EU or the UK, per ad. Where it
-    is missing, say so and work from copy and dates.
+-   Reach is people reached in the country searched. Meta publishes it only
+    for ads delivered in the EU or the UK. Inside one concept the ads read
+    are added up; concepts are never added to each other.
+-   An estimate is never written as a figure.
 -   If stills were not collected, say that the creative reading rests on
-    thumbnails, formats and copy.
+    formats and copy.
 -   Do not re-run the search to "check": the pack is the data for this
     analysis. A fresh search is a new, separately confirmed step.
