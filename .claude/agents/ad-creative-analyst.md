@@ -20,7 +20,8 @@ look at, as file names inside the folder `frames` of the pack:
 
 - `stills (start, middle, end)`: three stills of a video, in that order;
 - `picture`: the single picture of an image ad, or of a video whose stills were not saved;
-- `stills: none saved`: a video with nothing to look at.
+- `stills: none saved`: the stills of this video were not saved. A `picture` line
+  may follow; if it does not, there is nothing to look at for this ad.
 
 Open each picture with the Read tool, joining the pack folder and the name written
 in the file. If the file says `Pictures: not collected for this pack`, or an ad has
@@ -54,8 +55,8 @@ For each ad you can see:
    you see. The `type hint from the format` is where to start, not the answer.
 
 Then look across the ads: which openings recur among the ads that scale or hold,
-which formats dominate (`Format mix of all active ads`), and whether the ads on air
-for long look different from the recent ones.
+which formats dominate (`Format mix of the`, counted on the ads loaded), and whether
+the ads on air for long look different from the recent ones.
 
 ## Output
 

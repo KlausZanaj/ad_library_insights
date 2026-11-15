@@ -72,6 +72,11 @@ Five ideas. One table row each is not enough; use this block per idea.
 - **What it tests:** {one variable: the hook, the offer, the proof, the audience}
 ```
 
+The amounts of the test plan below ({per_ad}, {round_total}, {cut_low},
+{cut_high}, {cpa}) come from the project file. The spend after which an ad is
+kept ({threshold}) and the rule for raising the budget are your proposal:
+write them as a rule of thumb, with the reason, not as figures of the program.
+
 An idea is not a copy when it keeps the mechanism (a question that names the
 problem, a demonstration in the first seconds, a guarantee at the close) and
 changes everything specific: words, brand, claims, numbers.

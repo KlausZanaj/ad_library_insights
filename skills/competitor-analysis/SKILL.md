@@ -29,7 +29,12 @@ analysis.
 
 2.  **Show what it will use and get a yes.** Call `estimate_consumption` with
     level `analysis`, the number of ads (10, 20 or 50) and whether video
-    stills are wanted. Tell the user the number of ads, the number of
+    stills are wanted. That number is how many of the most shown ads are
+    opened to read their reach; several of them can belong to one concept, so
+    the pack lists that many concepts and says for how many the reach was
+    read. With a number too low for the advertiser, fewer than five concepts
+    are read and no ad can be called scaling or flagged for review: say so
+    and offer the next size. Tell the user the number of ads, the number of
     pictures, the rough size and the band (low, medium, high), and that it is
     an estimate: limits depend on their plan and model and are not counted in
     credits, so promise no percentage. Offer the cheaper setting (fewer ads,
@@ -91,7 +96,9 @@ analysis.
     -   No conclusion rests on an ad marked `too recent to judge`.
     -   Survival or cut rates appear only if `testing.md` has the table
         under `Survival`. If it says `NOT MEASURABLE`, the answer says that
-        it cannot be measured yet and why.
+        it cannot be measured and why.
+    -   A count from the table `On air now, by age` is a count of concepts,
+        not of ads.
     -   The launch pace is quoted with what it was counted on. When
         `the list was read in part`, say that the real pace is higher.
     -   Anything you inferred is called a hypothesis, with the way to check it.

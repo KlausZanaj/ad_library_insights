@@ -46,8 +46,10 @@ Then read `reach.md`. The other data files belong to the other specialists.
 
 1. **Scale.** Order the concepts by people per day in the country searched and set
    that against days and total. Do the oldest concepts also reach the most per day,
-   or are they small and steady? Use the lines under `Across the` for the median and
-   the best: concepts are never added to each other.
+   or are they small and steady? Use the lines under `Across the` for the middle
+   concept and for the two leaders (`Most people per day`, most people in all): each
+   figure there is written with the concept it belongs to, and concepts are never
+   added to each other.
 2. **Audience.** Age span, gender, how many locations, whole countries or regions
    and cities, exclusions (`Audience over the`). Broad or narrow, and is it the same
    on every ad?
@@ -55,7 +57,8 @@ Then read `reach.md`. The other data files belong to the other specialists.
    against the countries reached. One ad translated or different ads per country,
    and where delivery really goes (`Where delivery goes`), set against the
    locations targeted.
-4. **Flags.** What the concepts flagged for review have in common.
+4. **Flags.** If a concept in the table is flagged for review, what it has in
+   common with the others on air for long. Most packs hold none.
 
 ## Output
 

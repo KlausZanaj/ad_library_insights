@@ -62,10 +62,16 @@ Pictures: {looked at for n ads | not collected}.
 - Type is one of the types listed in the overview of the pack, or "other"
   with three words.
 
-## Strength, used the same way by every lens
+## Strength of a cause
+
+Each specialist gives a strength to its own findings, by the rule written in
+its file. When you join them into causes:
 
 | Strength | When |
 |---|---|
-| High | Several concepts that hold or scale, rated with high reliability, show it; or two lenses agree |
-| Medium | One such concept, or several recent ones |
-| Low | A single recent ad, a rating of medium or low reliability on its own, or an inference with no direct number |
+| High | One lens rates the finding high and a second lens confirms it |
+| Medium | One lens rates it high and no other confirms it; or two lenses rate it medium |
+| Low | Everything else: one lens at medium or low, or an inference with no direct number |
+
+Where the reach in the country searched is not published, no cause is High:
+the ratings behind it are of medium reliability at best.

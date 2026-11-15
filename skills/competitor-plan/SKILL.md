@@ -92,8 +92,9 @@ the means of the person who has to carry it out.
 
 11. **Set up the weekly follow-up.** Use `weekly-competitor-report` for the
     recurring report and `what_changed` to see new, stopped and changed ads
-    between searches. A second search of the same company also makes survival
-    measurable. Say on which day to run it and what would change the plan.
+    between searches. A second search of the same company makes survival
+    measurable when both lists were read in full. Say on which day to run it
+    and what would change the plan.
 
 12. **Deliver** with the [template](references/plan-template.md). The report
     comes first and fits one page; the check before spending, the ideas, the

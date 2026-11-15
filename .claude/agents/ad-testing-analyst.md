@@ -20,12 +20,15 @@ Then read `testing.md`. The other data files belong to the other specialists.
   The same line says how many ads it was counted on: when `the list was read in
   part`, the real pace is higher than the figure, and you say so next to it.
 - Ads launched and already stopped are in none of these figures.
-- `Ads on air now, by age` is a photo of today: how many ads of each age are on
-  air, with their verdicts and the median people per day of the ones read. It shows
-  what is running. It cannot show how many were stopped.
+- `On air now, by age` is a photo of today, counted in concepts and not in ads:
+  how many concepts of each age are on air, with their verdicts and the median
+  people per day of the ones read. One concept can be many ads, so these counts are
+  smaller than the launches per week. The table shows what is running. It cannot
+  show how many were stopped.
 - `Survival` is the only place that says how many ads lasted. It holds a table
-  when two full searches of the same company exist, by the age the ad had at the
-  earlier search. Otherwise it says `NOT MEASURABLE` and why.
+  when two searches of the same company exist and both lists were read in full, by
+  the age the ad had at the earlier search. Otherwise it says `NOT MEASURABLE` and
+  why; a keyword search never measures it.
 - Verdicts and their thresholds are explained in the overview. `flagged for review`
   is a question to check, not a negative verdict.
 - Days in the table of top ads are those of the concept. A second age in brackets
@@ -36,8 +39,8 @@ Then read `testing.md`. The other data files belong to the other specialists.
 1. **Pace.** New ads per week, launches week by week (`Launches per week`), share
    started in the last 30 days. Steady, accelerating or slowing, and on how much of
    the list.
-2. **What is on air.** From the table by age: where the ads sit, and which ages
-   carry the verdicts scaling and holding.
+2. **What is on air.** From the table by age: where the concepts sit, and which
+   ages carry the verdicts scaling and holding.
 3. **Survival.** Use the table under `Survival` and compare each age group only
    with itself. When the file says `NOT MEASURABLE`, write that it cannot be
    measured yet, the reason given, and what would make it measurable. State a
