@@ -78,7 +78,7 @@ def test_slices_cover_the_four_lenses(company):
     assert "## Ad types" in slices["overview"] and "UGC or creator" in slices["overview"]
     assert "type hint from the format: video" in slices["copy"] and "type hint from the format" in slices["creative"]
     assert "## Languages and countries" in slices["reach"] and "Where delivery goes" in slices["reach"]
-    assert "## Ads on air now, by age" in slices["testing"] and "| 90 days or more |" in slices["testing"]
+    assert "## On air now, by age" in slices["testing"] and "| 90 days or more |" in slices["testing"]
     assert "Survival: NOT MEASURABLE" in slices["testing"] and "first saved search" in slices["testing"]
     assert "three parts that always weigh the same: scale" in slices["overview"]
     assert "Reliability of a rating" in slices["overview"]
@@ -101,9 +101,11 @@ def test_overview_describes_the_rating_the_code_computes(company):
     text = packs.sections(company, ads=3)[0]["overview"]
     assert "scale, up to 60 points" in text and "staying power, up to 25" in text and "creative investment, up to 15" in text
     assert "full at 90" in text and "full at 10" in text                       # fixed thresholds
-    assert "100 for the one that reaches the most people per day, 0 for one that reaches 1,000 times fewer" in text
+    assert "100 for the one that reaches the most people per day among the ads of 7 days or more" in text
+    assert "0 for one that reaches 1,000 times fewer" in text
+    assert "never above the weakest ad that was read" in text and "position in Meta's whole list" in text
     assert "(7 at the least, no upper limit)" in text                          # no cap on the days: rating.rate_days
-    assert "scaling (14 to 89 days on air and in the top third by people per day)" in text
+    assert "scaling (14 to 89 days on air, scale of 70 or more and in the top third by people per day)" in text
     assert "ended (no longer on air)" in text and "not a negative verdict" in text
     assert "only when at least 5 concepts were read" in text
     assert "up to 3 of its ads are read" in text and "Reach is never added across concepts" in text
@@ -191,6 +193,64 @@ def test_trap_pack_one_day_ad_foreign_only_ad_and_market_without_reach(company):
     assert not [ad for ad in company["ads"] if ad["verdict"] in ("scaling", "review")]
 
 
+def test_reach_summary_writes_every_figure_with_its_concept(company):
+    # it used to pair the best daily figure of one concept with the largest total of another
+    from ad_library_insights import signals
+    slow = company["ads"][0]                                           # the largest total, made the slowest per day
+    slow.update(days_running=600, ad_days=600, newest_days=600)
+    for card in slow.get("members") or []:
+        card["days"] = 600
+    signals.annotate(company["ads"])
+    signals.refresh(company["signals"], company["ads"], "IT")
+    text = packs.sections(company, ads=3)[0]["reach"]
+    fastest = max(company["ads"], key=lambda ad: ad["reach_per_day"])
+    assert fastest is not slow and slow["reach_total"] == 1_671_170
+    assert f"Most people per day: id {fastest['library_id']}, {fastest['reach_per_day']:,} per day" in text
+    assert f"Most people in all: id {slow['library_id']}, 1,671,170 ({slow['reach_per_day']:,} per day" in text
+    assert "The two middles can belong to different concepts" in text and "best " not in text
+
+
+def test_table_by_age_counts_concepts_and_says_so(company):
+    text = packs.sections(company, ads=3)[0]["testing"]
+    assert "| age of the concept (its oldest ad) | concepts on air |" in text
+    assert "counted in concepts (one text with every ad that carries it), not in ads" in text
+    assert "| 90 days or more | 3 |" in text and "loaded here: 5" in text      # three concepts, five ads
+
+
+def test_a_library_count_past_its_limit_is_written_as_a_floor(company):
+    company["signals"].update(active_ads=50_001, active_ads_at_least=True)
+    slices, _ = packs.sections(company, ads=3)
+    assert "5 ads loaded of more than 50,000 active" in slices["overview"]
+    assert "Active ads: more than 50,000" in slices["testing"] and "50,001" not in slices["testing"]
+    assert "(5 ads of more than 50,000 active)" in briefs.project_section(CARD, "en", company)
+    assert "(5 annunci su più di 50.000 attivi)" in briefs.project_section(CARD, "it", company)
+
+
+def test_keyword_search_does_not_promise_survival_or_a_competitor_pace(company):
+    company.pop("mode")                                                # as a keyword search: many advertisers
+    text = packs.sections(company, ads=3)[0]["testing"]
+    assert "a keyword search loads a sample" in text and "first saved search" not in text
+    assert "two searches of one company some days apart, both lists read in full" in text
+    numbers = briefs.project_section(CARD, "en", company)
+    assert "This was a keyword search" in numbers and "not the pace of one competitor" in numbers
+    assert "Pace of" not in numbers
+
+
+def test_without_reach_the_analysis_brief_does_not_ask_why_the_reach(company):
+    from ad_library_insights import signals
+    for item in company["ads"]:
+        item["reach"] = {**item["reach"], "country_reach": None}
+        item.pop("card_reach", None)
+    signals.annotate(company["ads"])
+    signals.refresh(company["signals"], company["ads"], "IT")
+    for lang, asked, table in (("en", "gets the reach shown", "position by impressions, days, creatives"),
+                               ("it", "ottiene la copertura che vedi", "posizione per impressioni, giorni, creatività")):
+        text = briefs.compose("analysis", company, 3, lang=lang)["text"]
+        assert asked not in text and table in text and "NO REACH IN IT" in text
+        assert "people reached, per day" not in text and "persone raggiunte, al giorno" not in text
+    assert "gets the reach shown" in briefs.instructions("analysis", "Northwind", "en")
+
+
 def test_survival_table_is_shown_when_two_full_searches_exist(company):
     company["changes"] = {"available": True, "previous_taken_at": "2026-11-06T09:00:00+00:00", "days_between": 7.0,
                           "counts": {"new": 4, "new_texts": 2, "stopped": 3, "changed": 0},
@@ -256,7 +316,10 @@ def test_pack_is_written_one_file_per_specialist(company, tmp_path):
 def test_plan_pack_adds_the_project_file(company, tmp_path):
     made = briefs.prepare("plan", company, 3, False, CARD, "it", tmp_path / "packs", TODAY)
     project_file = Path(made["files"]["project"]).read_text(encoding="utf-8")
-    assert "Standing desk" in project_file and "572.5" in project_file and "2,862.5" in project_file
+    # an Italian brief writes figures the Italian way: it used to say "fino a 2,862.5"
+    assert "Standing desk" in project_file and "572,5" in project_file and "2.862,5" in project_file
+    assert "48.090 a settimana" in project_file and "valuta del prezzo" in project_file
+    assert "2,862.5" in briefs.project_section(CARD, "en", company) and "currency of the price" in briefs.project_section(CARD, "en")
 
 
 # --- briefs ---------------------------------------------------------------------------

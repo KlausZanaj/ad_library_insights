@@ -68,6 +68,12 @@ def _quote(text: str, limit: int = 1200) -> str:
     return "\n".join("> " + line for line in text.splitlines()) or "> (no text)"
 
 
+def active_label(found: dict) -> str:
+    """Active ads as the library reports them: past 50,000 it gives a floor, not a count."""
+    active = found.get("active_ads")
+    return f"more than {_n(active - 1)}" if found.get("active_ads_at_least") and isinstance(active, int) else _n(active)
+
+
 def subject_name(result: dict) -> str:
     return (result.get("page") or {}).get("name") or result.get("query") or "search"
 
@@ -146,25 +152,29 @@ def overview(result: dict, ads: list[dict]) -> str:
         lines.append(f"- Subject: keyword search \"{result.get('query')}\" (ads from many advertisers)")
     lines += [
         f"- Collected: {result.get('fetched_at') or 'n/a'}; {result.get('ads_parsed')} ads loaded of "
-        f"{_n(found.get('active_ads'))} active; {result.get('distinct_ads')} concepts after merging",
+        f"{active_label(found)} active; {result.get('distinct_ads')} concepts after merging",
         f"- In this pack: the top {len(ads)} concepts by rating",
         f"- Rating, 0-100, three parts that always weigh the same: scale, up to {weights['scale']} points "
         f"(people reached per day in {country}; where that is not published, the position by impressions); "
         f"staying power, up to {weights['staying']} (days the concept has been running, full at "
         f"{rating.HORIZON_DAYS}); creative investment, up to {weights['creative']} (different creatives for one "
         f"concept, full at {rating.FULL_CREATIVES}).",
-        "- Scale is relative to the best ad of this search, on a log scale: 100 for the one that reaches the "
-        f"most people per day, 0 for one that reaches {_n(rating.SCALE_SPAN)} times fewer. Staying power and "
-        "creatives are measured on fixed thresholds, the same in every search.",
+        "- Scale, where reach was read: relative to the best ad of this search, on a log scale. 100 for the one "
+        f"that reaches the most people per day among the ads of {rating.MIN_RATE_DAYS} days or more, 0 for one "
+        f"that reaches {_n(rating.SCALE_SPAN)} times fewer.",
+        "- Scale of an ad that was not read, in a search where others were: a prudent estimate from its position "
+        "in Meta's list, never above the weakest ad that was read. Not reading an ad never helps it.",
+        "- Scale where no reach is published: the position in Meta's whole list, on a log scale, 100 for the first.",
+        "- Staying power and creatives are measured on fixed thresholds, the same in every search.",
         f"- Reach per day = people reached in {country}, divided by the days the ad has been on "
         f"air ({rating.MIN_RATE_DAYS} at the least, no upper limit). The EU and UK totals are information and "
         "do not rate.",
         "- Reach counts unique people, who grow slower than days: an ad on air for months shows fewer people "
         "per day than it had at the start. Read the total reached next to the daily figure.",
-        "- Reliability of a rating: high = reach in the country searched was read; medium = impression "
-        "position only; low = neither.",
-        f"- Verdicts: scaling ({rating.SCALING_MIN_DAYS} to {rating.HORIZON_DAYS - 1} days on air and in the "
-        f"top third by people per day), holding ({rating.HORIZON_DAYS} days or more with scale in the middle "
+        "- Reliability of a rating: high = reach in the country searched was read; medium = not read, scale "
+        "taken from the position in Meta's list; low = neither.",
+        f"- Verdicts: scaling ({rating.SCALING_MIN_DAYS} to {rating.HORIZON_DAYS - 1} days on air, scale of "
+        f"{rating.HIGH_SCALE} or more and in the top third by people per day), holding ({rating.HORIZON_DAYS} days or more with scale in the middle "
         f"or above), testing (under {rating.TESTING_DAYS} days; under {rating.MIN_RATE_DAYS} days an ad is too "
         f"recent to judge), review ({rating.HORIZON_DAYS} days or more, no ad added to the concept in that time, "
         "low scale and fewer people reached in all than the middle ad of the search: a small budget that works "
@@ -248,7 +258,7 @@ def creative(result: dict, ads: list[dict], frames: bool) -> tuple[str, list[dic
     pictures: list[dict] = []
     with_stills = sum(1 for ad in chosen if ad.get("frames")) if frames else 0
     lines = ["# Creative", "",
-             "- Format mix of all active ads: " + (", ".join(f"{name} {_pct(share)}"
+             f"- Format mix of the {found['ads_loaded']} ads loaded: " + (", ".join(f"{name} {_pct(share)}"
                                                              for name, share in found["format_share"].items()) or "n/a"),
              (f"- Video stills (start, middle, end): saved for {with_stills} of the {len(chosen)} ads below. "
               f"Pictures are in the folder `{FRAMES_FOLDER}` next to this file; open them to look at the creative."
@@ -281,6 +291,21 @@ def _countries(data: dict, limit: int = 3) -> str:
     if not rows or not total:
         return ""
     return ", ".join(f"{row['country']} {_pct(row['reach'] / total)}" for row in rows[:limit])
+
+
+def _leaders(ads: list[dict]) -> list[str]:
+    """The concept that reaches the most people per day and the one that reached the most in all, each with its own figures."""
+    read = [ad for ad in ads if ad.get("reach_per_day") is not None and ad.get("reach_total") is not None]
+    if not read:
+        return []
+    fastest = max(read, key=lambda ad: ad["reach_per_day"])
+    largest = max(read, key=lambda ad: ad["reach_total"])
+    line = (f"- Most people per day: id {fastest['library_id']}, {_n(fastest['reach_per_day'])} per day "
+            f"({_n(fastest['reach_total'])} in all, {_days(fastest)} days).")
+    if largest is not fastest:
+        line += (f" Most people in all: id {largest['library_id']}, {_n(largest['reach_total'])} "
+                 f"({_n(largest['reach_per_day'])} per day, {_days(largest)} days).")
+    return [line]
 
 
 def reach(result: dict, ads: list[dict]) -> str:
@@ -326,9 +351,10 @@ def reach(result: dict, ads: list[dict]) -> str:
         lines += [f"## Across the {total['ads_with_market_reach']} concepts with reach in {total.get('country') or country}",
                   "- One figure per concept (the ads read inside it, added up). Concepts are not added to each "
                   "other: one person can see several of them.",
-                  f"- Per concept, in {total.get('country') or country}: median "
-                  f"{_n(total['median_reach_per_day'])} people per day ({_n(total.get('median_reach_total'))} in total), "
-                  f"best {_n(total['highest_reach_per_day'])} per day ({_n(total.get('highest_reach_total'))} in total)"]
+                  f"- Middle concept, in {total.get('country') or country}: {_n(total['median_reach_per_day'])} "
+                  f"people per day. Middle total: {_n(total.get('median_reach_total'))} people. The two middles can "
+                  "belong to different concepts.",
+                  *_leaders(result["ads"])]
     elif total.get("available"):
         lines += [f"## Reach in {total.get('country') or country}: not published",
                   f"- {total['ads_with_reach']} of the ads read carry a reach figure, but it is for the EU or the UK. "
@@ -364,8 +390,9 @@ def reach(result: dict, ads: list[dict]) -> str:
 
 
 def _by_age(ads: list[dict]) -> list[str]:
-    """The ads on air now, grouped by age: how many, how they are rated, how many people a day."""
-    rows = ["| age of the ad | ads on air | scaling | holding | testing | review | average | median people per day (ads read) |",
+    """The concepts on air now, grouped by age: how many, how they are rated, how many people a day."""
+    rows = ["| age of the concept (its oldest ad) | concepts on air | scaling | holding | testing | review | average "
+            "| median people per day (concepts read) |",
             "|---|---:|---:|---:|---:|---:|---:|---:|"]
     ads = [ad for ad in ads if ad.get("verdict") != "ended"]
     for label, _, _ in history.AGE_GROUPS:
@@ -378,8 +405,8 @@ def _by_age(ads: list[dict]) -> list[str]:
     return rows
 
 
-def _survival(changes: dict) -> list[str]:
-    found = (changes or {}).get("survival") or {"measurable": False, "reason": "first_search"}
+def _survival(changes: dict, company: bool = True) -> list[str]:
+    found = (changes or {}).get("survival") or {"measurable": False, "reason": "first_search" if company else "sample"}
     if not found.get("measurable"):
         why = {"first_search": "this is the first saved search of this subject: one search shows only the ads still "
                                "on air, never the ones already stopped",
@@ -387,8 +414,8 @@ def _survival(changes: dict) -> list[str]:
                          "without having stopped",
                "partial_list": "the list of ads was not read in full in one of the two searches"}
         return [f"- Survival: NOT MEASURABLE. Reason: {why.get(found.get('reason'), why['first_search'])}. "
-                "Do not state a survival or cut rate; say it cannot be measured yet and what would make it measurable "
-                "(a second search of the same company some days later)."]
+                "Do not state a survival or cut rate; say it cannot be measured and what would make it measurable "
+                "(two searches of one company some days apart, both lists read in full)."]
     rows = [f"- Survival between the two searches ({changes.get('days_between')} days apart), by the age the ad had "
             "at the earlier one. Compare each group only with itself:",
             "", "| age at the earlier search | listed then | still listed | stopped | still listed, share |",
@@ -402,13 +429,13 @@ def _survival(changes: dict) -> list[str]:
 def partly_loaded(found: dict) -> bool:
     """Whether the launch pace was counted on a part of the advertiser's active ads only."""
     active, loaded = found.get("active_ads"), found.get("ads_loaded")
-    return isinstance(active, int) and isinstance(loaded, int) and loaded < active
+    return isinstance(active, int) and isinstance(loaded, int) and loaded < history.COMPLETE_SHARE * active
 
 
 def pace_note(found: dict) -> str:
     if partly_loaded(found):
         return "the list was read in part, so the real launch pace is higher than this figure."
-    return "the list was read in full, so the figure covers every ad still on air."
+    return "the list was read in full or nearly, so the figure covers the ads still on air."
 
 
 def testing(result: dict, ads: list[dict]) -> str:
@@ -416,24 +443,25 @@ def testing(result: dict, ads: list[dict]) -> str:
     weeks = ", ".join(f"{week['week_start'][5:]}: {week['ads']}" for week in found["weekly_launches"])
     ended = sum(1 for ad in result["ads"] if ad.get("verdict") == "ended")
     lines = ["# Testing and destinations", "",
-             f"- Active ads: {_n(found['active_ads'])}; loaded here: {found['ads_loaded']}",
+             f"- Active ads: {active_label(found)}; loaded here: {found['ads_loaded']}",
              f"- New ads per week (ads still on air that started in the last four weeks, divided by four): "
              f"{found['new_per_week']}; started in the last 30 days: {found['started_last_30_days']} "
              f"({_pct(found['share_started_last_30_days'])} of loaded). Counted on the {found['ads_loaded']} ads "
-             f"loaded, of {_n(found['active_ads'])} active: " + pace_note(found) + " Ads launched and already "
+             f"loaded, of {active_label(found)} active: " + pace_note(found) + " Ads launched and already "
              "stopped are not in these figures either.",
              f"- Launches per week, oldest to newest (week start: ads still on air): {weeks}",
              f"- Verdicts of the ads: {_counts(found['verdicts'])}; flagged for review: {found['needs_review']}",
              f"- Platforms: {_top(found['platforms'], 'platform')}",
              f"- Buttons: {_top(found['buttons'], 'button')}",
              f"- Destinations: {_top(found['destinations'], 'domain')}",
-             "", "## Ads on air now, by age",
-             "A photo of what runs today. It cannot show survival: the ads already stopped are missing from it.",
+             "", "## On air now, by age",
+             "A photo of what runs today, counted in concepts (one text with every ad that carries it), not in ads. "
+             "It cannot show survival: what was already stopped is missing from it.",
              "", *_by_age(result["ads"]),
              *([f"- Concepts no longer on air, left out of the table: {ended}"] if ended else []),
              "", "## Survival"]
     changes = result.get("changes") or {}
-    lines += _survival(changes)
+    lines += _survival(changes, result.get("mode") == "company")
     if changes.get("available"):
         counts = changes["counts"]
         lines.append(f"- Since the previous search ({changes['previous_taken_at']}): {counts['new']} new ads "

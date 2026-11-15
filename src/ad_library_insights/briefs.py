@@ -43,6 +43,11 @@ _T = {
         "goal.analysis": (
             "Explain why {name} gets the reach shown in the data. Every claim must rest on a number or "
             "a quote from the data below, with the ad id. A summary that would fit any advertiser is of no use."),
+        "goal.analysis.noreach": (
+            "Explain what {name} runs, what it keeps on air and how it tests. Reach in the country searched is "
+            "not published: how many people these ads reach is not known. Say so in your first lines and build on "
+            "the order of Meta's list, the dates and the creatives. Every claim must rest on a number or a quote "
+            "from the data below, with the ad id. A summary that would fit any advertiser is of no use."),
         "method.title": "How to work",
         "method.intro": (
             "Go through the data in four passes, one at a time. For each pass note at most five "
@@ -76,6 +81,11 @@ _T = {
             "What this data cannot tell.",
             "Three things to test or verify, in order of priority.",
         ],
+        "deliver.analysis.noreach": {
+            0: "The answer in two lines: what {name} keeps running and what that suggests, with the limit that "
+               "reach is not published.",
+            2: "A table of the ads read: ad id, type, position by impressions, days, creatives, what it shows in one line.",
+        },
         "rules.title": "Rules of evidence",
         "rules": [
             "Meta publishes no spend and no sales. The rating (scale, staying power, creative investment) is a clue, not proof.",
@@ -136,7 +146,11 @@ _T = {
         "project.title": "My project",
         "project": ["Product", "Selling price", "Product cost", "Market", "Goal", "Main problem"],
         "numbers.title": "Numbers for the test",
-        "numbers.intro": "Computed by the app from the card, by arithmetic. Use them as they are.",
+        "numbers.intro": "Computed by the app from the card, by arithmetic. Use them as they are. Amounts are "
+                         "in the currency of the price on the card.",
+        "numbers.more": "more than {n}",
+        "numbers.pace.keyword": "This was a keyword search: {pace} new ads a week is the sum over all the "
+                                "advertisers found, not the pace of one competitor. Do not size my production on it.",
         "numbers": [
             "Margin per order (price minus product cost): {margin}",
             "Break-even CPA, the most one purchase may cost in ads: {cpa}. Break-even ROAS: {roas}",
@@ -175,6 +189,12 @@ _T = {
             "Spiega perché {name} ottiene la copertura che vedi nei dati. Ogni affermazione deve poggiare "
             "su un numero o su una citazione presa dai dati qui sotto, con l'id dell'annuncio. Una sintesi "
             "che andrebbe bene per qualunque inserzionista non serve."),
+        "goal.analysis.noreach": (
+            "Spiega cosa fa girare {name}, cosa tiene acceso e come fa i test. La copertura nel paese cercato non "
+            "è pubblicata: quante persone raggiungono questi annunci non si sa. Scrivilo nelle prime righe e "
+            "lavora sull'ordine dell'elenco di Meta, sulle date e sulle creatività. Ogni affermazione deve "
+            "poggiare su un numero o su una citazione presa dai dati qui sotto, con l'id dell'annuncio. Una "
+            "sintesi che andrebbe bene per qualunque inserzionista non serve."),
         "method.title": "Come lavorare",
         "method.intro": (
             "Leggi i dati in quattro passaggi, uno per volta. Per ogni passaggio annota al massimo cinque "
@@ -210,6 +230,12 @@ _T = {
             "Cosa questi dati non possono dire.",
             "Tre cose da provare o verificare, in ordine di priorità.",
         ],
+        "deliver.analysis.noreach": {
+            0: "La risposta in due righe: cosa {name} tiene acceso e cosa suggerisce, con il limite che la "
+               "copertura non è pubblicata.",
+            2: "Una tabella degli annunci letti: id, tipo, posizione per impressioni, giorni, creatività, cosa "
+               "mostra in una riga.",
+        },
         "rules.title": "Regole sulle prove",
         "rules": [
             "Meta non pubblica spesa né vendite. La valutazione (scala, tenuta, investimento creativo) è un indizio, non una prova.",
@@ -273,7 +299,12 @@ _T = {
         "project.title": "Il mio progetto",
         "project": ["Prodotto", "Prezzo di vendita", "Costo del prodotto", "Mercato", "Obiettivo", "Problema principale"],
         "numbers.title": "Numeri per il test",
-        "numbers.intro": "Calcolati dall'app a partire dalla scheda, con semplice aritmetica. Usali così come sono.",
+        "numbers.intro": "Calcolati dall'app a partire dalla scheda, con semplice aritmetica. Usali così come "
+                         "sono. Gli importi sono nella valuta del prezzo scritto nella scheda.",
+        "numbers.more": "più di {n}",
+        "numbers.pace.keyword": "Questa era una ricerca per parola chiave: {pace} annunci nuovi a settimana è la "
+                                "somma di tutti gli inserzionisti trovati, non il ritmo di un concorrente. Non "
+                                "dimensionare la mia produzione su questo dato.",
         "numbers": [
             "Margine per ordine (prezzo meno costo del prodotto): {margin}",
             "CPA di pareggio, il massimo che un acquisto può costare in pubblicità: {cpa}. ROAS di pareggio: {roas}",
@@ -382,10 +413,15 @@ def _demote(text: str, levels: int = 2) -> str:
     return "\n".join("#" * levels + line if line.startswith("#") else line for line in text.splitlines()) + "\n"
 
 
-def _money(value) -> str:
+def _money(value, lang: str = "en") -> str:
+    """A figure as the language of the brief writes it: 2,862.5 in English, 2.862,5 in Italian."""
     if isinstance(value, float):
-        return f"{value:,.2f}".rstrip("0").rstrip(".")
-    return f"{value:,}" if isinstance(value, int) else str(value)
+        text = f"{value:,.2f}".rstrip("0").rstrip(".")
+    elif isinstance(value, int) and not isinstance(value, bool):
+        text = f"{value:,}"
+    else:
+        return str(value)
+    return text.translate(str.maketrans(",.", ".,")) if lang == "it" else text
 
 
 def project_section(project: dict, lang: str, result: dict | None = None) -> str:
@@ -394,8 +430,8 @@ def project_section(project: dict, lang: str, result: dict | None = None) -> str
     found = (result or {}).get("signals") or {}
     pace = found.get("new_per_week")
     raw = test_numbers(project, pace=pace)
-    numbers = {key: _money(value) for key, value in raw.items()}
-    values = [project["product"], _money(float(project["price"])), _money(float(project["product_cost"])),
+    numbers = {key: _money(value, lang) for key, value in raw.items()}
+    values = [project["product"], _money(float(project["price"]), lang), _money(float(project["product_cost"]), lang),
               project["market"], project["goal"], project["main_problem"]]
     lines = [f"## {words['project.title']}", *[f"- {label}: {value}" for label, value in zip(words["project"], values)],
              "", f"## {words['numbers.title']}", words["numbers.intro"],
@@ -404,24 +440,39 @@ def project_section(project: dict, lang: str, result: dict | None = None) -> str
         lines += [f"- {line.format(**numbers)}" for line in words["numbers.goal"]]
     else:
         lines.append(f"- {words['numbers.nogoal']}")
-    if pace is not None:
+    if pace is not None and (result or {}).get("mode") != "company":
+        lines.append("- " + words["numbers.pace.keyword"].format(pace=numbers["pace"]))
+    elif pace is not None:
         lines.append("- " + words["numbers.pace"].format(name=packs.subject_name(result), pace=numbers["pace"]))
         if packs.partly_loaded(found):
+            active = _money(found["active_ads"], lang)
+            if found.get("active_ads_at_least"):
+                active = words["numbers.more"].format(n=_money(found["active_ads"] - 1, lang))
             lines.append("- " + words["numbers.pace.part"].format(
-                name=packs.subject_name(result), loaded=_money(found["ads_loaded"]), active=_money(found["active_ads"])))
+                name=packs.subject_name(result), loaded=_money(found["ads_loaded"], lang), active=active))
     lines.append(f"- {words['numbers.costs']}")
     return "\n".join(lines) + "\n"
 
 
-def instructions(level: str, name: str, lang: str = "it") -> str:
-    """Role, method, deliverables and rules for a level, without any data."""
+def instructions(level: str, name: str, lang: str = "it", reach: bool = True) -> str:
+    """Role, method, deliverables and rules for a level, without any data.
+
+    ``reach`` says whether the pack holds reach in the country searched. Without it the
+    analysis is asked what the advertiser runs and keeps running, not why it reaches
+    what it reaches, and the table of ads has no column for people.
+    """
     words = _T[lang]
     out = [words[f"role.{level}"], ""]
     if level == "analysis":
-        out += [words["goal.analysis"].format(name=name), "", f"## {words['method.title']}", words["method.intro"],
+        deliver = list(words["deliver.analysis"])
+        if not reach:
+            for index, line in words["deliver.analysis.noreach"].items():
+                deliver[index] = line
+        out += [words["goal.analysis" if reach else "goal.analysis.noreach"].format(name=name), "",
+                f"## {words['method.title']}", words["method.intro"],
                 *[f"{n}. {line}" for n, line in enumerate(words["lens"], start=1)], "",
                 f"## {words['deliver.title']}", words["language"],
-                *[f"{n}. {line.format(name=name)}" for n, line in enumerate(words["deliver.analysis"], start=1)]]
+                *[f"{n}. {line.format(name=name)}" for n, line in enumerate(deliver, start=1)]]
     else:
         out += [f"## {words['steps.title']}",
                 *[f"{n}. {line.format(name=name)}" for n, line in enumerate(words["steps"], start=1)], "",
@@ -449,7 +500,8 @@ def compose(level: str, result: dict, ads: int = 10, frames: bool = False,
     name = packs.subject_name(result)
     slices, pictures = packs.sections(result, ads, frames)
 
-    parts = [f"# {name} · {result.get('country') or ''}".rstrip(" ·"), "", instructions(level, name, lang)]
+    reach = any(ad.get("reach_per_day") is not None for ad in result["ads"][:max(1, int(ads))])
+    parts = [f"# {name} · {result.get('country') or ''}".rstrip(" ·"), "", instructions(level, name, lang, reach)]
     if level == "plan":
         parts += [project_section(project, lang, result)]
     parts += [f"## {words['data.title']}", ""]

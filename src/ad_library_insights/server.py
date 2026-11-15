@@ -243,7 +243,9 @@ async def prepare_analysis(country: str, level: str = "analysis", page_id: str =
 
     Args:
         level: analysis | plan.
-        ads: how many top-ranked ads go into the pack (10, 20 or 50).
+        ads: how many of the most shown ads are opened to read reach (10, 20 or 50).
+            Several can belong to one concept: the pack lists that many concepts and
+            says for how many of them the reach was read.
         frames: also save and list video stills of the ten best ads.
         language: language of the instructions in brief.md (en or it).
     """
