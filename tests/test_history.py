@@ -89,6 +89,31 @@ def test_keyword_changes_are_marked_as_a_sample():
     assert history.compare(before, after)["sample"] is True
 
 
+def test_survival_compares_ads_of_the_same_age():
+    young = [ad(f"y{n}", f"Young {n}", days_running=3) for n in range(4)]
+    old = [ad(f"o{n}", f"Old {n}", days_running=120) for n in range(5)]
+    before = history.snapshot_of(result(MONDAY, young + old))
+    after = history.snapshot_of(result(FRIDAY, young[:1] + old))           # three young ads were stopped
+    found = history.compare(before, after)["survival"]
+    assert found["measurable"] is True
+    groups = {group["age"]: group for group in found["groups"]}
+    assert groups["under 7 days"] == {"age": "under 7 days", "listed_before": 4, "still_listed": 1, "stopped": 3}
+    assert groups["90 days or more"]["still_listed"] == 5 and groups["90 days or more"]["stopped"] == 0
+    assert groups["7 to 29 days"]["listed_before"] == 0
+
+
+def test_survival_is_not_measured_on_a_sample_or_a_partial_list():
+    ads = [ad("1", "A"), ad("2", "B")]
+    keyword = history.compare(history.snapshot_of(result(MONDAY, ads, mode="keyword")),
+                              history.snapshot_of(result(FRIDAY, ads[:1], mode="keyword")))
+    assert keyword["survival"] == {"measurable": False, "reason": "sample"}
+    partial = result(MONDAY, ads)
+    partial["signals"]["active_ads"] = 40                                  # two ads read out of forty
+    found = history.compare(history.snapshot_of(partial), history.snapshot_of(result(FRIDAY, ads)))
+    assert found["survival"] == {"measurable": False, "reason": "partial_list"}
+    assert history.summary({"available": False, "reason": "first_search"})["available"] is False
+
+
 def test_changes_need_a_second_search(tmp_path):
     store = history.History(tmp_path)
     assert store.changes("company:DE:42") == {"available": False, "reason": "never_searched",
@@ -100,7 +125,7 @@ def test_changes_need_a_second_search(tmp_path):
     assert second["available"] and second["counts"]["new"] == 1 and second["snapshots"] == 2
     assert history.summary(second) == {"available": True, "key": "company:DE:42",
                                        "previous_taken_at": MONDAY, "days_between": 4.0,
-                                       "counts": second["counts"]}
+                                       "counts": second["counts"], "survival": second["survival"]}
     assert history.summary(first) == {"available": False, "reason": "first_search", "key": "company:DE:42"}
 
 

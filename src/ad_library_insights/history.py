@@ -17,6 +17,9 @@ from .scoring import text_fingerprint
 from .storage import _read_json, _write_json, home_dir
 
 KEEP = 30                      # snapshots kept per company or keyword
+COMPLETE_SHARE = 0.9           # a list loaded at least this far counts as the whole list
+AGE_GROUPS = (("under 7 days", 0, 7), ("7 to 29 days", 7, 30), ("30 to 89 days", 30, 90),
+              ("90 days or more", 90, None))
 _OFFER = re.compile(r"\d+\s?%|[€$£]\s?\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s?(?:€|\$|£|eur|usd)", re.I)
 _FIELDS = (("headline", "headline"), ("cta", "button"), ("landing_domain", "destination"))
 
@@ -62,8 +65,12 @@ def _lite(ad: dict) -> dict:
 def snapshot_of(result: dict, now: datetime | None = None) -> dict:
     taken = result.get("fetched_at") or (now or datetime.now(timezone.utc)).isoformat(timespec="seconds")
     found = result.get("signals") or {}
+    listed = sum(ad.get("copies_total", 1) for ad in result.get("ads", []))
+    active = found.get("active_ads")
     return {"subject": subject(result), "taken_at": taken,
-            "active_ads": found.get("active_ads"), "ads_loaded": result.get("ads_parsed"),
+            "active_ads": active, "ads_loaded": result.get("ads_parsed"),
+            # how much of what the library lists was read: identical copies count, as in Meta's total
+            "loaded_share": round(min(listed / active, 1.0), 2) if active else None,
             "ads": [_lite(ad) for ad in result.get("ads", [])]}
 
 
@@ -74,6 +81,36 @@ def _offers(ad: dict) -> set[str]:
 
 def _public(ad: dict) -> dict:
     return {key: value for key, value in ad.items() if key not in ("body", "ids")}
+
+
+def age_group(days: int | None) -> str | None:
+    for label, low, high in AGE_GROUPS:
+        if days is not None and days >= low and (high is None or days < high):
+            return label
+    return None
+
+
+def survival(previous: dict, current: dict) -> dict:
+    """Of the ads listed at the previous search, how many are still listed, by age then.
+
+    Survival only means something between ads of the same age: a three-day-old ad and a
+    three-month-old one do not face the same odds. It is measured between two searches of
+    one company whose lists were read in full; a keyword search loads a sample of the most
+    shown ads, where an ad can leave the sample without having stopped.
+    """
+    if current["subject"]["mode"] != "company":
+        return {"measurable": False, "reason": "sample"}
+    shares = [previous.get("loaded_share"), current.get("loaded_share")]
+    if any(share is None or share < COMPLETE_SHARE for share in shares):
+        return {"measurable": False, "reason": "partial_list"}
+    after = {i for ad in current["ads"] for i in ad["ids"]}
+    groups = []
+    for label, _, _ in AGE_GROUPS:
+        then = [ad for ad in previous["ads"] if age_group(ad.get("days_running")) == label]
+        alive = sum(any(i in after for i in ad["ids"]) for ad in then)
+        groups.append({"age": label, "listed_before": len(then), "still_listed": alive,
+                       "stopped": len(then) - alive})
+    return {"measurable": True, "groups": groups}
 
 
 def compare(previous: dict, current: dict) -> dict:
@@ -124,6 +161,7 @@ def compare(previous: dict, current: dict) -> dict:
         "counts": {"new": len(new), "new_texts": sum(ad["new_text"] for ad in new),
                    "stopped": len(stopped), "changed": len(changed)},
         "new": new, "stopped": stopped, "changed": changed,
+        "survival": survival(previous, current),
     }
 
 
@@ -187,4 +225,5 @@ def summary(changes: dict) -> dict:
         return {"available": False, "reason": changes.get("reason"), "key": (changes.get("subject") or {}).get("key")}
     return {"available": True, "key": changes["subject"]["key"],
             "previous_taken_at": changes["previous"]["taken_at"],
-            "days_between": changes["days_between"], "counts": changes["counts"]}
+            "days_between": changes["days_between"], "counts": changes["counts"],
+            "survival": changes.get("survival") or {"measurable": False, "reason": "first_search"}}
