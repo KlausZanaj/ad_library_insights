@@ -42,16 +42,34 @@ def front_matter(path: Path) -> tuple[dict, str]:
 def test_test_budget_comes_from_break_even():
     numbers = briefs.test_numbers(CARD)
     assert numbers == {"margin": 229.0, "cpa": 229.0, "roas": 1.52, "cut_low": 458.0, "cut_high": 687.0,
-                       "per_ad": 572.5, "round_total": 2862.5, "multiplier": 2.5, "ideas": 5}
+                       "per_ad": 572.5, "round_total": 2862.5, "multiplier": 2.5, "ideas": 5,
+                       # "30 orders a day": spend at break-even, a fifth of it for tests, ads it can test
+                       "orders": 30.0, "daily_max": 6870.0, "weekly_max": 48090.0, "share": 20,
+                       "weekly_test": 9618.0, "capacity": 16}
+    assert briefs.test_numbers(CARD, pace=4.5)["pace"] == 4.5
+    assert "orders" not in briefs.test_numbers({**CARD, "goal": "Grow the brand"})
     with pytest.raises(ValueError):
         briefs.test_numbers({**CARD, "product_cost": 349.0})
+
+
+@pytest.mark.parametrize("goal, expected", [
+    ("20 ordini al giorno", 20.0), ("140 orders a week", 20.0), ("600 vendite al mese", 20.0),
+    ("Arrivare a 12,5 acquisti al giorno", 12.5), ("Farmi conoscere", None), ("", None),
+])
+def test_orders_per_day_are_read_from_the_goal(goal, expected):
+    assert briefs.orders_per_day(goal) == expected
 
 
 # --- data pack ------------------------------------------------------------------------
 
 def test_slices_cover_the_four_lenses(company):
-    slices, images = packs.sections(company, ads=3, frames=True)
+    slices, pictures = packs.sections(company, ads=3, frames=True)
     assert tuple(slices) == packs.SLICES
+    assert "## Ad types" in slices["overview"] and "UGC or creator" in slices["overview"]
+    assert "type hint from the format: video" in slices["copy"] and "type hint from the format" in slices["creative"]
+    assert "## Languages and countries" in slices["reach"] and "Where delivery goes" in slices["reach"]
+    assert "## Ads on air now, by age" in slices["testing"] and "| 90 days or more |" in slices["testing"]
+    assert "Survival: NOT MEASURABLE" in slices["testing"] and "first saved search" in slices["testing"]
     assert "three parts: scale" in slices["overview"] and "Reliability of a rating" in slices["overview"]
     assert "do not count as creatives" in slices["overview"]
     assert "Meta publishes no spend and no sales" in slices["overview"]
@@ -61,7 +79,36 @@ def test_slices_cover_the_four_lenses(company):
     assert "| 835,585 |" in slices["reach"] and "| 7,398,228 | 1,679,270 |" in slices["reach"]    # country first, then EU and UK
     assert "Locations targeted (ads):" in slices["reach"] and "Italy" in slices["reach"]
     assert "Launches per week" in slices["testing"] and "itunes.apple.com" in slices["testing"]
-    assert len(images) == 9 and all(Path(p).exists() for p in images)       # three stills for three videos
+    assert len(pictures) == 9 and all(Path(p["source"]).exists() for p in pictures)   # three stills for three videos
+    assert pictures[0]["name"].startswith("frames/01-") and pictures[0]["name"].endswith("-start.jpg")
+    assert "frames/01-" in slices["creative"] and str(Path(pictures[0]["source"]).parent) not in slices["creative"]
+
+
+def test_survival_table_is_shown_when_two_full_searches_exist(company):
+    company["changes"] = {"available": True, "previous_taken_at": "2026-11-06T09:00:00+00:00", "days_between": 7.0,
+                          "counts": {"new": 4, "new_texts": 2, "stopped": 3, "changed": 0},
+                          "survival": {"measurable": True, "groups": [
+                              {"age": "under 7 days", "listed_before": 4, "still_listed": 1, "stopped": 3},
+                              {"age": "90 days or more", "listed_before": 5, "still_listed": 5, "stopped": 0}]}}
+    text = packs.sections(company, ads=3)[0]["testing"]
+    assert "| under 7 days | 4 | 1 | 3 | 25% |" in text and "| 90 days or more | 5 | 5 | 0 | 100% |" in text
+    assert "NOT MEASURABLE" not in text and "Compare each group only with itself" in text
+    company["changes"]["survival"] = {"measurable": False, "reason": "sample"}
+    assert "a keyword search loads a sample" in packs.sections(company, ads=3)[0]["testing"]
+
+
+def test_without_reach_in_the_country_the_pack_says_so(company):
+    for item in company["ads"]:
+        if item.get("reach", {}).get("available"):
+            item["reach"] = {**item["reach"], "country": "US", "country_reach": None}
+    from ad_library_insights import signals
+    signals.annotate(company["ads"])
+    signals.refresh(company["signals"], company["ads"], "US")
+    company["country"] = "US"
+    slices, _ = packs.sections(company, ads=3)
+    assert "NO REACH IN US" in slices["overview"] and "as if they were known" in slices["overview"]
+    assert "people reached in US" not in slices["copy"] and "reach in US: not published" in slices["copy"]
+    assert "## Reach in US: not published" in slices["reach"] and "| not published |" in slices["reach"]
 
 
 def test_reach_table_says_which_ads_were_not_read(company):
@@ -72,22 +119,30 @@ def test_reach_table_says_which_ads_were_not_read(company):
 
 
 def test_without_stills_the_creative_slice_says_so(company):
-    slices, images = packs.sections(company, ads=3, frames=False)
-    assert "Video stills: not collected for this pack" in slices["creative"]
-    assert "thumbnail:" in slices["creative"] and "stills (start" not in slices["creative"]
-    assert images == []
+    slices, pictures = packs.sections(company, ads=3, frames=False)
+    assert "Pictures: not collected for this pack" in slices["creative"]
+    assert "picture:" not in slices["creative"] and "stills (start" not in slices["creative"]
+    assert pictures == []
 
 
 def test_pack_is_written_one_file_per_specialist(company, tmp_path):
     made = briefs.prepare("analysis", company, 3, True, lang="en", directory=tmp_path / "packs", today=TODAY)
     folder = Path(made["folder"])
     assert folder.name == "kingshot-it-analysis-2026-11-13"
-    assert sorted(p.name for p in folder.iterdir()) == ["brief.md", "copy.md", "creative.md", "manifest.json",
+    assert sorted(p.name for p in folder.iterdir()) == ["brief.md", "copy.md", "creative.md", "frames", "manifest.json",
                                                          "overview.md", "reach.md", "testing.md"]
     manifest = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["level"] == "analysis" and manifest["ads"] == 3 and len(manifest["images"]) == 9
+    # the pictures of this analysis, and only those, sit in the pack; no text names a folder of the computer
+    assert made["frames_folder"] == str(folder / "frames") and len(list((folder / "frames").iterdir())) == 9
+    assert all(Path(path).parent == folder / "frames" for path in made["images"])
+    for name in ("brief.md", "creative.md", "manifest.json"):
+        assert str(tmp_path) not in (folder / name).read_text(encoding="utf-8")
     assert (folder / "brief.md").read_text(encoding="utf-8") == made["text"]
     assert "slices" not in made and made["ads"] == 3 and made["frames"] is True
+    (folder / "frames" / "left-over.jpg").write_bytes(b"old")
+    again = briefs.prepare("analysis", company, 1, True, lang="en", directory=tmp_path / "packs", today=TODAY)
+    assert len(list((folder / "frames").iterdir())) == 3 == len(again["images"])
 
 
 def test_plan_pack_adds_the_project_file(company, tmp_path):
@@ -101,12 +156,16 @@ def test_plan_pack_adds_the_project_file(company, tmp_path):
 def test_analysis_brief_works_in_a_single_pass(company):
     made = briefs.compose("analysis", company, 3, frames=True, lang="en")
     text = made["text"]
-    assert "performance marketing specialist" in text and "Do not reason as a social media manager" in text
+    assert "You work as a performance marketing specialist on Meta" in text
+    assert "social media manager" not in text and "which passes confirm it" in text
+    assert "Give every ad a type" in text and "compare only ads of the same age" in text
+    assert "An estimate is not a figure." in text
     for heading in ("### Copy", "### Creative", "### Reach and audience", "### Testing and destinations"):
         assert heading in text
     assert text.count("\n1. ") >= 2 and "finding · evidence" in text
     assert "What this data cannot tell." in text and "Write in English." in text
     assert "## Pictures to attach" in text and len(made["images"]) == 9
+    assert "Attach the 9 pictures of the folder \"frames\"" in text and "\n- 01-" in text
     assert made["size"]["tokens"] > made["size"]["tokens_single_pass"]        # re-reads are counted
 
 
@@ -119,7 +178,15 @@ def test_brief_without_stills_tells_the_assistant(company):
 
 def test_plan_brief_starts_from_the_project(company):
     text = briefs.compose("plan", company, 3, project=CARD, lang="en")["text"]
-    assert "Act as a head of marketing. Diagnose first, then propose." in text
+    assert "You work as head of marketing for a business that sells online." in text
+    assert "social media manager" not in text
+    assert "Check before spending." in text and "Conversions" in text and "purchase event arrives with value" in text
+    assert "Campaign structure." in text and "Broad or narrow audience" in text
+    assert "how many new\ncreatives" not in text and "how many new creatives a week I have to produce" in text
+    assert 'write "You" in the Who column' in text
+    assert "Goal of 30 orders a day: at break-even the most to spend is 6,870 a day (30 × 229), 48,090 a week" in text
+    assert "9,618 a week, enough for 16 new ads a week at 572.5 each" in text
+    assert "Pace of Kingshot:" in text and "VAT, shipping, payment fees and returns are not included" in text
     assert text.index("## Steps") < text.index("## My project") < text.index("## Numbers for the test") < text.index("## Data")
     assert "Five ad ideas for my product" in text and "Not copies" in text
     assert "Report for whoever decides: one page." in text
@@ -140,7 +207,7 @@ def test_instructions_exist_in_both_languages():
         analysis = briefs.instructions("analysis", "Northwind", lang)
         plan = briefs.instructions("plan", "Northwind", lang)
         assert analysis.count("\n4. ") == 2 and "Northwind" in analysis      # four passes, at least four deliverables
-        assert plan.count("\n5. ") == 1 and "Northwind" in plan              # five steps
+        assert plan.count("\n7. ") == 1 and "Northwind" in plan              # seven steps
     assert set(briefs._T["it"]) == set(briefs._T["en"])
 
 
