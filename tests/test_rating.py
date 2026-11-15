@@ -557,3 +557,14 @@ def test_reach_figures_that_are_not_numbers_do_not_break_the_rating():
     rated = signals.annotate(ranked)
     assert all(0 <= item["score"] <= 100 for item in rated)
     assert signals.market_total({"available": True, "country": None, "eu_total": 700_000, "uk_total": 300_000}) == 1_000_000
+
+
+def test_hard_case_fewer_than_five_ads_read_get_no_label_that_compares_them():
+    # Right label: none of the two. "Scaling" and "review" say where an ad stands among the others, and
+    # four readings are too few to say it: the same two ads get those labels once all six are read.
+    few = {name: REACH[name] for name in ("giant", "steady", "shop", "forgotten")}
+    four = by_id(with_reach(rating.group_concepts(market(), AS_OF), few))
+    assert four["giant"]["reliability"] == "high" and four["forgotten"]["reliability"] == "high"
+    assert not {"scaling", "review"} & {item["verdict"] for item in four.values()}
+    six = by_id(with_reach(rating.group_concepts(market(), AS_OF), REACH))
+    assert six["giant"]["verdict"] == "scaling" and six["forgotten"]["verdict"] == "review"
