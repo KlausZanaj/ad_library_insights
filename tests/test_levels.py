@@ -70,7 +70,8 @@ def test_slices_cover_the_four_lenses(company):
     assert "## Languages and countries" in slices["reach"] and "Where delivery goes" in slices["reach"]
     assert "## Ads on air now, by age" in slices["testing"] and "| 90 days or more |" in slices["testing"]
     assert "Survival: NOT MEASURABLE" in slices["testing"] and "first saved search" in slices["testing"]
-    assert "three parts: scale" in slices["overview"] and "Reliability of a rating" in slices["overview"]
+    assert "three parts that always weigh the same: scale" in slices["overview"]
+    assert "Reliability of a rating" in slices["overview"]
     assert "do not count as creatives" in slices["overview"]
     assert "Meta publishes no spend and no sales" in slices["overview"]
     top = company["ads"][0]
@@ -83,6 +84,101 @@ def test_slices_cover_the_four_lenses(company):
     assert len(pictures) == 9 and all(Path(p["source"]).exists() for p in pictures)   # three stills for three videos
     assert pictures[0]["name"].startswith("frames/01-") and pictures[0]["name"].endswith("-start.jpg")
     assert "frames/01-" in slices["creative"] and str(Path(pictures[0]["source"]).parent) not in slices["creative"]
+
+
+def test_overview_describes_the_rating_the_code_computes(company):
+    # the specialists judge every ad from these lines: they must say what rating.py does, not an older version
+    text = packs.sections(company, ads=3)[0]["overview"]
+    assert "scale, up to 60 points" in text and "staying power, up to 25" in text and "creative investment, up to 15" in text
+    assert "full at 90" in text and "full at 10" in text                       # fixed thresholds
+    assert "100 for the one that reaches the most people per day, 0 for one that reaches 1,000 times fewer" in text
+    assert "(7 at the least, no upper limit)" in text                          # no cap on the days: rating.rate_days
+    assert "scaling (14 to 89 days on air and in the top third by people per day)" in text
+    assert "ended (no longer on air)" in text and "not a negative verdict" in text
+    assert "only when at least 5 concepts were read" in text
+    assert "up to 3 of its ads are read" in text and "Reach is never added across concepts" in text
+    assert "that of one ad of the group" not in text and "relative to the other ads here" not in text
+    assert "off topic" not in text and "words searched" not in text            # a company search has no keyword
+
+
+def test_a_concept_shows_its_age_and_the_age_of_its_most_shown_ad(company):
+    # reach per day comes from the ads read, staying power from the oldest ad: one age alone would mislead
+    top = company["ads"][0]
+    top["ad_days"] = 11
+    slices, _ = packs.sections(company, ads=3)
+    assert "120 (most shown ad: 11) days" in slices["copy"]
+    assert f"| 1 | {top['library_id']} | 120 (most shown ad: 11) |" in slices["reach"]
+    assert "| 120 (most shown ad: 11) | 2 | video |" in slices["testing"]
+    assert "people reached in IT, 14,629 per day (2 of 3 ads read)" in slices["copy"]
+    assert "## Across the 3 concepts with reach in IT" in slices["reach"]
+    assert "Concepts are not added to each other" in slices["reach"]
+
+
+def test_launch_pace_says_how_much_of_the_list_it_was_counted_on(company):
+    text = packs.sections(company, ads=3)[0]["testing"]
+    assert "Counted on the 5 ads loaded, of 194 active: the list was read in part" in text
+    assert "the real launch pace is higher than this figure" in text
+    company["signals"]["ads_loaded"] = company["signals"]["active_ads"]
+    assert "the list was read in full" in packs.sections(company, ads=3)[0]["testing"]
+
+
+def test_ended_and_off_topic_ads_are_marked_in_the_pack(company):
+    from ad_library_insights import signals
+    last = company["ads"][-1]
+    last["status"] = "inactive"
+    signals.annotate(company["ads"])
+    company["ads"][0]["query_match"] = False
+    company["signals"]["off_query"] = 1
+    slices, _ = packs.sections(company, ads=3)
+    assert "ended, reliability" in slices["copy"] and "no longer on air" in slices["copy"]
+    assert f"{last['library_id']} (no longer on air)" in slices["reach"]
+    assert "| 90 days or more | 2 |" in slices["testing"]                      # the ended one is not "on air now"
+    assert "Concepts no longer on air, left out of the table: 1" in slices["testing"]
+    assert "the words searched are not in its visible text" in slices["copy"]
+    assert "1 of the 3 concepts loaded do not show the words searched" in slices["overview"]
+
+
+def test_trap_pack_one_day_ad_foreign_only_ad_and_market_without_reach(company):
+    """Three cases that have already produced wrong statements, in one pack.
+
+    An ad of one day, an ad delivered only outside the country searched, and then a
+    market with no published reach at all. The files must say "too recent to judge",
+    "not published" and "NO REACH IN", and must not carry a figure that invites the
+    opposite reading.
+    """
+    from ad_library_insights import signals
+    first, young, abroad = company["ads"]
+    young.update(days_running=1, ad_days=1, newest_days=1)
+    young["reach"] = {**young["reach"], "country_reach": 476}               # as the real one-day ad: 476 people in Italy
+    abroad["reach"] = {**abroad["reach"], "country_reach": None}            # delivered in the EU, not in Italy
+    signals.annotate(company["ads"])
+    signals.refresh(company["signals"], company["ads"], "IT")
+    by_id = {ad["library_id"]: ad for ad in company["ads"]}
+    assert by_id[young["library_id"]]["verdict"] == "testing" and by_id[abroad["library_id"]]["reliability"] != "high"
+    made = briefs.compose("analysis", company, 3, lang="en")
+    slices, text = made["slices"], made["text"]
+
+    young_line = next(line for line in slices["copy"].splitlines() if line.startswith("rating") and " 1 days" in line)
+    assert "too recent to judge" in young_line and "scaling" not in young_line
+    assert f"{young['library_id']} (too recent to judge)" in slices["reach"]
+    assert "An ad on air for less than 7 days is too recent to judge" in text
+
+    assert "reach in IT: not published (the reach read is for the EU or the UK and does not count here)" in slices["copy"]
+    abroad_row = next(line for line in slices["reach"].splitlines() if f"| {abroad['library_id']}" in line)
+    assert "| not published | n/a | 7,398,228 |" in abroad_row              # the EU total stays, as information
+    assert "NO REACH IN" not in slices["overview"]                           # one concept still has reach in Italy
+    assert "Reach in IT: read for 2 of these 3 concepts" in slices["overview"]
+
+    for ad in company["ads"]:
+        ad["reach"] = {**ad["reach"], "country_reach": None}
+        ad.pop("card_reach", None)
+    signals.annotate(company["ads"])
+    signals.refresh(company["signals"], company["ads"], "IT")
+    made = briefs.compose("analysis", company, 3, lang="en")
+    assert "NO REACH IN IT" in made["slices"]["overview"] and "NO REACH IN IT" in made["text"]
+    assert "people reached in IT" not in made["slices"]["copy"]
+    assert "## Reach in IT: not published" in made["slices"]["reach"]
+    assert not [ad for ad in company["ads"] if ad["verdict"] in ("scaling", "review")]
 
 
 def test_survival_table_is_shown_when_two_full_searches_exist(company):
