@@ -147,7 +147,7 @@ def test_reach_is_read_only_for_the_top_ads(tmp_path):
     assert all(ad["reach"]["eu_total"] == 7398228 and ad["reach"]["country_reach"] == 835585 for ad in top)
     assert all(ad["reach_per_day"] > 0 and ad["audience"]["age_min"] == 25 for ad in top)
     assert all("reach" not in ad for ad in rest)
-    assert result["deep"] == {"requested": 2, "read": 2, "failed": [], "with_reach": 2,
+    assert result["deep"] == {"requested": 2, "read": 2, "concepts": 2, "failed": [], "with_reach": 2,
                               "frames": False, "note": None}
     assert result["signals"]["reach"]["ads_with_reach"] == 2
     assert result["signals"]["audience"]["locations_included"][0]["ads"] == 2

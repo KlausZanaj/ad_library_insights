@@ -14,7 +14,7 @@ CSV_COLUMNS = [
     "rank", "score", "verdict", "reliability", "kind", "needs_review", "impression_rank", "days_running",
     "creatives", "cards", "copies_total", "languages", "longevity_score", "advertiser", "status", "started", "media_type", "platforms", "cta",
     "landing_domain", "headline", "hook_type", "hook", "promise", "proof_kinds",
-    "reach_eu", "reach_country", "reach_uk", "reach_per_day", "age_min", "age_max", "gender",
+    "reach_eu", "reach_country", "reach_ads_read", "reach_uk", "reach_per_day", "age_min", "age_max", "gender",
     "locations_included", "locations_excluded", "body", "library_id", "ad_url",
 ]
 
@@ -55,7 +55,8 @@ def _reach_cells(ad: dict) -> dict:
         "needs_review": "yes" if ad.get("needs_review") else "",
         "languages": ";".join(ad.get("languages") or []),
         "reach_eu": reach.get("eu_total"),
-        "reach_country": reach.get("country_reach"),
+        "reach_country": ad.get("reach_total"),       # the concept's ads that were read, added up
+        "reach_ads_read": ad.get("reach_cards_read"),
         "reach_uk": reach.get("uk_total"),
         "reach_per_day": ad.get("reach_per_day"),     # in the country searched, over seven days at least
         "age_min": audience.get("age_min"),
@@ -133,7 +134,7 @@ def _reach_table(ads: list[dict], country: str) -> list[str]:
         flag = " (review)" if ad.get("needs_review") else ""
         out.append(
             f"| {rank} | {_cell(ad.get('advertiser'))}{flag} | {ad.get('days_running', '-')} "
-            f"| {_number(reach.get('country_reach')) if reach.get('available') else 'not published'} "
+            f"| {_number(ad.get('reach_total')) if reach.get('available') else 'not published'} "
             f"| {_number(ad.get('reach_per_day'))} | {_number(reach.get('eu_total'))} "
             f"| {_number(reach.get('uk_total'))} | {age} | {audience.get('gender') or '-'} "
             f"| [{ad['library_id']}]({ad['ad_url']}) |")

@@ -3,24 +3,31 @@
 The Ad Library shows no spend and no sales, so no single number is the truth. Three
 things can be read from it, and they are kept apart:
 
-* **Scale**: how many people an ad reaches per day in the country that was searched.
-  It is the closest thing to spend, because Meta does not show an ad to more people
-  without budget. Meta publishes reach for ads delivered in the EU or the UK, country
-  by country: the figure of the searched country is the one that rates, the EU total
-  is shown beside it. Where the searched country has no such figure, the position in
-  the library's own list is used instead, since that list is ordered by total
-  impressions, highest first. Reach per day is never divided by fewer than seven
-  days: a figure from one or two days says nothing about a rate.
+* **Scale**: how many people a concept reaches per day in the country that was
+  searched. It is the closest thing to spend, because Meta does not show an ad to more
+  people without budget. Meta publishes reach for ads delivered in the EU or the UK,
+  country by country: the figure of the searched country is the one that rates, the EU
+  total is shown beside it. Reach is divided by the days the ad has been on air, never
+  by fewer than 7 (a day or two is not a rate). It is an average over the whole life of
+  the ad: reach counts unique people, who grow slower than days, so an ad on air for
+  months shows fewer people per day than it had; the total is always shown beside it.
+  The ads of one concept that were read are added up. Where the searched country has no such
+  figure, the position in the library's own list is used instead, since that list is
+  ordered by total impressions, highest first.
 * **Staying power**: days running, full marks at 90 days. Time is not relative: three
   months of spend are three months for a corner shop and for a marketplace.
-* **Creative investment**: how many different creatives carry the same concept.
-  Identical copies in several ad sets, versions of one dynamic ad, catalogue ads and
-  translations of the same ad do not count; they are grouped into one ad with variants.
+* **Creative investment**: how many different creatives carry the same concept, full
+  marks at 10. Identical copies in several ad sets, versions of one dynamic ad,
+  catalogue ads and translations of the same ad do not count; they are grouped into
+  one ad with variants.
 
-Scale and creative investment are measured against the other ads of the same search,
-on a log scale, because reach runs from hundreds to millions. Every rating carries a
-reliability: high when reach was read, medium when only the impression position is
-known, low when neither is.
+Scale is measured against the best ad of the same search, on a log scale, because
+reach runs from hundreds to millions: 100 for the ad that reaches the most people per
+day, 0 for one that reaches a thousand times fewer. The three parts always weigh the
+same (60, 25, 15), so an ad whose reach was not read can never gain from that. Every
+rating carries a reliability: high when reach was read, medium when scale rests on
+the impression position, low when neither is known. The labels that compare ads with
+each other ("scaling", "review") are given only on reach that was read.
 
 The older longevity score (days and copy reuse) is still computed and shown in the
 detail of an ad. It no longer decides the ranking.
@@ -28,6 +35,8 @@ detail of an ad. It no longer decides the ranking.
 from __future__ import annotations
 
 import math
+import re
+import statistics
 import unicodedata
 from collections import defaultdict
 from datetime import date
@@ -40,13 +49,15 @@ HORIZON_DAYS = 90                 # staying power is full from here on
 TESTING_DAYS = 30                 # younger than this, an ad is still a test
 MIN_RATE_DAYS = 7                 # reach per day is never computed over fewer days than this,
                                   # and an ad younger than this is too recent to judge
-WEIGHTS = {                       # points each part can give, by what is known about scale
-    "high": {"scale": 60, "staying": 25, "creative": 15},
-    "medium": {"scale": 50, "staying": 30, "creative": 20},
-    "low": {"scale": 0, "staying": 60, "creative": 40},
-}
+SCALING_MIN_DAYS = 14             # two weeks on air before an ad can be said to scale
+WEIGHTS = {"scale": 60, "staying": 25, "creative": 15}     # points each part can give
+FULL_CREATIVES = 10               # creative investment is full from here on
+SCALE_SPAN = 1000                 # scale 0 is a thousand times fewer people per day than the best ad
 LOW_SCALE, MID_SCALE, HIGH_SCALE = 25, 40, 70     # positions on the 0-100 scale of the search
 MIN_REACH_SAMPLE = 3              # fewer ads with reach than this cannot set a scale
+MIN_COMPARABLE = 5                # fewer than this, no ad is called scaling or forgotten against the others
+CARDS_PER_CONCEPT = 3             # ads of one concept whose reach is read and added up
+_WORDS = re.compile(r"[^\W_]+")
 
 
 # --- one ad per concept ---------------------------------------------------------------
@@ -62,22 +73,34 @@ def skeleton(text: str) -> str:
     return "".join(ch for ch in text or "" if unicodedata.category(ch) in ("So", "Nd"))
 
 
+def _share_words(first: dict, second: dict) -> bool:
+    """Texts in one language share their content words; translations share little more than the brand."""
+    shared = first["long_words"] & second["long_words"]
+    return len(shared) > 0.25 * max(1, min(len(first["long_words"]), len(second["long_words"])))
+
+
 def _are_translations(first: dict, second: dict) -> bool:
     """Two texts of one advertiser that say the same thing in different languages.
 
-    Evidence, strongest first: the same video or picture under both texts; the same
-    emoji and digits in the same order, in two different languages and at a similar
-    length. Texts with neither a shared creative nor such marks are left apart.
+    Never two texts recognised as the same language, and never two texts that share
+    their words. Then one of these: the same video or picture under both, with two
+    different languages recognised or the same emoji and digits in the same order; or
+    different creatives, with the same emoji and digits at a similar length. A single
+    shared mark is weak evidence, so it also asks for two recognised languages.
     """
-    if first["language"] and first["language"] == second["language"]:
+    known = bool(first["language"] and second["language"])
+    if (known and first["language"] == second["language"]) or _share_words(first, second):
         return False
-    marks_match = bool(first["skeleton"]) and first["skeleton"] == second["skeleton"]
-    both_known = bool(first["language"] and second["language"])
+    marks = first["skeleton"] if first["skeleton"] == second["skeleton"] else ""
     if first["media"] & second["media"]:
-        return marks_match or both_known
-    one_known = bool(first["language"] or second["language"])     # a short text may go unrecognised
+        return known or bool(marks)
     shorter, longer = sorted((first["words"], second["words"]))
-    return marks_match and one_known and shorter >= 0.55 * longer
+    return bool(marks) and shorter >= 0.55 * longer and (len(marks) >= 2 or known)
+
+
+def _page_of(url: str) -> str:
+    parsed = urlparse(url)
+    return f"{parsed.netloc}{parsed.path}".rstrip("/").casefold()
 
 
 def _kind(members: list[dict]) -> str:
@@ -85,9 +108,12 @@ def _kind(members: list[dict]) -> str:
     formats = [m.get("format") for m in members]
     if formats.count("dpa") * 2 >= len(members):
         return "catalog"
-    links = {m.get("landing_url") for m in members if m.get("landing_url")}
-    if len(members) >= 4 and len(links) * 2 >= len(members) and len(links) >= 4:
-        return "catalog"                           # same text, a different product behind each ad
+    # same text, a different product page and a different title behind each ad; tracking
+    # parameters after the "?" do not make a different page
+    pages = {_page_of(m["landing_url"]) for m in members if m.get("landing_url")}
+    titles = {m.get("headline") for m in members if m.get("headline")}
+    if len(members) >= 4 and len(pages) >= 4 and len(pages) * 2 >= len(members) and len(titles) * 2 >= len(members):
+        return "catalog"
     if formats.count("dco") * 2 >= len(members) or sum(bool(m.get("multiple_versions")) for m in members) * 2 >= len(members):
         return "dynamic"
     return "standard"
@@ -98,7 +124,8 @@ def group_concepts(ads: list[dict], as_of: date | None = None) -> list[dict]:
 
     Cards of one advertiser sharing a text are one concept; so are translations of that
     text. The concept is represented by its most shown card (best impression position)
-    and remembers what it merged: how many cards, identical copies, creatives, languages.
+    and remembers what it merged: its cards with their dates and positions, identical
+    copies, creatives, languages.
     """
     from .signals import detect_language          # here to avoid a circular import
 
@@ -111,7 +138,9 @@ def group_concepts(ads: list[dict], as_of: date | None = None) -> list[dict]:
         group = texts.setdefault(key, {"advertiser": advertiser, "members": [], "media": set(),
                                        "language": detect_language(ad.get("body", "")),
                                        "skeleton": skeleton(ad.get("body", "")), "text": bool(fingerprint),
-                                       "words": max(len((ad.get("body") or "").split()), 1)})
+                                       "words": max(len((ad.get("body") or "").split()), 1),
+                                       "long_words": {word for word in _WORDS.findall((ad.get("body") or "").casefold())
+                                                      if len(word) >= 4}})
         group["members"].append(ad)
         group["media"].add(media_key(ad))
 
@@ -145,7 +174,14 @@ def group_concepts(ads: list[dict], as_of: date | None = None) -> list[dict]:
         lead = min(members, key=lambda m: (m.get("impression_rank") or 10 ** 9, m.get("started") or "9999", m["library_id"]))
         starts = [m["started"] for m in members if m.get("started")]
         first_started = min(starts) if starts else None
-        days = scoring.days_running({"started": first_started, "ended": lead.get("ended")}, as_of) if first_started else None
+        # a concept is over only when every one of its ads is; then it ended with the last of them
+        running = [m for m in members if not m.get("ended")]
+        ended = None if running else max(m["ended"] for m in members)
+        days = scoring.days_running({"started": first_started, "ended": ended}, as_of) if first_started else None
+        cards = sorted(({"library_id": m["library_id"], "impression_rank": m.get("impression_rank"),
+                         "started": m.get("started"), "days": scoring.days_running(m, as_of)} for m in members),
+                       key=lambda m: (m["impression_rank"] or 10 ** 9, m["library_id"]))
+        ages = [card["days"] for card in cards if card["days"] is not None]
         kind = _kind(members)
         copies = sum(m.get("copies", 1) for m in members)
         creatives = 1 if kind == "catalog" else max(1, len({media_key(m) for m in members}))
@@ -153,13 +189,17 @@ def group_concepts(ads: list[dict], as_of: date | None = None) -> list[dict]:
         ranked.append(dict(
             lead,
             started=first_started or lead.get("started"),
+            ended=ended,
+            status="inactive" if ended else lead.get("status"),
             ad_started=lead.get("started"),
             days_running=days,
             ad_days=scoring.days_running(lead, as_of),
+            newest_days=min(ages) if ages else None,
             impression_rank=min(ranks) if ranks else None,
             kind=kind,
             creatives=creatives,
             cards=len(members),
+            members=cards,
             copies_total=copies,
             texts=len(parts),
             languages=sorted({part["language"] for part in parts if part["language"]}),
@@ -174,43 +214,52 @@ def group_concepts(ads: list[dict], as_of: date | None = None) -> list[dict]:
     return evaluate(ranked)
 
 
+def cards_to_read(ranked: list[dict], limit: int) -> list[tuple[dict, str]]:
+    """The ``limit`` most shown cards whose reach is worth reading, as (concept, card id).
+
+    Cards are taken in the order of the library's own list, so the choice does not
+    depend on a rating that reach itself will change. A concept gives at most
+    ``CARDS_PER_CONCEPT`` cards, so that one advertiser with many ads does not use up
+    the whole reading.
+    """
+    pool = []
+    for ad in ranked:
+        cards = ad.get("members") or [{"library_id": ad["library_id"], "impression_rank": ad.get("impression_rank")}]
+        for card in cards[:CARDS_PER_CONCEPT]:
+            pool.append((card.get("impression_rank") or 10 ** 9, ad["library_id"] != card["library_id"],
+                         card["library_id"], ad))
+    pool.sort(key=lambda item: item[:3])
+    return [(ad, card_id) for _, _, card_id, ad in pool[:max(0, limit)]]
+
+
 # --- rating ---------------------------------------------------------------------------
 
-def _quantile(values: list[float], q: float) -> float:
-    ordered = sorted(values)
-    return ordered[min(len(ordered) - 1, int(q * len(ordered)))]
-
-
-def _log_position(value: float, low: float, high: float) -> float:
-    """Where ``value`` sits between ``low`` and ``high`` on a log scale, 0-100."""
-    if value <= 0:
-        return 0.0
-    if high <= low:
-        return 100.0
-    share = (math.log(max(value, low)) - math.log(low)) / (math.log(high) - math.log(low))
-    return round(100 * min(max(share, 0.0), 1.0), 1)
+def rate_days(days: int | None) -> int:
+    """Days a reach figure is spread over: the ad's days on air, seven at the least."""
+    return max(days or 0, MIN_RATE_DAYS)
 
 
 def too_recent(days: int | None) -> bool:
     return days is not None and days < MIN_RATE_DAYS
 
 
-def _verdict(days: int | None, scale: float | None, reliability: str, leading: bool = True) -> str:
-    if too_recent(days):
-        return "testing"                           # a few days of delivery cannot be called anything else
-    long_running = days is not None and days >= HORIZON_DAYS
-    if scale is not None:
-        if long_running and scale <= LOW_SCALE:
-            return "review"                        # long on air, few people: possibly forgotten
-        if scale >= HIGH_SCALE and leading and (reliability == "high" or not long_running):
-            return "scaling"
-        if long_running and scale >= MID_SCALE:
-            return "holding"
-    elif long_running:
-        return "holding"
-    if days is not None and days < TESTING_DAYS:
-        return "testing"
-    return "average"
+def _scale_from_rate(rate: float, best: float) -> float:
+    """Where ``rate`` sits below ``best`` on a log scale: 100 at the best, 0 a thousand times lower."""
+    if rate <= 0 or best <= 0:
+        return 0.0
+    share = 1 - math.log(best / rate) / math.log(SCALE_SPAN)
+    return round(100 * min(max(share, 0.0), 1.0), 1)
+
+
+def _scale_from_position(rank: int, listed: int) -> float:
+    """Where a position sits in a list of ``listed`` ads, on a log scale: 100 for the first.
+
+    The whole library list is the yardstick, not the part that was loaded, so loading
+    more or fewer ads does not move the others.
+    """
+    if listed <= 1:
+        return 100.0
+    return round(100 * min(max(1 - math.log(max(rank, 1)) / math.log(listed), 0.0), 1.0), 1)
 
 
 def _market_reach(ad: dict) -> float | None:
@@ -218,23 +267,16 @@ def _market_reach(ad: dict) -> float | None:
     return ad.get("reach_per_day") if ad.get("reach_in_market", True) else None
 
 
-def rate_days(ad: dict) -> int:
-    """Days the reach of an ad is spread over: its own days on air, seven at the least."""
-    own = ad.get("ad_days") if ad.get("ad_days") is not None else ad.get("days_running")
-    return max(own or 0, MIN_RATE_DAYS)
-
-
 def _reach_by_position(ranked: list[dict]):
     """Estimate reach in the searched country from the impression position.
 
-    It uses the ads whose reach in that country is known (the same figure the scale uses).
-
-    The list is ordered by total impressions, so between two ads with known reach an ad
-    is given a reach in between (on a log scale); past the last known one it falls off
-    in proportion to the position. Returns a function, or None when nothing is known.
+    It uses the cards whose reach in that country was read (the same figures the scale
+    uses). The list is ordered by total impressions, so between two cards with known
+    reach an ad is given a reach in between (on a log scale); past the last known one it
+    falls off in proportion to the position. Returns a function, or None when nothing is known.
     """
-    known = sorted((ad["impression_rank"], ad["reach_total"]) for ad in ranked
-                   if ad.get("impression_rank") and _market_reach(ad) and ad.get("reach_total"))
+    known = sorted((rank, total) for ad in ranked for rank, total in ad.get("reach_points") or []
+                   if rank and total > 0)
     if not known:
         return None
 
@@ -255,65 +297,93 @@ def _reach_by_position(ranked: list[dict]):
     return estimate
 
 
-def evaluate(ranked: list[dict], use_impressions: bool = True) -> list[dict]:
+def _verdict(ad: dict, scale: float | None, read: bool, comparable: bool, leading: bool, small: bool) -> str:
+    """The label of an ad.
+
+    ``read``: its reach was read; ``comparable``: enough ads were read to compare them;
+    ``leading``: in the top third by scale; ``small``: total reach below the middle of the search.
+    """
+    days = ad.get("days_running")
+    if ad.get("status") == "inactive":
+        return "ended"
+    if too_recent(days):
+        return "testing"                           # a few days of delivery cannot be called anything else
+    long_running = days is not None and days >= HORIZON_DAYS
+    if read and comparable:
+        # long on air, few people in all, and no fresh ad added to the concept: possibly forgotten
+        newest = ad.get("newest_days") if ad.get("newest_days") is not None else days
+        if long_running and (newest or 0) >= HORIZON_DAYS and small and scale <= LOW_SCALE:
+            return "review"
+        if scale >= HIGH_SCALE and leading and days is not None and SCALING_MIN_DAYS <= days < HORIZON_DAYS:
+            return "scaling"
+    if long_running and scale is not None and scale >= MID_SCALE:
+        return "holding"
+    if days is not None and days < TESTING_DAYS:
+        return "testing"
+    return "average"
+
+
+def evaluate(ranked: list[dict], use_impressions: bool = True, library_total: int | None = None) -> list[dict]:
     """Rate every ad against the others in ``ranked`` and sort the list in place, best first.
 
     Call it again after reach has been read: ads with reach move to a high-reliability
     rating based on people reached per day, and the ads not opened get an estimate from
-    their impression position, calibrated on the ones that were. ``use_impressions``
-    switches off the impression-position fallback where the list order cannot be trusted.
+    their impression position, calibrated on the ones that were. ``library_total`` is how
+    many ads the library lists for the search; ``use_impressions`` switches off the
+    impression-position fallback where the list order cannot be trusted.
     """
-    reach_rates = [_market_reach(ad) for ad in ranked if _market_reach(ad)]
-    reach_scale = len(reach_rates) >= MIN_REACH_SAMPLE
-    low_reach = _quantile(reach_rates, 0.05) if reach_scale else 0
-    high_reach = max(reach_rates) if reach_scale else 0
+    rates = [_market_reach(ad) for ad in ranked if _market_reach(ad)]
+    everything_read = bool(rates) and len(rates) == len(ranked)
+    reach_scale = len(rates) >= MIN_REACH_SAMPLE or everything_read
+    best = max(rates) if reach_scale else 0
     estimate_reach = _reach_by_position(ranked) if reach_scale and use_impressions else None
-    by_position = sorted((ad for ad in ranked if ad.get("impression_rank")), key=lambda ad: ad["impression_rank"])
-    position = {ad["library_id"]: index for index, ad in enumerate(by_position)}
-    most_creatives = max([ad.get("creatives", 1) for ad in ranked] + [3])
+    positions = [ad["impression_rank"] for ad in ranked if ad.get("impression_rank")]
+    listed = max([library_total or 0, *positions, 1])
 
     rated = []
     for ad in ranked:
         days = ad.get("days_running")
         staying = round(100 * min((days or 0) / HORIZON_DAYS, 1.0), 1)
-        creative = _log_position(ad.get("creatives", 1), 1, most_creatives) if ad.get("creatives", 1) > 1 else 0.0
+        creative = round(100 * min(math.log(max(ad.get("creatives", 1), 1)) / math.log(FULL_CREATIVES), 1.0), 1)
         ad.pop("reach_per_day_estimate", None)
+        rank = ad.get("impression_rank")
         if reach_scale and _market_reach(ad) is not None:
-            scale, basis, reliability = _log_position(_market_reach(ad), low_reach, high_reach), "reach", "high"
-        elif estimate_reach and ad.get("impression_rank"):
-            guess = estimate_reach(ad["impression_rank"]) / rate_days(ad)
+            scale, basis, reliability = _scale_from_rate(_market_reach(ad), best), "reach", "high"
+        elif estimate_reach and rank:
+            guess = estimate_reach(rank) / rate_days(ad.get("ad_days") if ad.get("ad_days") is not None else days)
             ad["reach_per_day_estimate"] = round(guess)
-            scale, basis, reliability = _log_position(guess, low_reach, high_reach), "impressions", "medium"
-        elif use_impressions and ad["library_id"] in position:
-            last = max(len(by_position) - 1, 1)
-            scale, basis, reliability = round(100 * (1 - position[ad["library_id"]] / last), 1), "impressions", "medium"
+            scale, basis, reliability = _scale_from_rate(guess, best), "impressions", "medium"
+        elif use_impressions and rank:
+            scale, basis, reliability = _scale_from_position(rank, listed), "impressions", "medium"
         else:
             scale, basis, reliability = None, None, "low"
         rated.append((ad, scale, basis, reliability, staying, creative))
 
-    # "scaling" is for the ads that lead the search on scale, not for everything above a line
-    scales = sorted((scale for _, scale, *_ in rated if scale is not None), reverse=True)
+    # labels that compare ads with each other rest on reach that was read, and on enough of it
+    read = [(ad, scale) for ad, scale, _, reliability, *_ in rated if reliability == "high"]
+    comparable = len(read) >= MIN_COMPARABLE
+    scales = sorted((scale for _, scale in read), reverse=True)
     leading_from = scales[max(1, math.ceil(len(scales) / 3)) - 1] if scales else None
+    totals = [ad["reach_total"] for ad, _ in read if ad.get("reach_total") is not None]
+    middle_total = statistics.median(totals) if totals else 0
 
     for ad, scale, basis, reliability, staying, creative in rated:
-        days = ad.get("days_running")
-        weights = WEIGHTS[reliability]
-        points = {"scale": round((scale or 0) * weights["scale"] / 100, 1),
-                  "staying": round(staying * weights["staying"] / 100, 1),
-                  "creative": round(creative * weights["creative"] / 100, 1)}
-        verdict = _verdict(days, scale, reliability, leading=scale is not None and scale >= leading_from)
-        if verdict == "review" and "reach_per_day_estimate" in ad:
-            verdict = "average"            # an estimate is not enough to call an ad forgotten
+        points = {"scale": round((scale or 0) * WEIGHTS["scale"] / 100, 1),
+                  "staying": round(staying * WEIGHTS["staying"] / 100, 1),
+                  "creative": round(creative * WEIGHTS["creative"] / 100, 1)}
+        verdict = _verdict(ad, scale, reliability == "high", comparable,
+                           leading=scale is not None and leading_from is not None and scale >= leading_from,
+                           small=(ad.get("reach_total") or 0) < middle_total)
         ad.update(
             score=round(sum(points.values()), 1),
             score_parts={"scale": scale, "staying": staying, "creative": creative},
             score_points=points,
-            score_weights=dict(weights),
+            score_weights=dict(WEIGHTS),
             scale_basis=basis,
             reliability=reliability,
             verdict=verdict,
             needs_review=verdict == "review",
-            too_recent=too_recent(days),
+            too_recent=too_recent(ad.get("days_running")),
         )
         if verdict == "review":
             ad["review"] = {"reason": "long_running_low_scale", "basis": basis}
@@ -322,3 +392,19 @@ def evaluate(ranked: list[dict], use_impressions: bool = True) -> list[dict]:
     ranked.sort(key=lambda ad: (-ad["score"], -(ad["score_parts"]["scale"] or 0), -(ad.get("days_running") or 0),
                                 ad["library_id"]))
     return ranked
+
+
+def matches_query(ad: dict, query: str) -> bool:
+    """Whether what is known of an ad contains every word of the keyword that was searched.
+
+    The library matches a keyword against more than the visible text, so a miss here is
+    a reason to look, not proof that the ad is off topic.
+    """
+    def plain(text: str) -> str:
+        folded = unicodedata.normalize("NFKD", (text or "").casefold())
+        return "".join(ch for ch in folded if not unicodedata.combining(ch))
+
+    words = [word for word in _WORDS.findall(plain(query)) if len(word) >= 3]
+    hay = plain(" ".join(str(ad.get(key) or "") for key in ("body", "headline", "description", "advertiser",
+                                                            "landing_domain")))
+    return all(word in hay for word in words)

@@ -20,6 +20,7 @@ from . import copy_analysis, rating
 
 AGE_FLOOR, AGE_CEILING = 18, 65      # the age range Meta's targeting spans
 _WORD = re.compile(r"[^\W\d_]+")
+_ADDRESS = re.compile(r"https?://\S+|\b[\w-]+(?:\.[\w-]+)*\.[a-z]{2,}\b(?:/\S*)?", re.I)
 
 
 def _stopwords() -> dict[str, frozenset]:
@@ -44,7 +45,7 @@ def detect_language(text: str) -> str | None:
     Non-Latin scripts are recognised by their characters; Latin-script languages by
     their most common function words, which needs a sentence or two to work.
     """
-    text = text or ""
+    text = _ADDRESS.sub(" ", text or "")
     letters = len(_WORD.findall(text))
     for code, pattern in _SCRIPTS:
         if len(pattern.findall(text)) >= max(3, letters // 2):
@@ -108,37 +109,67 @@ def audience_breadth(audience: dict | None, reach: dict | None) -> dict | None:
     }
 
 
-def annotate(ranked: list[dict], use_impressions: bool = True) -> list[dict]:
+def _people(value) -> int | None:
+    """A reach figure as a whole number of people, or None when it is not a usable number."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value != value:
+        return None
+    return max(0, int(value))
+
+
+def market_total(reach: dict | None) -> int | None:
+    """People one ad reached in the country that was searched, or None when that is not published.
+
+    With no country asked for, everything Meta publishes is the market: the EU and the
+    UK totals together.
+    """
+    if not reach or not reach.get("available"):
+        return None
+    if reach.get("country"):
+        return _people(reach.get("country_reach"))
+    published = [_people(reach.get(key)) for key in ("eu_total", "uk_total")]
+    return sum(value for value in published if value is not None) if any(v is not None for v in published) else None
+
+
+def annotate(ranked: list[dict], use_impressions: bool = True, library_total: int | None = None) -> list[dict]:
     """Add reach per day and audience breadth to the ads, then rate and sort them.
 
     ``reach_total`` and ``reach_per_day`` are people reached in the country that was
-    searched: that is the market the rating is about. The EU and UK totals stay in
-    ``reach`` as information. When the searched country is not one the published reach
-    covers (a search in the United States, say), neither is set and the EU or UK figure
-    per day goes to ``reach_elsewhere_per_day``, which never rates.
-
-    Reach per day divides the reach of the ad that was opened by that ad's own days,
-    seven at the least; the age of the whole concept (its oldest ad) is what staying
-    power looks at.
+    searched: that is the market the rating is about. They add up the ads of the concept
+    whose reach was read (``reach_cards_read`` of ``cards``); each is divided by its own
+    days on air, seven at the least. The EU and UK totals stay in ``reach`` as information.
+    When the searched country is not one the published reach covers (a search in the
+    United States, say), neither is set and the EU or UK figure per day goes to
+    ``reach_elsewhere_per_day``, which never rates.
     """
     for ad in ranked:
         reach = ad.get("reach") or {}
-        days = rating.rate_days(ad)
-        for key in ("reach_total", "reach_per_day", "reach_elsewhere_per_day", "reach_in_market"):
+        cards = {card["library_id"]: card for card in ad.get("members") or []}
+        own_days = ad.get("ad_days") if ad.get("ad_days") is not None else ad.get("days_running")
+        readings = [(ad["library_id"], reach, own_days)]
+        readings += [(card_id, found, (cards.get(card_id) or {}).get("days"))
+                     for card_id, found in (ad.get("card_reach") or {}).items()]
+        for key in ("reach_total", "reach_per_day", "reach_elsewhere_per_day", "reach_in_market",
+                    "reach_cards_read", "reach_points", "reach_days"):
             ad.pop(key, None)
-        if reach.get("available"):
-            in_country = reach.get("country_reach")
-            ad["reach_in_market"] = in_country is not None or not reach.get("country")
-            if ad["reach_in_market"]:
-                # no country asked for: the section total is the market
-                ad["reach_total"] = in_country if in_country is not None else reach["basis_total"]
-                ad["reach_per_day"] = round(ad["reach_total"] / days)
-            else:
-                ad["reach_elsewhere_per_day"] = round(reach["basis_total"] / days)
+        known = [(card_id, market_total(found), days) for card_id, found, days in readings]
+        known = [(card_id, total, days) for card_id, total, days in known if total is not None]
+        if known:
+            ad["reach_in_market"] = True
+            ad["reach_total"] = sum(total for _, total, _ in known)
+            ad["reach_per_day"] = round(sum(total / rating.rate_days(days) for _, total, days in known))
+            ad["reach_cards_read"] = len(known)
+            ad["reach_days"] = rating.rate_days(own_days)
+            # what the estimate for unread ads is calibrated on: position and reach of each card read
+            ad["reach_points"] = [((cards.get(card_id) or {}).get("impression_rank") or ad.get("impression_rank"), total)
+                                  for card_id, total, _ in known]
+        elif reach.get("available"):
+            ad["reach_in_market"] = False
+            elsewhere = sum(v for v in (_people(reach.get("eu_total")), _people(reach.get("uk_total"))) if v is not None)
+            ad["reach_elsewhere_per_day"] = round(elsewhere / rating.rate_days(own_days))
         breadth = audience_breadth(ad.get("audience"), reach)
         if breadth:
             ad["audience_breadth"] = breadth
-    return rating.evaluate(ranked, use_impressions)
+    return rating.evaluate(ranked, use_impressions, library_total)
 
 
 # --- per search or advertiser -----------------------------------------------------
@@ -191,25 +222,27 @@ def _reach_summary(ranked: list[dict], country: str | None) -> dict:
                         "for ads delivered in the European Union or the United Kingdom."}
     by_country: Counter = Counter()
     for ad in known:
-        for region in ad["reach"]["regions"]:
+        for region in ad["reach"].get("regions") or []:
             for row in region["countries"]:
                 by_country[row["country"]] += row["reach"]
     rates = [ad["reach_per_day"] for ad in known if ad.get("reach_per_day") is not None]
     totals = [ad["reach_total"] for ad in known if ad.get("reach_total") is not None]
     country_reach = [ad["reach"]["country_reach"] for ad in known
                      if ad["reach"].get("country_reach") is not None]
+    cards_read = sum(ad.get("reach_cards_read", 0) for ad in known)
     return {
         "checked_ads": len(checked),
         "available": True,
         "ads_with_reach": len(known),
         "ads_without_reach": len(checked) - len(known),
         # the same person can see several ads, so these sums are not unique people
-        "eu_reach_summed": sum(ad["reach"]["eu_total"] or 0 for ad in known),
-        "uk_reach_summed": sum(ad["reach"]["uk_total"] or 0 for ad in known),
+        "eu_reach_summed": sum(ad["reach"].get("eu_total") or 0 for ad in known),
+        "uk_reach_summed": sum(ad["reach"].get("uk_total") or 0 for ad in known),
         "country": (country or "").upper() or None,
         "country_reach_summed": sum(country_reach) if country_reach else None,
         # people reached in the searched country, per ad: the figures the rating uses
         "ads_with_market_reach": len(rates),
+        "cards_read": cards_read,
         "median_reach_per_day": round(statistics.median(rates)) if rates else None,
         "highest_reach_per_day": max(rates) if rates else None,
         "median_reach_total": round(statistics.median(totals)) if totals else None,
@@ -270,8 +303,11 @@ def summarize(ads: list[dict], ranked: list[dict], as_of: date | None = None,
     platforms = Counter(p for ad in ads for p in ad.get("platforms") or [])
     return {
         "active_ads": library_total if library_total is not None else sum(a.get("copies", 1) for a in ads),
+        # the library stops counting at 50,000: from there on the figure means "at least"
+        "active_ads_at_least": bool(library_total and library_total > 50_000),
         "ads_loaded": total,
-        "distinct_texts": len(ranked),
+        "concepts": len(ranked),
+        "distinct_texts": sum(ad.get("texts", 1) for ad in ranked),
         "format_share": {name: _share(count, total) for name, count in formats.most_common()},
         "video_share": _share(formats.get("video", 0), total),
         **_launches(ads, as_of),

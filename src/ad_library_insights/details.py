@@ -96,6 +96,8 @@ def parse_reach(transparency: dict | None, country: str | None = None) -> dict:
 
     totals = {r["region"]: r["total"] for r in regions}
     wanted = (country or "").upper()
+    if wanted == "ALL":
+        wanted = ""
     country_reach = None
     for region in regions:
         row = next((c for c in region["countries"] if c["country"] == wanted), None)

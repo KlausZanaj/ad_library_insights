@@ -38,7 +38,7 @@ def assemble(fetch: FetchResult, query: str, country: str, advertiser: str = "",
     if advertiser:
         needle = advertiser.casefold()
         ads = [ad for ad in ads if needle in (ad.get("advertiser") or "").casefold()]
-    ranked = signals.annotate(rating.group_concepts(ads, as_of))
+    ranked = signals.annotate(rating.group_concepts(ads, as_of), library_total=fetch.total_count)
     result = {
         "ok": fetch.ok,
         "outcome": fetch.outcome,
@@ -83,7 +83,13 @@ async def research(client: AdLibraryClient, query: str, country: str, advertiser
     url = build_search_url(term, country, active_status, media_type)
     fetch = await client.fetch(url, wait_seconds=wait_seconds, scroll_rounds=scroll_rounds,
                                use_cache=use_cache)
-    return assemble(fetch, term, country, advertiser, as_of)
+    result = assemble(fetch, term, country, advertiser, as_of)
+    if (query or "").strip():
+        # the library matches a keyword against more than the visible text: say which ads do not show it
+        for ad in result["ads"]:
+            ad["query_match"] = rating.matches_query(ad, query)
+        result["signals"]["off_query"] = sum(1 for ad in result["ads"] if not ad["query_match"])
+    return result
 
 
 def copy_report(result: dict, top_n: int = 10) -> dict:
@@ -147,53 +153,65 @@ async def research_company(client: AdLibraryClient, country: str, page_id: str =
 
 
 def estimate_deep(result: dict, top_n: int, frames: bool = False) -> dict:
-    """Time the reach reading will take for the ``top_n`` best ads, before starting."""
-    targets = result["ads"][:max(0, top_n)]
-    videos = sum(1 for ad in targets if ad.get("video_url")) if frames else 0
-    return {"ads": len(targets), "videos": videos,
+    """Time the reach reading will take for the ``top_n`` most shown ads, before starting."""
+    targets = rating.cards_to_read(result["ads"], top_n)
+    leads = [ad for ad, card_id in targets if card_id == ad["library_id"]]
+    videos = sum(1 for ad in leads if ad.get("video_url")) if frames else 0
+    return {"ads": len(targets), "concepts": len(leads), "videos": videos,
             "seconds": details.estimate_seconds(len(targets), videos)}
 
 
 async def deepen(client: AdLibraryClient, result: dict, top_n: int = 10, frames: bool = False,
                  on_progress=None, use_cache: bool = True) -> dict:
-    """Read reach and audience for the ``top_n`` best-ranked ads of a result, in place.
+    """Read reach and audience for the ``top_n`` most shown ads of a result, in place.
 
-    Before reach is known the ranking leans on the impression position, so the ads
-    opened are the most shown ones. Once reach is read the ads are rated again and
-    the list is re-sorted. Only the top is opened, to keep page requests few.
-    Thumbnails and page logos of those ads are saved locally at the same time; with
-    ``frames`` three stills of each video are saved too.
+    The ads opened are taken in the order of the library's own list (total impressions),
+    not by a rating that reach itself is about to change. Up to three ads of one concept
+    are read and their reach is added up, so a concept split over many ads is not judged
+    on one of them. Once reach is read the ads are rated again and the list is re-sorted.
+    Thumbnails and page logos are saved locally at the same time; with ``frames`` three
+    stills of each video are saved too.
     """
-    targets = result["ads"][:max(0, top_n)]
+    targets = rating.cards_to_read(result["ads"], top_n)
     if not targets:
         return result
-    videos = {ad["library_id"]: ad["video_url"] for ad in targets if ad.get("video_url")} if frames else {}
-    outcomes = await client.read_details(result["url"], [ad["library_id"] for ad in targets],
+    leads = [ad for ad, card_id in targets if card_id == ad["library_id"]]
+    videos = {ad["library_id"]: ad["video_url"] for ad in leads if ad.get("video_url")} if frames else {}
+    outcomes = await client.read_details(result["url"], [card_id for _, card_id in targets],
                                          result.get("country") or None, videos, on_progress, use_cache)
     failed = []
-    for ad in targets:
-        outcome = outcomes.get(ad["library_id"]) or {"ok": False, "error": "not read"}
-        if outcome["ok"]:
-            found = outcome["details"]
+    for ad, card_id in targets:
+        outcome = outcomes.get(card_id) or {"ok": False, "error": "not read"}
+        lead = card_id == ad["library_id"]
+        if not outcome["ok"]:
+            failed.append(card_id)
+            if lead:
+                ad["detail_error"] = outcome.get("error")
+            continue
+        found = outcome["details"]
+        if lead:
             ad.update(reach=found["reach"], audience=found["audience"], payer=found["payer"])
             if result.get("mode") == "company" and found.get("page"):
                 result["page"] = {**result.get("page", {}),
                                   **{k: v for k, v in found["page"].items() if v is not None}}
             ad.pop("detail_error", None)
+            if outcome.get("frames"):
+                ad["frames"] = outcome["frames"]
         else:
-            ad["detail_error"] = outcome.get("error")
-            failed.append(ad["library_id"])
-        if outcome.get("frames"):
-            ad["frames"] = outcome["frames"]
-    await asyncio.to_thread(media.save_ad_media, targets, client.media)
+            # another ad of the same concept: only its reach figures are kept
+            ad.setdefault("card_reach", {})[card_id] = {
+                key: found["reach"].get(key) for key in ("available", "country", "country_reach", "eu_total",
+                                                         "uk_total", "countries_reached")}
+    await asyncio.to_thread(media.save_ad_media, leads, client.media)
     if result.get("page", {}).get("logo_url") and result["page"].get("page_id"):
         result["page"]["logo_path"] = await asyncio.to_thread(
             client.media.save, result["page"]["logo_url"], f"page_{result['page']['page_id']}_logo")
 
-    signals.annotate(result["ads"])
+    signals.annotate(result["ads"], library_total=result.get("library_total"))
     signals.refresh(result["signals"], result["ads"], result.get("country") or None)
-    with_reach = sum(1 for ad in targets if (ad.get("reach") or {}).get("available"))
-    result["deep"] = {"requested": top_n, "read": len(targets) - len(failed), "failed": failed,
-                      "with_reach": with_reach, "frames": bool(frames),
+    result["advertisers"] = advertiser_table(result["ads"])           # ratings changed with reach
+    with_reach = sum(1 for ad in leads if (ad.get("reach") or {}).get("available"))
+    result["deep"] = {"requested": top_n, "read": len(targets) - len(failed), "concepts": len(leads),
+                      "failed": failed, "with_reach": with_reach, "frames": bool(frames),
                       "note": None if with_reach or failed else details.NO_REACH_NOTE}
     return result

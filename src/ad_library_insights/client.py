@@ -22,6 +22,8 @@ from .storage import DiskCache, Throttle
 LIBRARY_URL = "https://www.facebook.com/ads/library/"
 ACTIVE_STATUSES = ("active", "inactive", "all")
 MEDIA_TYPES = ("all", "image", "meme", "video", "none")
+# The list is asked for in the order the rating relies on: most impressions first.
+SORT_BY_IMPRESSIONS = {"sort_data[mode]": "total_impressions", "sort_data[direction]": "desc"}
 
 
 def normalise_country(country: str) -> str:
@@ -47,6 +49,7 @@ def build_search_url(query: str, country: str, active_status: str = "active",
         "media_type": media_type,
         "q": query.strip(),
         "search_type": "keyword_unordered",
+        **SORT_BY_IMPRESSIONS,
     })
 
 
@@ -67,6 +70,7 @@ def build_page_url(page_id: str, country: str, active_status: str = "active",
         "media_type": media_type,
         "search_type": "page",
         "view_all_page_id": page_id,
+        **SORT_BY_IMPRESSIONS,
     })
 
 

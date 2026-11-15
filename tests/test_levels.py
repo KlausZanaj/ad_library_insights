@@ -24,7 +24,7 @@ def company(tmp_path):
 
     async def flow():
         result = await service.research_company(studio.client, "IT", page_id=PAGE_ID, as_of=TODAY)
-        return await service.deepen(studio.client, result, 3, frames=True)
+        return await service.deepen(studio.client, result, 4, frames=True)      # four ads cover the three concepts
 
     return asyncio.run(flow())
 
@@ -76,7 +76,8 @@ def test_slices_cover_the_four_lenses(company):
     top = company["ads"][0]
     assert f"id {top['library_id']}" in slices["copy"] and "> " in slices["copy"]
     assert "first pass made by rules" in slices["copy"]
-    assert "| 835,585 |" in slices["reach"] and "| 7,398,228 | 1,679,270 |" in slices["reach"]    # country first, then EU and UK
+    assert "| 835,585 (1 of 1 ads read) |" in slices["reach"] and "| 7,398,228 | 1,679,270 |" in slices["reach"]
+    assert "| 1,671,170 (2 of 3 ads read) |" in slices["reach"]             # two ads of one concept, added up
     assert "Locations targeted (ads):" in slices["reach"] and "Italy" in slices["reach"]
     assert "Launches per week" in slices["testing"] and "itunes.apple.com" in slices["testing"]
     assert len(pictures) == 9 and all(Path(p["source"]).exists() for p in pictures)   # three stills for three videos
@@ -101,6 +102,7 @@ def test_without_reach_in_the_country_the_pack_says_so(company):
     for item in company["ads"]:
         if item.get("reach", {}).get("available"):
             item["reach"] = {**item["reach"], "country": "US", "country_reach": None}
+        item.pop("card_reach", None)
     from ad_library_insights import signals
     signals.annotate(company["ads"])
     signals.refresh(company["signals"], company["ads"], "US")

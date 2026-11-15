@@ -35,7 +35,11 @@
   "now",
   "its",
   "how",
-  "do"
+  "do",
+  "already",
+  "today",
+  "here",
+  "without"
  ],
  "it": [
   "il",
@@ -74,7 +78,16 @@
   "si",
   "ha",
   "da",
-  "i"
+  "i",
+  "già",
+  "oggi",
+  "qui",
+  "senza",
+  "tuoi",
+  "adesso",
+  "dei",
+  "alla",
+  "sul"
  ],
  "es": [
   "el",
@@ -111,7 +124,15 @@
   "mi",
   "te",
   "de",
-  "la"
+  "la",
+  "puedo",
+  "haya",
+  "ya",
+  "pero",
+  "hoy",
+  "aquí",
+  "sin",
+  "tus"
  ],
  "fr": [
   "le",
@@ -147,7 +168,12 @@
   "en",
   "de",
   "la",
-  "à"
+  "à",
+  "déjà",
+  "sans",
+  "vos",
+  "maintenant",
+  "aujourd'hui"
  ],
  "de": [
   "der",
@@ -184,7 +210,11 @@
   "auf",
   "wir",
   "im",
-  "so"
+  "so",
+  "schon",
+  "heute",
+  "hier",
+  "ohne"
  ],
  "pt": [
   "o",
@@ -192,7 +222,6 @@
   "as",
   "que",
   "para",
-  "com",
   "uma",
   "não",
   "mais",
@@ -219,7 +248,12 @@
   "se",
   "é",
   "ao",
-  "eu"
+  "eu",
+  "já",
+  "hoje",
+  "aqui",
+  "sem",
+  "teus"
  ],
  "nl": [
   "de",

@@ -144,7 +144,7 @@ def test_summary_reports_reach_and_locations_after_details_were_read():
     assert found["reach"]["ads_with_reach"] == 3 and found["reach"]["ads_without_reach"] == 1
     assert found["reach"]["eu_reach_summed"] == 1_301_800
     assert found["reach"]["top_countries"][0]["country"] == "DE"
-    assert found["needs_review"] == 1 and found["verdicts"]["review"] == 1      # the old ad, ten people a day
+    assert found["needs_review"] == 0 and "review" not in found["verdicts"]    # three ads read: too few to call one forgotten
     assert found["reliability"]["high"] == 3
     places = {p["name"]: p for p in found["audience"]["locations_included"]}
     assert places["South America"] == {"name": "South America", "type": "country_groups", "ads": 3}

@@ -166,7 +166,7 @@ def test_analysis_brief_carries_the_data_and_the_limits(app):
                                            "frames": True, "lang": "it"}).json()
     text = made["text"]
     assert "specialista di performance marketing" in text
-    assert "| 835,585 |" in text and "| 7,398,228 | 1,679,270 |" in text
+    assert "| 835,585 (1 of 1 ads read) |" in text and "| 7,398,228 | 1,679,270 |" in text
     assert "solo per gli annunci mostrati nell'Unione europea o nel Regno Unito" in text
     assert len(made["images"]) == 6 and all(Path(p).exists() for p in made["images"])
     assert Path(made["folder"]).is_dir() and made["collected"] == {"ads": 2, "frames": True}

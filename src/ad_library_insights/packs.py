@@ -254,7 +254,9 @@ def reach(result: dict, ads: list[dict]) -> str:
              "Reach is published by Meta only for ads delivered in the EU or the UK. Locations are what the "
              "advertiser targeted and can name areas outside those regions.", "",
              f"Per day = reach in {country} divided by the days the ad has been on air, seven at the least. "
-             "Reach counts unique people: over months it grows slower than days, so compare totals too.", "",
+             "Reach counts unique people: over months it grows slower than days, so compare totals too. "
+             "When a concept runs as several ads, up to three of them are read and added up; EU and UK figures "
+             "are those of its most shown ad.", "",
              f"| # | id | days | {country} reach | per day in {country} | EU reach | UK reach | countries reached (top, share of the ad's reach) "
              "| languages of the text | age | gender | breadth | locations in / out |",
              "|---:|---|---:|---:|---:|---:|---:|---|---|---|---|---|---|"]
@@ -267,7 +269,8 @@ def reach(result: dict, ads: list[dict]) -> str:
         else:
             split = _countries(data)
             where = f"{data.get('countries_reached') or 0}" + (f": {split}" if split else "")
-            in_country = _n(data.get("country_reach")) if data.get("country_reach") is not None else "not published"
+            in_country = (f"{_n(ad.get('reach_total'))} ({ad.get('reach_cards_read', 1)} of {ad.get('cards', 1)} ads read)"
+                          if ad.get("reach_total") is not None else "not published")
             numbers = (f"{in_country} | {_n(ad.get('reach_per_day'))} | "
                        f"{_n(data.get('eu_total'))} | {_n(data.get('uk_total'))} | {where}")
         age = f"{audience.get('age_min')}-{audience.get('age_max')}" if audience else ""
