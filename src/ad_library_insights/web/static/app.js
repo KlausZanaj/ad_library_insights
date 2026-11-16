@@ -44,7 +44,9 @@ const days = (n) => (n == null ? '—' : count(n, 'n.days'));
 /* An age span as the targeting has it; 65 is the top Meta offers and means 65 and over. */
 function ageRange(low, high) {
   if (low == null && high == null) return '—';
-  return `${low ?? 18}-${high == null ? 65 : high}${high == null || high >= 65 ? '+' : ''}`;
+  const from = low ?? 18;
+  if (high == null || high >= 65) return from >= 65 ? '65+' : `${from}-65+`;
+  return from === high ? `${from}` : `${from}-${high}`;
 }
 function named(type, code) {
   try { return new Intl.DisplayNames([S.lang], { type }).of(code) || code; } catch { return code; }

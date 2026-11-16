@@ -535,3 +535,9 @@ def test_page_table_note_is_singular_for_one_concept(site, page_of):
         page = page_of(lang, result)
         note = page.inner_text("p.tablenote")
         assert expected in note and wrong not in note
+
+
+def test_page_age_range_reads_cleanly(site, page_of):
+    page = page_of("it", _result(site))
+    got = page.evaluate("[[65, null], [65, 65], [30, 30], [null, 30], [25, 44], [18, null], [45, 70], [null, null]].map(([a, b]) => ageRange(a, b))")
+    assert got == ["65+", "65+", "30", "18-30", "25-44", "18-65+", "45-65+", "—"]
