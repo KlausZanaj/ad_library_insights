@@ -514,3 +514,24 @@ def test_page_failed_command_copy_talks_about_the_command(site, page_of):
         page.wait_for_function("document.querySelector('.status.err') !== null")
         shown = page.inner_text(".status")
         assert hand in shown and "brief.md" not in shown
+
+
+def test_table_note_agrees_with_one_concept_and_texts_say_concepts():
+    strings = json.loads((STATIC / "strings.json").read_text(encoding="utf-8"))
+    for language in ("it", "en"):
+        assert "t.note" in strings[language] and "t.note.one" in strings[language]
+    assert "concetti" in strings["it"]["level.data.2"] and "concepts" in strings["en"]["level.data.2"]
+    assert "annunci" not in strings["it"]["level.data.2"] and "ads" not in strings["en"]["level.data.2"]
+    assert "concetti" in strings["it"]["d.reach.unread"] and "concepts" in strings["en"]["d.reach.unread"]
+    assert "ads" not in strings["en"]["d.reach.unread"] and "annunci" not in strings["it"]["d.reach.unread"]
+
+
+def test_page_table_note_is_singular_for_one_concept(site, page_of):
+    result = _result(site)
+    result["deep"]["concepts"] = 1
+    result["deep"]["read"] = 1
+    for lang, expected, wrong in (("it", "per 1 concetto, il più mostrato", "i più mostrati"),
+                                  ("en", "for 1 concept, the one most shown", "the most shown")):
+        page = page_of(lang, result)
+        note = page.inner_text("p.tablenote")
+        assert expected in note and wrong not in note
