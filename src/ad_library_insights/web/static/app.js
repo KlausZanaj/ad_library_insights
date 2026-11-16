@@ -32,7 +32,8 @@ const S = {
   country: 'IT', query: '', company: '', companyB: '', cmp: null, resultMode: null,
   pages: null, busy: null, job: null, result: null, jobId: null, notice: null,
   project: null, overlay: null, estimate: null, pending: null,
-  history: null, news: null, sort: 'score',
+  history: null, news: null, sort: 'score', filter: 'all', tableQuery: '',
+  simPrice: null, simCost: null, cmpCopied: false,
   link: { quick: null, mcp: 'checking', running: false, result: null, error: null, test: null, copy: null, hint: false },
 };
 let T = { it: {}, en: {} };
@@ -126,7 +127,9 @@ function toggle(name, values, current, label) {
 function renderTop() {
   document.documentElement.lang = S.lang;
   document.documentElement.dataset.theme = S.theme;
-  $('#modes').innerHTML = MODES.map((mode) => `<button data-action="mode" data-value="${mode}" aria-current="${mode === S.mode}">${esc(t(`mode.${mode}`))}</button>`).join('');
+  $('#modes').innerHTML = MODES.map((mode) => `<button data-action="mode" data-value="${mode}" aria-pressed="${mode === S.mode}" aria-current="${mode === S.mode}">${esc(t(`mode.${mode}`))}</button>`).join('');
+  const kpi = $('#kpi-btn');
+  if (kpi) kpi.textContent = t('kpi.btn');
   const tut = $('#tut-btn');
   if (tut) tut.textContent = t('tut.btn');
   $('#theme').setAttribute('aria-label', t('theme.label'));
@@ -172,6 +175,7 @@ function renderSearch() {
       <select data-bind="country" ${locked ? 'disabled' : ''}>${countryOptions(S.country)}</select></label>
     <button class="btn" data-action="submit" ${locked ? 'disabled' : ''}>${esc(t(company ? 'button.find' : 'button.search'))}</button>
   </div>
+  ${!S.result && !locked ? `<div class="demo-bar"><span>${esc(t('demo.prompt'))}</span><button class="btn quiet small" data-action="load-demo">${esc(t('demo.btn'))}</button></div>` : ''}
   <div class="levels-head"><h2>${esc(t('lv.title'))}</h2><p>${esc(t('lv.sub'))}</p></div>
   <div class="levels">${levelRows(locked)}</div>
   <div class="options">
@@ -188,6 +192,15 @@ function renderSearch() {
   $('#search').innerHTML = `${html}</div>`;
   renderWay();
   updateProgress();
+}
+function simNumbers() {
+  const p = Number(S.simPrice ?? (S.project && S.project.price) ?? 180);
+  const c = Number(S.simCost ?? (S.project && S.project.product_cost) ?? 62);
+  const margin = Math.max(0, Math.round((p - c) * 10) / 10);
+  const lowCut = Math.round(margin * 2 * 10) / 10, highCut = Math.round(margin * 3 * 10) / 10;
+  const round1 = Math.round(margin * 2.5 * 5 * 10) / 10;
+  const roas = margin > 0 ? (p / margin).toFixed(2) : '—';
+  return { p, c, margin, lowCut, highCut, round1, roas };
 }
 function levelVisual(level) {
   if (level === 'data') {
@@ -206,15 +219,17 @@ function levelVisual(level) {
       </div>
     </div>`;
   }
-  const margin = S.project && S.project.price > S.project.product_cost ? Math.round((S.project.price - S.project.product_cost) * 10) / 10 : 118;
-  const lowCut = Math.round(margin * 2 * 10) / 10, highCut = Math.round(margin * 3 * 10) / 10;
-  const round1 = Math.round(margin * 2.5 * 5 * 10) / 10;
+  const { p, c, margin, lowCut, highCut, round1, roas } = simNumbers();
   return `<div class="lvl-vis">
-    <div class="vis-top"><span class="vis-title">${esc(t('lv.v3.badge'))}</span></div>
+    <div class="vis-top"><span class="vis-title">${esc(t('lv.v3.badge'))}</span><button class="linklike" data-action="project" style="font-size:.78rem">${esc(t('lv.v3.sim.edit'))}</button></div>
+    <div class="sim-inputs">
+      <label class="sim-field"><span>${esc(t('lv.v3.sim.price'))}</span><input type="number" min="1" step="1" data-sim="price" value="${esc(p)}"></label>
+      <label class="sim-field"><span>${esc(t('lv.v3.sim.cost'))}</span><input type="number" min="0" step="1" data-sim="cost" value="${esc(c)}"></label>
+    </div>
     <div class="vis-econ num">
-      <div class="vis-kpi"><span>${esc(t('lv.v3.cpa'))}</span><strong>${num(margin)}</strong><small>${esc(t('lv.v3.cpa.sub'))}</small></div>
-      <div class="vis-kpi"><span>${esc(t('lv.v3.stop'))}</span><strong>${num(lowCut)} - ${num(highCut)}</strong><small>${esc(t('lv.v3.stop.sub'))}</small></div>
-      <div class="vis-kpi"><span>${esc(t('lv.v3.budget'))}</span><strong>${num(round1)}</strong><small>${esc(t('lv.v3.budget.sub'))}</small></div>
+      <div class="vis-kpi"><span>${esc(t('lv.v3.cpa'))}</span><strong id="sim-cpa">${num(margin)}</strong><small id="sim-roas">${esc(t('lv.v3.sim.roas', { roas }))}</small></div>
+      <div class="vis-kpi"><span>${esc(t('lv.v3.stop'))}</span><strong id="sim-stop">${num(lowCut)} - ${num(highCut)}</strong><small>${esc(t('lv.v3.stop.sub'))}</small></div>
+      <div class="vis-kpi"><span>${esc(t('lv.v3.budget'))}</span><strong id="sim-budget">${num(round1)}</strong><small>${esc(t('lv.v3.budget.sub'))}</small></div>
     </div>
   </div>`;
 }
@@ -428,10 +443,12 @@ function headSection(r) {
   const title = company ? esc(page.name || r.query) : esc(t('result.keyword', { query: r.query, country: region(r.country) }));
   const facts = { category: page.category, followers: num(page.followers), country: region(r.country) };
   const sub = company ? `${esc(t(page.category ? 'result.sub.company' : 'result.sub.company.nocat', facts))}<br>${esc(loaded)}` : esc(loaded);
+  const demoBanner = r.demo ? `<section class="changes"><p>${esc(t('demo.banner'))}</p></section>` : '';
   return `<section class="rhead">${company ? avatar(page.logo, page.name, true) : ''}
     <div class="grow"><h1>${title}</h1><p>${sub}</p></div>
     <div class="rlinks"><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(t('link.meta'))}</a>
-    <button class="linklike" data-action="guide">${esc(t('link.guide'))}</button></div></section>`;
+    <button class="linklike" data-action="kpi-open">${esc(t('kpi.btn'))}</button>
+    <button class="linklike" data-action="guide">${esc(t('link.guide'))}</button></div></section>${demoBanner}`;
 }
 function changesSection(r) {
   const c = r.changes;
@@ -575,24 +592,47 @@ function tableLegend() {
     </div>
   </details>`;
 }
-function tableSection(r) {
+function filteredAds(r) {
+  const q = (S.tableQuery || '').trim().toLowerCase();
+  return [...(r.ads || [])].filter((ad) => {
+    if (S.filter === 'scaling' && ad.verdict !== 'scaling') return false;
+    if (S.filter === 'video' && ad.media_type !== 'video') return false;
+    if (S.filter === 'high' && ad.reliability !== 'high') return false;
+    if (q) {
+      const hay = `${ad.body || ''} ${ad.headline || ''} ${ad.advertiser || ''} ${ad.landing_domain || ''}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  }).sort(SORTS[S.sort] || SORTS.score);
+}
+function tableRowsHtml(r) {
   const company = r.mode === 'company';
-  const ads = [...r.ads].sort(SORTS[S.sort] || SORTS.score);
-  const rows = ads.map((ad, index) => `<tr class="pick" data-action="open-ad" data-value="${esc(ad.library_id)}">
+  const ads = filteredAds(r);
+  return ads.map((ad, index) => `<tr class="pick" data-action="open-ad" data-value="${esc(ad.library_id)}">
     <td class="rank">${index + 1}</td>
     <td><div class="adcell">${ad.thumbnail ? `<img class="thumb" src="${esc(ad.thumbnail)}" alt="" loading="lazy">` : '<span class="thumb"></span>'}
       <div class="adtext"><div>${esc(firstLine(ad) || t('t.notext'))}</div><small>${esc([company ? t(`format.${ad.media_type || 'unknown'}`) : ad.advertiser, company ? ad.cta : '', kindTag(ad)].filter(Boolean).join(' · '))}</small></div></div></td>
     <td class="tier">${verdictCell(ad)}</td>
     <td class="r">${Math.round(ad.score)}</td><td class="r">${num(ad.days_running)}</td><td class="r">${num(ad.creatives)}</td>
     ${company ? '' : `<td class="fmt">${esc(t(`format.${ad.media_type || 'unknown'}`))}</td>`}${reachCells(ad)}</tr>`).join('');
+}
+function tableSection(r) {
+  const company = r.mode === 'company';
+  const rows = tableRowsHtml(r);
   const opened = r.deep ? r.deep.read : r.ads.reduce((sum, ad) => sum + (ad.reach ? 1 : 0) + Object.keys(ad.card_reach || {}).length, 0);
   const concepts = r.deep ? r.deep.concepts : r.ads.filter((ad) => ad.reach).length;
-  return `<section><div class="sortbar"><span>${esc(t('sort.by'))}</span><div class="switch" role="group">${toggle('sort', ['score', 'perday', 'days'], S.sort, (v) => t(`sort.${v}`))}</div></div>
+  return `<section><div class="sortbar">
+      <span>${esc(t('sort.by'))}</span><div class="switch" role="group">${toggle('sort', ['score', 'perday', 'days'], S.sort, (v) => t(`sort.${v}`))}</div>
+      <div class="switch" role="group">${toggle('tfilter', ['all', 'scaling', 'video', 'high'], S.filter, (v) => t(`filter.${v}`))}</div>
+      <span class="sort-spacer"></span>
+      <input type="search" class="tbl-search" id="tbl-q" data-bind="tableQuery" value="${esc(S.tableQuery)}" placeholder="${esc(t('filter.search'))}" autocomplete="off">
+      <button class="btn quiet small" data-action="export-csv">${esc(t('export.csv'))}</button>
+    </div>
     ${tableLegend()}
     <table class="ads${company ? '' : ' mixed'}"><thead><tr><th></th><th>${esc(t('t.ad'))}</th><th>${esc(t('t.tier'))}</th>
     <th class="r">${esc(t('t.score'))}</th><th class="r">${esc(t('t.days'))}</th><th class="r">${esc(t('t.creatives'))}</th>
     ${company ? '' : `<th>${esc(t('t.format'))}</th>`}<th class="r">${esc(t('t.reached', { country: region(r.country) }))}</th><th class="r">${esc(t('t.perday'))}</th></tr></thead>
-    <tbody>${rows}</tbody></table><p class="tablenote">${esc(t(concepts === 1 ? 't.note.one' : 't.note', { concepts: count(concepts, 'n.concepts'), opened: count(opened, 'n.ads') }))}</p></section>`;
+    <tbody id="ads-tbody">${rows}</tbody></table><p class="tablenote">${esc(t(concepts === 1 ? 't.note.one' : 't.note', { concepts: count(concepts, 'n.concepts'), opened: count(opened, 'n.ads') }))}</p></section>`;
 }
 function renderResults() {
   const el = $('#results');
@@ -657,12 +697,44 @@ function compareSheet(r) {
     <td class="r">${Math.round(ad.score)}</td></tr>`).join('')}</tbody></table></div>`;
   return `<div class="sheet">
     <section class="cmphead">${head(a)}${head(b)}</section>
+    <section class="ready"><p>${esc(t(S.cmpCopied ? 'cmp.brief.copied' : 'cmp.brief.ready'))}</p>
+      <button class="btn quiet small" data-action="copy-cmp-brief">${esc(t('cmp.brief.btn'))}</button></section>
     <section><h2>${esc(t('cmp.highlights'))}</h2>${notes ? `<ul class="notes">${notes}</ul>` : `<p class="muted" style="margin-top:8px">${esc(t('cmp.none'))}</p>`}
       <p class="tablenote">${esc(t('cmp.note'))}</p></section>
     <section><table class="cmp"><thead><tr><th></th><th>${esc(c.names.a)}</th><th>${esc(c.names.b)}</th></tr></thead><tbody>${rows}</tbody></table></section>
     <section><h2 style="margin-bottom:14px">${esc(t('cmp.top'))}</h2><div class="tops">${top(a)}${top(b)}</div>
       <p class="tablenote"><button class="linklike" data-action="guide">${esc(t('link.guide'))}</button></p></section>
   </div>`;
+}
+function buildCompareBrief(r) {
+  const c = r.comparison, [a, b] = r.sides;
+  const lines = [`# Competitive Comparison: ${c.names.a} vs ${c.names.b} (${region(r.country)})`, ''];
+  c.rows.forEach((row) => {
+    lines.push(`- ${t(`cmp.row.${row.key}`, { country: region(r.country) })}: ${c.names.a} = ${JSON.stringify(row.a)} | ${c.names.b} = ${JSON.stringify(row.b)}`);
+  });
+  lines.push('', `## Top concepts of ${c.names.a}`);
+  a.ads.slice(0, 5).forEach((ad, i) => lines.push(`${i + 1}. [Score ${Math.round(ad.score)} · ${ad.days_running}d] ${firstLine(ad)}`));
+  lines.push('', `## Top concepts of ${c.names.b}`);
+  b.ads.slice(0, 5).forEach((ad, i) => lines.push(`${i + 1}. [Score ${Math.round(ad.score)} · ${ad.days_running}d] ${firstLine(ad)}`));
+  lines.push('', 'Please write an executive head-to-head diagnosis: (1) where each advertiser is strongest, (2) which hooks and formats hold up best for each, and (3) three concrete creative gaps a challenger can exploit.');
+  return lines.join('\n');
+}
+function exportCsv(r) {
+  const headers = ['Rank', 'Library_ID', 'Advertiser', 'Verdict', 'Reliability', 'Score', 'Scale_60', 'Staying_25', 'Creatives_15', 'Days_Running', 'Creatives_Count', 'Format', 'Reach_Country', 'Reach_Per_Day', 'CTA', 'Domain', 'Copy_Opening', 'Ad_URL'];
+  const csvEsc = (v) => `"${String(v ?? '').replaceAll('"', '""')}"`;
+  const rows = filteredAds(r).map((ad, idx) => {
+    const pts = ad.score_points || {};
+    return [idx + 1, ad.library_id, ad.advertiser, t(`verdict.${ad.verdict}`), t(`reliability.${ad.reliability}`), Math.round(ad.score),
+      Math.round(pts.scale || 0), Math.round(pts.staying || 0), Math.round(pts.creative || 0), ad.days_running, ad.creatives,
+      ad.media_type, ad.reach_total ?? '', ad.reach_per_day ?? '', ad.cta ?? '', ad.landing_domain ?? '', firstLine(ad), ad.ad_url].map(csvEsc).join(',');
+  });
+  const blob = new Blob([`\uFEFF${headers.join(',')}\n${rows.join('\n')}\n`], { type: 'text/csv;charset=utf-8' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `ad-library-insights-${(r.page && r.page.name) || r.query || 'export'}-${r.country}.csv`.replace(/[^a-zA-Z0-9._-]+/g, '-');
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 }
 const findAd = (id) => {
   const pools = S.result ? (S.result.sides ? S.result.sides.map((side) => side.ads) : [S.result.ads]) : [];
@@ -918,14 +990,29 @@ function briefStatus(text, err) {
 }
 function tutorialDialog(overlay) {
   const tab = Number(overlay.tab || 1);
-  const tabs = [1, 2, 3, 4].map((n) => `<button data-action="tut-tab" data-value="${n}" aria-selected="${n === tab}">${esc(t(`tut.t${n}`))}</button>`).join('');
-  const cards = [1, 2, 3, 4].map((c) => `<div class="tut-card"><strong>${esc(t(`tut.${tab}.c${c}.t`))}</strong><p>${esc(t(`tut.${tab}.c${c}.d`))}</p></div>`).join('');
-  return `<div class="dialog wide" role="dialog" aria-modal="true"><h2>${esc(t('tut.title'))}</h2><p class="lead">${esc(t('tut.lead'))}</p>
+  const tabs = [1, 2, 3, 4, 5, 6].map((n) => `<button data-action="tut-tab" data-value="${n}" aria-selected="${n === tab}">${esc(t(`tut.t${n}`))}</button>`).join('');
+  const intro = `<div class="tut-intro">${esc(t(`tut.${tab}.intro`))}</div>`;
+  let body = '';
+  if (tab === 5) {
+    const kpiCard = (k) => `<div class="tut-card"><strong>${esc(t(`kpi.${k}.t`))}</strong><span class="tut-formula">${esc(t(`kpi.${k}.f`))}</span><p>${esc(t(`kpi.${k}.d`))}</p></div>`;
+    body = `<h4 class="kpi-group-title">${esc(t('kpi.g1'))}</h4>
+      <div class="kpi-grid">${[1, 2, 3, 4, 5, 6, 7, 8].map(kpiCard).join('')}</div>
+      <h4 class="kpi-group-title">${esc(t('kpi.g2'))}</h4>
+      <div class="kpi-grid">${[9, 10, 11, 12].map(kpiCard).join('')}</div>`;
+  } else {
+    body = `<div class="tut-cards">${[1, 2, 3, 4].map((c) => `<div class="tut-card">
+      <strong>${esc(t(`tut.${tab}.c${c}.t`))}</strong>
+      <span class="tut-formula">${esc(t(`tut.${tab}.c${c}.f`))}</span>
+      <p>${esc(t(`tut.${tab}.c${c}.d`))}</p>
+      <div class="tut-tip">${esc(t(`tut.${tab}.c${c}.tip`))}</div>
+    </div>`).join('')}</div>`;
+  }
+  return `<div class="dialog xl" role="dialog" aria-modal="true"><h2>${esc(t('tut.title'))}</h2><p class="lead">${esc(t('tut.lead'))}</p>
     <div class="tut-tabs" role="tablist">${tabs}</div>
-    <div class="tut-cards">${cards}</div>
+    ${intro}${body}
     <div class="foot">
       ${tab > 1 ? `<button class="btn quiet" data-action="tut-tab" data-value="${tab - 1}">${esc(t('how.prev'))}</button>` : ''}
-      ${tab < 4 ? `<button class="btn" data-action="tut-tab" data-value="${tab + 1}">${esc(t('how.next'))}</button>` : `<button class="btn" data-action="close">${esc(t('button.close'))}</button>`}
+      ${tab < 6 ? `<button class="btn" data-action="tut-tab" data-value="${tab + 1}">${esc(t('how.next'))}</button>` : `<button class="btn" data-action="close">${esc(t('button.close'))}</button>`}
     </div></div>`;
 }
 function renderOverlay() {
@@ -1062,7 +1149,27 @@ const ACTIONS = {
   'how-next'() { S.overlay.step = Math.min(3, S.overlay.step + 1); renderOverlay(); },
   'how-prev'() { S.overlay.step = Math.max(1, S.overlay.step - 1); renderOverlay(); },
   tutorial() { S.overlay = { type: 'tutorial', tab: 1 }; renderOverlay(); },
+  'kpi-open'() { S.overlay = { type: 'tutorial', tab: 5 }; renderOverlay(); },
   'tut-tab'(value) { if (S.overlay && S.overlay.type === 'tutorial') { S.overlay.tab = Number(value); renderOverlay(); } },
+  tfilter(value) { S.filter = value; renderResults(); },
+  'export-csv'() { if (S.result && (S.result.ads || []).length) exportCsv(S.result); },
+  async 'copy-cmp-brief'() {
+    if (S.result && S.result.comparison) {
+      await copyText(buildCompareBrief(S.result));
+      S.cmpCopied = true;
+      renderResults();
+    }
+  },
+  async 'load-demo'() {
+    try {
+      const job = await api(`/api/demo?level=${S.level}`);
+      if (job && job.result) {
+        S.mode = 'company'; S.company = 'Kingshot'; S.result = job.result; S.resultMode = 'company'; S.jobId = job.id;
+        render();
+        window.scrollTo({ top: $('#results').offsetTop - 12, behavior: 'instant' });
+      }
+    } catch { note('error.title', null, true); }
+  },
   deep(value) { S.deep = Number(value); renderSearch(); renderOverlay(); refreshEstimate(); },
   submit, guide() { S.overlay = { type: 'guide' }; renderOverlay(); },
   project() { openProject(false); },
@@ -1100,7 +1207,22 @@ document.addEventListener('click', (event) => {
 });
 document.addEventListener('input', (event) => {
   const el = event.target;
-  if (el.dataset.bind) S[el.dataset.bind] = el.value;
+  if (el.dataset.bind) {
+    S[el.dataset.bind] = el.value;
+    if (el.dataset.bind === 'tableQuery' && S.result) {
+      const tbody = $('#ads-tbody');
+      if (tbody) tbody.innerHTML = tableRowsHtml(S.result);
+    }
+  }
+  if (el.dataset.sim) {
+    if (el.dataset.sim === 'price') S.simPrice = Number(el.value || 0);
+    if (el.dataset.sim === 'cost') S.simCost = Number(el.value || 0);
+    const { margin, lowCut, highCut, round1, roas } = simNumbers();
+    if ($('#sim-cpa')) $('#sim-cpa').textContent = num(margin);
+    if ($('#sim-roas')) $('#sim-roas').textContent = t('lv.v3.sim.roas', { roas });
+    if ($('#sim-stop')) $('#sim-stop').textContent = `${num(lowCut)} - ${num(highCut)}`;
+    if ($('#sim-budget')) $('#sim-budget').textContent = num(round1);
+  }
 });
 document.addEventListener('change', (event) => {
   const el = event.target;

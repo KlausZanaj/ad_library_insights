@@ -274,6 +274,54 @@ class Workspace:
     async def saved_searches(self, request: Request) -> Response:
         return JSONResponse({"subjects": self.history.subjects()})
 
+    async def demo(self, request: Request) -> Response:
+        """Load an offline sample search so a first-time visitor can explore the table and KPIs immediately."""
+        import json
+        from datetime import date
+        from .. import signals
+        from ..client import FetchResult
+
+        level = request.query_params.get("level") or "analysis"
+        if level not in consumption.LEVELS:
+            level = "analysis"
+        root = Path(__file__).resolve().parents[3]
+        fx = root / "tests" / "fixtures" / "rating_kingshot_it.json"
+        det_fx = root / "tests" / "fixtures" / "ad_details_eu_many_countries.json"
+        if fx.is_file() and det_fx.is_file():
+            data = json.loads(fx.read_text(encoding="utf-8"))
+            parsed_det = details.parse_details(json.loads(det_fx.read_text(encoding="utf-8")))
+            fetch = FetchResult(url="https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=IT&q=Kingshot",
+                                outcome="ok", ads=data["cards"], total_count=216, source="structured")
+            result = service.assemble(fetch, "Kingshot", "IT", as_of=date.fromisoformat(data["as_of"]))
+            for item in result["ads"]:
+                found = data["reach"].get(item["library_id"])
+                if found:
+                    item["reach"] = {**found, "regions": parsed_det["reach"].get("regions", [])}
+                    item["audience"] = parsed_det["audience"]
+                for other in item["variant_ids"]:
+                    if other in data["reach"]:
+                        item.setdefault("card_reach", {})[other] = data["reach"][other]
+            signals.annotate(result["ads"], library_total=216)
+            signals.refresh(result["signals"], result["ads"], "IT")
+            params = {"mode": "company", "country": "IT", "level": level, "deep": 10, "frames": False,
+                      "query": "Kingshot", "page_id": "100089123456", "fresh": False}
+            result.update(
+                mode="company",
+                ads_parsed=212,
+                from_cache=True,
+                page={"name": "Kingshot", "category": "Game Publisher", "followers": 2596792},
+                changes={"available": False},
+                deep={"requested": 10, "read": 14, "concepts": 12, "with_reach": 12,
+                      "ceiling": 20, "capped": False, "left_out": 0},
+            )
+            raw = json.loads(json.dumps(result, default=str))
+            shown = present(raw, params)
+            shown["demo"] = True
+            job = Job(id="demo", params=params, status="done", phase="media", result=shown, raw=raw)
+            self.jobs["demo"] = job
+            return JSONResponse(job.view())
+        return JSONResponse({"error": "not_found"}, status_code=404)
+
     async def changes(self, request: Request) -> Response:
         found = self.history.changes(request.query_params.get("key", ""))
         for group in ("new", "stopped", "changed"):
@@ -403,6 +451,7 @@ def create_app(client: AdLibraryClient | None = None, home: Path | None = None,
         Route("/api/link/connect", space.link_connect, methods=["POST"]),
         Route("/api/history", space.saved_searches),
         Route("/api/history/changes", space.changes),
+        Route("/api/demo", space.demo, methods=["GET", "POST"]),
         Mount("/static", StaticFiles(directory=STATIC), name="static"),
     ])
     app.state.workspace = space
