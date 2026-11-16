@@ -177,9 +177,8 @@ function renderSearch() {
     <div class="switch" role="group">${toggle('deep', S.deepChoices, S.deep, String)}</div>
     <span>${esc(t('deep.after'))}${S.estimate && S.estimate.seconds ? ` · ${esc(t('deep.time', { time: dur(S.estimate.seconds) }))}` : ''}</span>
     <span class="gap"></span>
-    <span>${esc(t('project.label'))}:</span>
-    <button class="linklike" data-action="project">${esc(S.project
-      ? t('project.saved', { product: S.project.product, price: num(S.project.price) }) : t('project.missing'))}</button>
+    ${S.level === 'analysis' ? '' : `<span class="proj-pill${S.level === 'plan' ? ' active' : ''}"><span>${esc(t('project.label'))}:</span> <button class="linklike" data-action="project">${esc(S.project
+      ? t('project.saved', { product: S.project.product, price: num(S.project.price) }) : t('project.missing'))}</button></span>`}
   </div>`;
   html += '<section class="way" id="way"></section>';
   if (S.job || S.busy) html += '<div class="progress"><p><span id="ptext"></span><span class="muted num" id="pleft"></span></p><div class="bar" id="pbar"><i></i></div></div>';
@@ -188,9 +187,39 @@ function renderSearch() {
   renderWay();
   updateProgress();
 }
+function levelVisual(level) {
+  if (level === 'data') {
+    return `<div class="lvl-vis">
+      <div class="vis-top"><span class="vis-title">${esc(t('lv.v1.badge'))}</span><span class="vis-pill ok">${esc(t('lv.v1.status'))}</span></div>
+      <div class="vis-score"><strong>97 <small>/ 100</small></strong><span class="muted num">${esc(t('lv.v1.meta'))}</span></div>
+      <div class="scorebar three"><i style="width:57%"></i><i style="width:25%"></i><i style="width:15%"></i></div>
+      <div class="vis-parts num"><span>${esc(t('lv.v1.p1'))}</span><span>${esc(t('lv.v1.p2'))}</span><span>${esc(t('lv.v1.p3'))}</span></div>
+    </div>`;
+  }
+  if (level === 'analysis') {
+    return `<div class="lvl-vis">
+      <div class="vis-top"><span class="vis-title">${esc(t('lv.v2.badge'))}</span></div>
+      <div class="vis-lenses">
+        ${[1, 2, 3, 4].map((n) => `<div class="vis-lens"><strong>${esc(t(`lv.v2.c${n}.t`))}</strong><span>${esc(t(`lv.v2.c${n}.d`))}</span></div>`).join('')}
+      </div>
+    </div>`;
+  }
+  const margin = S.project && S.project.price > S.project.product_cost ? Math.round((S.project.price - S.project.product_cost) * 10) / 10 : 118;
+  const lowCut = Math.round(margin * 2 * 10) / 10, highCut = Math.round(margin * 3 * 10) / 10;
+  const round1 = Math.round(margin * 2.5 * 5 * 10) / 10;
+  return `<div class="lvl-vis">
+    <div class="vis-top"><span class="vis-title">${esc(t('lv.v3.badge'))}</span></div>
+    <div class="vis-econ num">
+      <div class="vis-kpi"><span>${esc(t('lv.v3.cpa'))}</span><strong>${num(margin)}</strong><small>${esc(t('lv.v3.cpa.sub'))}</small></div>
+      <div class="vis-kpi"><span>${esc(t('lv.v3.stop'))}</span><strong>${num(lowCut)} - ${num(highCut)}</strong><small>${esc(t('lv.v3.stop.sub'))}</small></div>
+      <div class="vis-kpi"><span>${esc(t('lv.v3.budget'))}</span><strong>${num(round1)}</strong><small>${esc(t('lv.v3.budget.sub'))}</small></div>
+    </div>
+  </div>`;
+}
 function levelRows(locked) {
   return LEVELS.map((level, index) => {
     const chosen = S.level === level, open = chosen && S.levelOpen;
+    const vKey = level === 'data' ? 'v1' : level === 'analysis' ? 'v2' : 'v3';
     return `<div class="lvl${open ? ' open' : ''}${chosen ? ' chosen' : ''}">
       <button class="lvl-head" data-action="lv-toggle" data-value="${level}" aria-expanded="${open}" aria-current="${chosen}" aria-controls="lv-${level}">
         <span class="lvl-n">${index + 1}</span>
@@ -199,7 +228,14 @@ function levelRows(locked) {
         <span class="lvl-arrow" aria-hidden="true"></span>
       </button>
       <div class="lvl-body" id="lv-${level}" ${open ? '' : 'hidden'}>
-        <ol>${[1, 2, 3, 4].map((n) => `<li>${esc(t(`lv.${level}.${n}`))}</li>`).join('')}</ol>
+        <div class="lvl-grid">
+          <ol>${[1, 2, 3, 4].map((n) => `<li>${esc(t(`lv.${level}.${n}`))}</li>`).join('')}</ol>
+          ${levelVisual(level)}
+        </div>
+        <details class="lvl-details">
+          <summary>${esc(t(`lv.${vKey}.more`))}</summary>
+          <p>${esc(t(`lv.${vKey}.more.text`))}</p>
+        </details>
         <div class="lvl-foot"><p>${esc(t(`lv.${level}.note`))}</p></div>
       </div>
     </div>`;
@@ -277,15 +313,21 @@ function renderWay() {
     </div>
     <p class="way-how"><button class="linklike" data-action="how-open">${esc(t('way.how'))}</button></p>`;
 }
-async function loadLink() {
-  const L = S.link;
-  L.mcp = 'checking';
+let linkSeq = 0;
+async function loadLink(connectedNow = false) {
+  const L = S.link, seq = ++linkSeq;
+  if (!connectedNow) L.mcp = 'checking';
   try { L.quick = await api('/api/link/status'); } catch { L.quick = { claude: false, skills: { installed: false, modified: [] }, command: '', skills_folder: '~/.claude/skills' }; }
+  if (seq !== linkSeq) return;
+  if (connectedNow && L.quick.claude) L.mcp = 'connected';
   renderWay();
   if (L.quick.claude) {
-    try { L.mcp = (await api('/api/link/mcp')).state; } catch { L.mcp = 'unknown'; }
-  } else L.mcp = 'no_claude';
-  renderWay();
+    try {
+      const { state } = await api('/api/link/mcp');
+      if (seq === linkSeq) L.mcp = connectedNow && state === 'unknown' ? 'connected' : state;
+    } catch { if (seq === linkSeq && !connectedNow) L.mcp = 'unknown'; }
+  } else if (seq === linkSeq) L.mcp = 'no_claude';
+  if (seq === linkSeq) renderWay();
 }
 function newToken() {
   const bytes = new Uint8Array(16);
@@ -302,7 +344,7 @@ async function runConnect(overwrite) {
     L.error = { error: (error.data && error.data.error) || 'other', detail: error.data && error.data.detail };
   }
   L.running = false;
-  await loadLink();
+  await loadLink(Boolean(L.result && L.result.ok));
 }
 async function testLink() {
   const L = S.link;
@@ -400,11 +442,18 @@ function readySection(r) {
 /* When the ceiling of ads opened stopped the reading, say it with the numbers. */
 function cappedSection(r) {
   const d = r.deep;
-  if (!d || !d.capped) return '';
-  let text = t(d.concepts === 1 ? 'deep.capped.one' : 'deep.capped.other',
-    { n: num(d.concepts), requested: num(d.requested), ceiling: num(d.ceiling) });
-  if (d.left_out) text += ` ${count(d.left_out, 'deep.left')}`;
-  return `<section class="changes capped"><p>${esc(text)}</p></section>`;
+  let out = '';
+  if (d && d.capped) {
+    let text = t(d.concepts === 1 ? 'deep.capped.one' : 'deep.capped.other',
+      { n: num(d.concepts), requested: num(d.requested), ceiling: num(d.ceiling) });
+    if (d.left_out) text += ` ${count(d.left_out, 'deep.left')}`;
+    out += `<section class="changes capped"><p>${esc(text)}</p></section>`;
+  }
+  const off = (r.signals && r.signals.off_query) || 0;
+  if (r.mode === 'keyword' && ((r.ads || []).length <= 3 || (off > 0 && off * 2 >= (r.ads || []).length))) {
+    out += `<section class="changes"><p class="muted">${esc(t('result.thin.keyword', { off: num(off), total: num((r.ads || []).length) }))}</p></section>`;
+  }
+  return out;
 }
 function metricsSection(r) {
   const s = r.signals;
@@ -771,13 +820,18 @@ function projectDialog(overlay) {
   const p = overlay.draft, errors = overlay.errors || {};
   const field = (name, key, body, full) => `<label class="field${full ? ' full' : ''}${errors[name] ? ' bad' : ''}"><span>${esc(t(key))}</span>${body}${errors[name] ? `<em>${esc(t(`proj.err.${errors[name]}`))}</em>` : ''}</label>`;
   const input = (name, hint) => `<input type="text" data-pf="${name}" value="${esc(p[name] ?? '')}" placeholder="${esc(hint ? t(hint) : '')}" autocomplete="off">`;
+  const goalInput = `<div style="display:flex;gap:8px">${input('goal', 'proj.goal.hint')}<select id="goal-period" style="width:170px;flex:none" aria-label="${esc(t('proj.goal'))}">
+    <option value="${esc(t('proj.goal.day'))}">${esc(t('proj.goal.day'))}</option>
+    <option value="${esc(t('proj.goal.week'))}">${esc(t('proj.goal.week'))}</option>
+    <option value="${esc(t('proj.goal.month'))}">${esc(t('proj.goal.month'))}</option></select></div>`;
   return `<div class="dialog" role="dialog" aria-modal="true"><h2>${esc(t('proj.title'))}</h2><p class="lead">${esc(t('proj.lead'))}</p>
     <div class="form">
       ${field('product', 'proj.product', input('product'), true)}
       ${field('price', 'proj.price', input('price'))}
       ${field('product_cost', 'proj.cost', input('product_cost'))}
+      <p class="full smallnote" style="margin-top:-6px">${esc(t('proj.costs.note'))}</p>
       ${field('market', 'proj.market', `<select data-pf="market">${countryOptions(p.market || S.country)}</select>`)}
-      ${field('goal', 'proj.goal', input('goal', 'proj.goal.hint'))}
+      ${field('goal', 'proj.goal', goalInput)}
       ${field('main_problem', 'proj.problem', input('main_problem', 'proj.problem.hint'), true)}
     </div>
     <div class="foot"><button class="btn quiet" data-action="close">${esc(t('button.back'))}</button><button class="btn" data-action="save-project">${esc(t('button.save'))}</button></div></div>`;
@@ -906,6 +960,11 @@ function openProject(thenSearch) {
 async function saveProject() {
   const overlay = S.overlay;
   document.querySelectorAll('[data-pf]').forEach((el) => { overlay.draft[el.dataset.pf] = el.value; });
+  const rawGoal = String(overlay.draft.goal || '').trim();
+  const periodEl = document.getElementById('goal-period');
+  if (/^\d+(?:[.,]\d+)?$/.test(rawGoal) && periodEl && periodEl.value) {
+    overlay.draft.goal = `${rawGoal} ${periodEl.value}`;
+  }
   let saved;
   try { saved = await api('/api/project', { method: 'PUT', body: overlay.draft }); } catch (error) { saved = { errors: {} }; }
   if (!saved.project) { overlay.errors = saved.errors || {}; return renderOverlay(); }

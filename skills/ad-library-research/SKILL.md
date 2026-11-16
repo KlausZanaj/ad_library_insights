@@ -11,7 +11,7 @@ description: >-
   what is live right now. Needs the Ad Library Insights MCP server
   (search_ads, analyze_top_ads, export_report). Skip when the question is
   about the user's own account performance (use breakeven-cpa-check) or about
-  spend, reach or ROAS of competitors, which the Ad Library does not publish
+  spend or ROAS of competitors, which the Ad Library does not publish
   for commercial ads.
 ---
 
@@ -44,7 +44,7 @@ Ask only for what is missing:
     |---|---|---|
     | `ok` | Ads were parsed | Continue |
     | `no_results` | The library has nothing for this search | Try a broader or translated keyword |
-    | `blocked` | The page refused automated sessions after all retries | Tell the user, wait several minutes, do not loop |
+    | `blocked` | The page served no ads after all retries | Tell the user, wait several minutes, do not loop |
 
 3.  **Read the ranking as a media buyer would.** Ads are merged one per
     concept and rated on scale (people reached per day, or the impression

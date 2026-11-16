@@ -311,7 +311,7 @@ Limiti di questo controllo:
   frase del tetto (`05c`) e il confronto con numeri diversi (`10e`, `10f`), dove il secondo lato è una
   ricerca per parola chiave presentata come azienda;
 - nei dati di prova le miniature degli annunci non ci sono e i loghi sono finti: negli screenshot si
-  vedono le iniziali. Se un logo vero non si carica l'app non ha un ripiego: non corretto;
+  vedono le iniziali (e se un logo vero non si carica l'app mostra le iniziali al suo posto);
 - nella prima esecuzione il browser di prova potrebbe aver chiesto a Meta le immagini dei loghi; dalla
   seconda ogni richiesta fuori dal computer era bloccata e non ne risultano;
 - gli screenshot di sessioni precedenti con i numeri 12, 15, 17, 20, 21, 22 e 24 non sono stati

@@ -86,15 +86,21 @@ the means of the person who has to carry it out.
     -   New creatives per week: start from the pace of the competitor and
         from what the test budget can carry. Both are in `project.md` when
         the goal names a number of orders; show the calculation and give a
-        number one person can keep up. If the file says the list of the
-        competitor was read in part, its real pace is higher: say so. If it
-        says no number of orders can be read from the goal, ask for it.
+        number one person can keep up. For a keyword search the pace sums all
+        advertisers found and must not be used to size production. If the file
+        says the list of the competitor was read in part, its real pace is
+        higher: say so. If it says no number of orders can be read from the
+        goal, ask for it.
 
 11. **Set up the weekly follow-up.** Use `weekly-competitor-report` for the
     recurring report and `what_changed` to see new, stopped and changed ads
     between searches. A second search of the same company makes survival
-    measurable when both lists were read in full. Say on which day to run it
-    and what would change the plan.
+    measurable when both lists were read in full. Use relative days (Day 1 to
+    Day 7 after tracking is verified) rather than a fixed calendar start date
+    before the budget is approved, and if the search falls in a peak retail
+    window such as Black Friday or late November, flag the higher auction
+    competition among the risks. Say on which day of the cycle to run the
+    follow-up and what would change the plan.
 
 12. **Deliver** with the [template](references/plan-template.md). The report
     comes first and fits one page; the check before spending, the ideas, the

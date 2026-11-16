@@ -480,7 +480,9 @@ def testing(result: dict, ads: list[dict]) -> str:
              f"{found['new_per_week']}; started in the last 30 days: {found['started_last_30_days']} "
              f"({_pct(found['share_started_last_30_days'])} of loaded). Counted on the {found['ads_loaded']} ads "
              f"loaded, of {active_label(found)} active: " + pace_note(found) + " Ads launched and already "
-             "stopped are not in these figures either.",
+             "stopped are not in these figures either."
+             + (" This is a keyword search: the figure sums all advertisers in the sample, not one competitor."
+                if result.get("mode") != "company" else ""),
              f"- Launches per week, oldest to newest (week start: ads still on air): {weeks}",
              f"- Verdicts of the ads: {_counts(found['verdicts'])}; flagged for review: {found['needs_review']}",
              f"- Platforms: {_top(found['platforms'], 'platform')}",

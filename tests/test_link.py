@@ -234,3 +234,19 @@ def test_texts_of_the_connection_never_use_the_words_kept_out_of_the_page():
             if key.startswith(("lv.", "link.", "way.", "how.")):
                 assert not any(word in value.lower() for word in words), (language, key)
                 assert "—" not in value and "–" not in value, (language, key)    # no long dashes
+
+
+def test_connecting_also_copies_specialist_sub_agents_when_present(tmp_path):
+    skills_src, skills_dst = tmp_path / "skills", tmp_path / "user" / "skills"
+    agents_src, agents_dst = tmp_path / ".claude" / "agents", tmp_path / "user" / "agents"
+    (skills_src / "alpha").mkdir(parents=True)
+    (skills_src / "alpha" / "SKILL.md").write_text("# alpha\n", encoding="utf-8")
+    agents_src.mkdir(parents=True)
+    (agents_src / "ad-copy-analyst.md").write_text("# copy specialist\n", encoding="utf-8")
+    before = link.skills_state(skills_src, skills_dst, agents_src, agents_dst)
+    assert before["total"] == 2 and before["missing"] == 2 and not before["installed"]
+    done = link.install_skills(skills_src, skills_dst, False, agents_src, agents_dst)
+    assert done == {"copied": 2, "kept": []}
+    assert (agents_dst / "ad-copy-analyst.md").read_text(encoding="utf-8") == "# copy specialist\n"
+    after = link.skills_state(skills_src, skills_dst, agents_src, agents_dst)
+    assert after["installed"] and after["missing"] == 0

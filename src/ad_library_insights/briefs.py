@@ -512,10 +512,13 @@ def instructions(level: str, name: str, lang: str = "it", reach: bool = True) ->
                 f"## {words['deliver.title']}", words["language"],
                 *[f"{n}. {line.format(name=name)}" for n, line in enumerate(deliver, start=1)]]
     else:
+        lens = list(words["lens"])
+        if not reach:
+            lens[2] = words["lens.noreach"]
         out += [f"## {words['steps.title']}",
                 *[f"{n}. {line.format(name=name)}" for n, line in enumerate(words["steps"], start=1)], "",
                 f"## {words['method.title']}", words["method.intro"],
-                *[f"{n}. {line}" for n, line in enumerate(words["lens"], start=1)], "",
+                *[f"{n}. {line}" for n, line in enumerate(lens, start=1)], "",
                 f"## {words['deliver.title']}", words["language"], words["deliver.plan"]]
     out += ["", f"## {words['rules.title']}", *[f"- {line}" for line in words["rules"]]]
     return "\n".join(out) + "\n"
