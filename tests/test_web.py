@@ -475,3 +475,20 @@ def test_page_says_one_day_in_the_singular(site, page_of):
 def test_estimate_uses_the_measured_tokens_per_concept():
     assert consumption.TOKENS_PER_AD == 400
     assert consumption.estimate("analysis", 10)["tokens"] == 22500      # (2500 + 10 * 400) * 3 + 3000
+
+
+def test_stills_folder_refuses_bad_bodies_and_foreign_origins(app):
+    client, _ = app
+    opened = []
+    client.app.state.workspace.opener = opened.append
+    job = run_job(client, mode="company", page_id=PAGE_ID, country="IT", level="analysis", deep=2, frames=True)
+    made = client.post("/api/brief", json={"job_id": job["id"], "level": "analysis", "ads": 2,
+                                           "frames": True, "lang": "it"}).json()
+    assert client.post("/api/frames/open", content=b"not json").status_code == 400
+    assert client.post("/api/frames/open", json=["key"]).status_code == 400
+    assert client.post("/api/frames/open", json={"key": made["frames_key"]},
+                       headers={"Origin": "https://evil.example"}).status_code == 403
+    assert opened == []
+    ok = client.post("/api/frames/open", json={"key": made["frames_key"]},
+                     headers={"Origin": "http://127.0.0.1"})
+    assert ok.status_code == 200 and len(opened) == 1

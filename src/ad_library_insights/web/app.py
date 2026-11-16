@@ -305,7 +305,19 @@ class Workspace:
 
     async def open_frames(self, request: Request) -> Response:
         """Open the stills folder of a pack this app wrote; nothing else can be opened."""
-        body = await request.json()
+        origin = request.headers.get("origin")
+        if origin is not None:
+            host = request.headers.get("host", "")
+            port = host.rsplit(":", 1)[1] if ":" in host else ""
+            own = {f"http://{name}" + (f":{port}" if port else "") for name in ("127.0.0.1", "localhost")}
+            if origin not in own:
+                return JSONResponse({"error": "forbidden_origin"}, status_code=403)
+        try:
+            body = await request.json()
+        except ValueError:
+            body = None
+        if not isinstance(body, dict):
+            return JSONResponse({"error": "bad_request"}, status_code=400)
         folder = self.frame_folders.get(str(body.get("key") or ""))
         if folder is None or not folder.is_dir():
             return JSONResponse({"error": "not_found"}, status_code=404)
