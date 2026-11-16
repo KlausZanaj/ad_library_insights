@@ -293,8 +293,9 @@ class Workspace:
         except (ValueError, TypeError) as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
         deep = job.raw.get("deep") or {}
-        made["collected"] = {"ads": deep.get("concepts") or len([ad for ad in job.raw["ads"] if "reach" in ad])
-                             or job.params["deep"], "frames": bool(job.params.get("frames"))}
+        read = deep["concepts"] if "concepts" in deep else (
+            len([ad for ad in job.raw["ads"] if "reach" in ad]) or job.params["deep"])
+        made["collected"] = {"ads": read, "frames": bool(job.params.get("frames"))}
         # the page names the pack by its folder only and opens the stills through a key
         made["folder_name"] = Path(made["folder"]).name
         made["frames_key"] = None

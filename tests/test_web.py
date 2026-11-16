@@ -492,3 +492,12 @@ def test_stills_folder_refuses_bad_bodies_and_foreign_origins(app):
     ok = client.post("/api/frames/open", json={"key": made["frames_key"]},
                      headers={"Origin": "http://127.0.0.1"})
     assert ok.status_code == 200 and len(opened) == 1
+
+
+def test_collected_count_is_zero_when_no_concept_was_read(app):
+    client, _ = app
+    job = run_job(client, mode="company", page_id=PAGE_ID, country="IT", level="analysis", deep=2)
+    client.app.state.workspace.jobs[job["id"]].raw["deep"] = {"concepts": 0}
+    made = client.post("/api/brief", json={"job_id": job["id"], "level": "analysis", "ads": 2,
+                                           "frames": False, "lang": "it"}).json()
+    assert made["collected"]["ads"] == 0
