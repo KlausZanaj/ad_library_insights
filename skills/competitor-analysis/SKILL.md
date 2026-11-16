@@ -29,12 +29,14 @@ analysis.
 
 2.  **Show what it will use and get a yes.** Call `estimate_consumption` with
     level `analysis`, the number of ads (10, 20 or 50) and whether video
-    stills are wanted. That number is how many of the most shown ads are
-    opened to read their reach; several of them can belong to one concept, so
-    the pack lists that many concepts and says for how many the reach was
-    read. With a number too low for the advertiser, fewer than five concepts
-    are read and no ad can be called scaling or flagged for review: say so
-    and offer the next size. Tell the user the number of ads, the number of
+    stills are wanted. That number is how many of the most shown concepts
+    are read (a concept is one text with every ad that carries it). The
+    program opens the most shown ad of each, then the second and third ad of
+    the same concepts, up to a ceiling of two ads opened for every concept
+    asked. When the ceiling stops the reading the result says so: the reach
+    of those concepts is then a floor. With fewer than five concepts read no
+    ad can be called scaling or flagged for review: say so and offer the
+    next size. Tell the user the number of concepts, the number of
     pictures, the rough size and the band (low, medium, high), and that it is
     an estimate: limits depend on their plan and model and are not counted in
     credits, so promise no percentage. Offer the cheaper setting (fewer ads,

@@ -87,7 +87,7 @@ async def search_ads(country: str, query: str = "", advertiser: str = "",
         scroll_rounds: maximum scroll steps to load more ads (0 = first screen only).
         wait_seconds: longest wait for the first ads to appear.
         use_cache: set false to force a fresh fetch.
-        deep_ads: read reach and audience for this many top-ranked ads (0 = none; 10, 20
+        deep_ads: read reach and audience for this many of the most shown concepts (0 = none; 10, 20
             or 50 are sensible). About three seconds per ad.
         frames: also save three still frames of each video among those ads.
     """
@@ -127,7 +127,10 @@ async def analyze_company(country: str, page_id: str = "", name: str = "", deep_
         page_id: numeric id of the page (from find_advertiser_pages).
         name: advertiser name, used when page_id is empty. If several pages match,
             the result has outcome "choose_page" and lists them; nothing is loaded.
-        deep_ads: read reach and audience for this many top-ranked ads (0, 10, 20, 50).
+        deep_ads: read reach and audience for this many of the most shown concepts (0, 10, 20, 50).
+            A concept is one text with every ad that carries it. Up to two ads are opened for
+            every concept asked; `deep` in the result says how many concepts were read and
+            whether that ceiling stopped the reading.
         frames: also save three still frames of each video among those ads.
         max_results: how many ranked ads to return.
         scroll_rounds: maximum scroll steps; 40 covers about 400 ads.
@@ -159,7 +162,7 @@ async def compare_companies(country: str, page_id_a: str, page_id_b: str, deep_a
 
     Args:
         page_id_a, page_id_b: numeric page ids, from find_advertiser_pages.
-        deep_ads: read reach and audience for this many top-ranked ads of each page.
+        deep_ads: read reach and audience for this many of the most shown concepts of each page.
         top_ads: how many of each page's best ads to return.
     """
     if page_id_a.strip() == page_id_b.strip():
@@ -243,9 +246,11 @@ async def prepare_analysis(country: str, level: str = "analysis", page_id: str =
 
     Args:
         level: analysis | plan.
-        ads: how many of the most shown ads are opened to read reach (10, 20 or 50).
-            Several can belong to one concept: the pack lists that many concepts and
-            says for how many of them the reach was read.
+        ads: how many of the most shown concepts are read and go into the pack (10, 20 or
+            50). A concept is one text with every ad that carries it. Its most shown ad is
+            opened, then its second and third while the ceiling of two ads opened per
+            concept asked allows; the pack says for how many concepts the reach was read
+            and, next to each figure, how many of its ads were opened.
         frames: also save and list video stills of the ten best ads.
         language: language of the instructions in brief.md (en or it).
     """

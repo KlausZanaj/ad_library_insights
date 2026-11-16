@@ -33,12 +33,14 @@ async def _deepen(client, result: dict, args: argparse.Namespace) -> None:
     if args.deep <= 0 or not result.get("ads"):
         return
     plan = service.estimate_deep(result, args.deep, args.frames)
-    print(f"Reading reach and audience of the top {plan['ads']} ads: about "
-          f"{_duration(plan['seconds'])}.", file=sys.stderr, flush=True)
+    print(f"Reading reach and audience of the {plan['concepts']} most shown concepts ({plan['ads']} ads to open, "
+          f"ceiling {plan['ceiling']}): about {_duration(plan['seconds'])}.", file=sys.stderr, flush=True)
     await service.deepen(client, result, args.deep, args.frames, _show_progress, not args.no_cache)
     deep = result["deep"]
-    print(f"Read {deep['read']} of {plan['ads']}; {deep['with_reach']} with reach published"
+    print(f"Read {deep['concepts']} concepts ({deep['read']} ads opened); {deep['with_reach']} with reach published"
           + (f"; failed: {', '.join(deep['failed'])}" if deep["failed"] else "") + ".", file=sys.stderr)
+    if deep.get("ceiling_note"):
+        print(deep["ceiling_note"], file=sys.stderr)
 
 
 def _finish(result: dict, args: argparse.Namespace) -> int:
@@ -138,7 +140,7 @@ def main(argv: list[str] | None = None) -> int:
     rep.add_argument("--out", default="reports", help="output directory")
     rep.add_argument("--no-cache", action="store_true", help="ignore cached pages")
     rep.add_argument("--deep", type=int, default=0,
-                     help="read reach and audience for this many top ads (10, 20, 50)")
+                     help="read reach and audience for this many of the most shown concepts (10, 20, 50)")
     rep.add_argument("--frames", action="store_true", help="save three stills of each video too")
 
     pag = commands.add_parser("pages", help="list the advertiser pages matching a name")
@@ -152,7 +154,7 @@ def main(argv: list[str] | None = None) -> int:
     com.add_argument("--page-id", default="", help="numeric id of the page, from the pages command")
     com.add_argument("--status", default="active", choices=("active", "inactive", "all"))
     com.add_argument("--deep", type=int, default=10,
-                     help="read reach and audience for this many top ads (0, 10, 20, 50)")
+                     help="read reach and audience for this many of the most shown concepts (0, 10, 20, 50)")
     com.add_argument("--frames", action="store_true", help="save three stills of each video too")
     com.add_argument("--top", type=int, default=10, help="ads to detail in the report")
     com.add_argument("--scroll-rounds", type=int, default=40)

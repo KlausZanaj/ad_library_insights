@@ -162,9 +162,13 @@ i brief, i quattro specialisti e le due skill. Poi ha fatto un solo ripasso sull
   148 annunci di oltre 50.000, accesi da 90 giorni o più, ed è scritto che la scala viene dalla posizione.
 - **HOKA regge nel tempo con un solo annuncio letto di 11 giorni**: il pacchetto scrive le due età.
 - **Giorni scritti come testo o creatività mancanti**: il lettore delle schede dà sempre numeri.
-- **Annunci aperti e concetti non sono la stessa cosa**: chiedendo 20 annunci i concetti letti possono
-  essere meno. È scritto nella skill e nello strumento; se leggere finché i concetti sono 20 è una
-  decisione ancora aperta.
+- **Annunci aperti e concetti non erano la stessa cosa**: chiedendo 20 annunci i concetti letti
+  potevano essere meno (nell'esempio pubblicato, 30 annunci chiesti e 12 concetti letti). Poi deciso e
+  corretto: il numero scelto è ora il numero di concetti da leggere. Il programma apre l'annuncio più
+  mostrato di ogni concetto, poi il secondo e il terzo degli stessi concetti, fino a un tetto di due
+  annunci aperti per ogni concetto chiesto. Se un annuncio non si apre e il tetto lo consente, legge
+  il concetto successivo dell'elenco. Quando il tetto ferma la lettura il risultato lo dice, con quanti
+  concetti sono stati letti e quanti annunci sono rimasti chiusi (la loro copertura è un minimo).
 - **Nelle scarpe i 59 concetti non letti hanno tutti scala 0** e si ordinano solo per giorni e
   creatività: è prudente, non falso.
 
