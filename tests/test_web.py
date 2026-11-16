@@ -584,3 +584,10 @@ def test_page_one_creative_reads_in_the_singular(site, page_of):
         shown = page.inner_text(".drawer")
         assert expected in shown and wrong not in shown
         assert page.evaluate("t('f.reused.n.one')") in ("1 creativit\u00e0", "1 creative")
+
+
+def test_page_one_hour_between_searches_reads_in_the_singular(page_of):
+    for lang, one, many in (("it", "1 ora", "3 ore"), ("en", "1 hour", "3 hours")):
+        page = page_of(lang)
+        assert page.evaluate("oneOrMore('gap.hours', 1)") == one
+        assert page.evaluate("oneOrMore('gap.hours', 3)") == many

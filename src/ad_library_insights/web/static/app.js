@@ -39,7 +39,7 @@ function t(key, vars) {
 const num = (value) => (value == null ? '—' : new Intl.NumberFormat(S.lang, { useGrouping: 'always' }).format(value));
 const pct = (share) => `${Math.round((share || 0) * 100)}%`;
 /* A number with its noun, singular for one: count(1, 'n.days') is "1 giorno" / "1 day". */
-const creatives = (key, n) => t(n === 1 ? `${key}.one` : key, { n: num(n) });
+const oneOrMore = (key, n) => t(n === 1 ? `${key}.one` : key, { n: num(n) });
 const count = (n, key) => t(`${key}.${n === 1 ? 'one' : 'other'}`, { n: num(n) });
 const days = (n) => (n == null ? '—' : count(n, 'n.days'));
 /* An age span as the targeting has it; 65 is the top Meta offers and means 65 and over. */
@@ -293,7 +293,7 @@ function factsSection(r) {
       <dt>${esc(t('f.reach.total.median'))}</dt><dd class="num">${num(reach.median_reach_total)}</dd>
       <dt>${esc(t('f.reach.total.best'))}</dt><dd class="num">${num(reach.highest_reach_total)}</dd></dl>
       <p class="note">${esc(t('f.reach.note', { n: reach.ads_with_market_reach, country: region(r.country) }))}</p>`;
-  const reused = s.copy_patterns.reused_texts.slice(0, 4).map((row) => `<li><span>${esc(row.opening)}</span><span>${esc(creatives('f.reused.n', row.creatives))}</span></li>`).join('');
+  const reused = s.copy_patterns.reused_texts.slice(0, 4).map((row) => `<li><span>${esc(row.opening)}</span><span>${esc(oneOrMore('f.reused.n', row.creatives))}</span></li>`).join('');
   return `<section class="facts">
     <div class="fact wide"><h2>${esc(t('f.places'))}</h2>${places}</div>
     <div class="fact"><h2>${esc(t('f.audience'))}</h2>${who}</div>
@@ -406,7 +406,7 @@ function compareSheet(r) {
   }).join('');
   const top = (side) => `<div><table class="ads"><tbody>${side.ads.slice(0, 5).map((ad) => `<tr class="pick" data-action="open-ad" data-value="${esc(ad.library_id)}">
     <td><div class="adcell">${ad.thumbnail ? `<img class="thumb" src="${esc(ad.thumbnail)}" alt="" loading="lazy">` : '<span class="thumb"></span>'}
-      <div class="adtext"><div>${esc(firstLine(ad) || t('t.notext'))}</div><small>${esc(`${t(`verdict.${ad.verdict}`)} · ${days(ad.days_running)} · ${creatives('f.reused.n', ad.creatives)}`)}</small></div></div></td>
+      <div class="adtext"><div>${esc(firstLine(ad) || t('t.notext'))}</div><small>${esc(`${t(`verdict.${ad.verdict}`)} · ${days(ad.days_running)} · ${oneOrMore('f.reused.n', ad.creatives)}`)}</small></div></div></td>
     <td class="r">${Math.round(ad.score)}</td></tr>`).join('')}</tbody></table></div>`;
   return `<div class="sheet">
     <section class="cmphead">${head(a)}${head(b)}</section>
@@ -469,7 +469,7 @@ function newsDetail(c) {
   const what = (ad) => `<td>${ad.fields.map((f) => esc(t(`field.${f}`))).join(', ')}${ad.before.opening && ad.fields.includes('text') ? `<span class="was">${esc(t('news.before', { value: ad.before.opening }))}</span>` : ''}</td>`;
   const kind = (ad) => `<td class="dim">${esc(t(ad.new_text ? 'news.newtext' : 'news.reused'))}</td>`;
   return `<div class="sheet">
-    <section class="rhead"><div class="grow"><h1>${esc(title)}</h1><p>${esc(t('news.span', { from: stamp(c.previous.taken_at), to: stamp(c.current.taken_at), gap: c.days_between < 1 ? t('gap.hours', { n: Math.max(1, Math.round(c.days_between * 24)) }) : days(Math.round(c.days_between)) }))}</p></div>
+    <section class="rhead"><div class="grow"><h1>${esc(title)}</h1><p>${esc(t('news.span', { from: stamp(c.previous.taken_at), to: stamp(c.current.taken_at), gap: c.days_between < 1 ? oneOrMore('gap.hours', Math.max(1, Math.round(c.days_between * 24))) : days(Math.round(c.days_between)) }))}</p></div>
       <div class="rlinks"><button class="linklike" data-action="news-refresh" data-value="${esc(c.subject.key)}">${esc(t('news.refresh'))}</button></div></section>
     <section class="metrics three">${cells.map(([value, label, why]) => `<div class="metric"><b>${num(value)}</b><span>${esc(label)}</span><small>${esc(why)}</small></div>`).join('')}</section>
     ${c.sample ? `<section><p class="muted">${esc(t('news.sample'))}</p></section>` : ''}
@@ -556,7 +556,7 @@ function adDrawer(ad, r) {
       <dl>
         <dt>${esc(t('d.part.scale'))}</dt><dd>${esc(t('d.score.of', { n: num(Math.round(points.scale)), max: weights.scale }))} <span class="muted">· ${esc(scaleWhy)}</span></dd>
         <dt>${esc(t('d.part.staying'))}</dt><dd>${esc(t('d.score.of', { n: num(Math.round(points.staying)), max: weights.staying }))} <span class="muted">· ${esc(t('d.staying.days', { days: days(ad.days_running) }))}</span></dd>
-        <dt>${esc(t('d.part.creative'))}</dt><dd>${esc(t('d.score.of', { n: num(Math.round(points.creative)), max: weights.creative }))} <span class="muted">· ${esc(creatives('d.creative.n', ad.creatives))}</span></dd>
+        <dt>${esc(t('d.part.creative'))}</dt><dd>${esc(t('d.score.of', { n: num(Math.round(points.creative)), max: weights.creative }))} <span class="muted">· ${esc(oneOrMore('d.creative.n', ad.creatives))}</span></dd>
       </dl>
       <p class="smallnote">${esc(t(`reliability.${ad.reliability}.x`))}</p>${ageNote ? `<p class="smallnote">${esc(ageNote)}</p>` : ''}${review}${recent}
       <h3 style="margin-top:18px">${esc(t('d.variants'))}</h3>
