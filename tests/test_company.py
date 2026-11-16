@@ -132,10 +132,11 @@ def test_company_ads_come_from_the_page_data(tmp_path):
     assert "view_all_page_id" in studio.renders[0]
 
 
-def deep_result(studio, top_n=2, frames=False, events=None):
+def deep_result(studio, top_n=2, frames=False, events=None, ceiling=2):
     async def flow():
         result = await service.research_company(studio.client, "IT", page_id=PAGE_ID, as_of=AS_OF)
-        return await service.deepen(studio.client, result, top_n, frames, events.append if events is not None else None)
+        return await service.deepen(studio.client, result, top_n, frames, events.append if events is not None else None,
+                                    ceiling=ceiling)
     return studio.run(flow())
 
 
@@ -147,8 +148,11 @@ def test_reach_is_read_only_for_the_top_ads(tmp_path):
     assert all(ad["reach"]["eu_total"] == 7398228 and ad["reach"]["country_reach"] == 835585 for ad in top)
     assert all(ad["reach_per_day"] > 0 and ad["audience"]["age_min"] == 25 for ad in top)
     assert all("reach" not in ad for ad in rest)
+    note = result["deep"].pop("ceiling_note")
     assert result["deep"] == {"requested": 2, "read": 2, "concepts": 2, "failed": [], "with_reach": 2,
-                              "frames": False, "note": None}
+                              "frames": False, "ceiling": 2, "capped": True, "left_out": 2, "note": None}
+    # the ceiling of two ads left the second and third ad of the first concept closed, and the result says so
+    assert note.startswith("Stopped at the ceiling of 2 ads opened: 2 of the 2 concepts asked for were read; 2 more")
     assert result["signals"]["reach"]["ads_with_reach"] == 2
     assert result["signals"]["audience"]["locations_included"][0]["ads"] == 2
     assert result["page"]["category"] == "Game Publisher" and result["page"]["logo_path"]
@@ -241,5 +245,43 @@ def test_company_tools_over_mcp(tmp_path, monkeypatch):
     pages, choose, company = asyncio.run(run())
     assert pages["suggested_page_id"] == "365604620536"
     assert choose["outcome"] == "choose_page"
-    assert company["ok"] and len(company["ads"]) == 3 and company["deep"]["read"] == 2
+    # two concepts asked: their most shown ads, then the second and third ad of the first concept
+    assert company["ok"] and len(company["ads"]) == 3 and company["deep"]["read"] == 4
+    assert company["deep"]["concepts"] == 2 and company["deep"]["capped"] is False
     assert company["ads"][0]["reach"]["eu_total"] == 7398228
+
+
+def test_reading_goes_on_until_the_concepts_asked_for_are_read_or_the_ceiling_is_hit(tmp_path):
+    # default ceiling: two ads for every concept asked. Two concepts asked: both read, plus two more ads of the first
+    studio = Studio(tmp_path)
+    result = deep_result(studio, top_n=2, ceiling=None)
+    assert result["deep"]["concepts"] == 2 and result["deep"]["read"] == 4 and result["deep"]["ceiling"] == 4
+    assert result["deep"]["capped"] is False and result["deep"]["left_out"] == 0
+    assert result["deep"]["ceiling_note"] is None
+    assert len(studio.opened) == 4 and len(set(studio.opened)) == 4
+    plan = service.estimate_deep(result, 2)
+    assert (plan["ads"], plan["concepts"], plan["ceiling"]) == (4, 2, 4)
+    # more concepts asked than the list holds: every concept is read, nothing is called a ceiling
+    everything = deep_result(Studio(tmp_path / "all"), top_n=10, ceiling=None)
+    assert everything["deep"]["concepts"] == 3 and everything["deep"]["read"] == 5 and not everything["deep"]["capped"]
+
+
+def test_a_concept_that_cannot_be_opened_is_replaced_by_the_next_one(tmp_path):
+    studio = Studio(tmp_path)
+    reader = studio.client.read_details
+    calls = []
+
+    async def first_one_fails(url, library_ids, *args, **kwargs):
+        calls.append(list(library_ids))
+        outcomes = await reader(url, library_ids, *args, **kwargs)
+        if len(calls) == 1:
+            outcomes[library_ids[0]] = {"ok": False, "error": "closed", "attempts": 1, "from_cache": False}
+        return outcomes
+
+    studio.client.read_details = first_one_fails
+    result = deep_result(studio, top_n=1, ceiling=2)
+    # one concept asked, its ad did not open: the next concept of the list is read in its place, within the ceiling
+    assert len(calls) == 2 and len(calls[0]) + len(calls[1]) == 2          # never past the ceiling of two ads
+    assert calls[1][0] not in calls[0]
+    assert result["deep"]["concepts"] == 1 and result["deep"]["failed"] == [calls[0][0]]
+    assert result["deep"]["read"] == 1

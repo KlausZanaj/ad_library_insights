@@ -61,6 +61,7 @@ LOW_SCALE, MID_SCALE, HIGH_SCALE = 25, 40, 70     # positions on the 0-100 scale
 MIN_REACH_SAMPLE = 3              # fewer ads with reach than this cannot set a scale
 MIN_COMPARABLE = 5                # fewer than this, no ad is called scaling or forgotten against the others
 CARDS_PER_CONCEPT = 3             # ads of one concept whose reach is read and added up
+READS_PER_CONCEPT_ASKED = 2       # ceiling of ads opened: this many for every concept asked for
 _WORDS = re.compile(r"[^\W_]+")
 
 
@@ -218,22 +219,48 @@ def group_concepts(ads: list[dict], as_of: date | None = None) -> list[dict]:
     return evaluate(ranked)
 
 
-def cards_to_read(ranked: list[dict], limit: int) -> list[tuple[dict, str]]:
-    """The ``limit`` most shown cards whose reach is worth reading, as (concept, card id).
+def read_ceiling(concepts: int) -> int:
+    """The most ads opened when ``concepts`` concepts are asked for."""
+    return max(0, concepts) * READS_PER_CONCEPT_ASKED
 
-    Cards are taken in the order of the library's own list, so the choice does not
-    depend on a rating that reach itself will change. A concept gives at most
-    ``CARDS_PER_CONCEPT`` cards, so that one advertiser with many ads does not use up
-    the whole reading.
+
+def _by_list_order(ranked: list[dict]) -> list[dict]:
+    """Concepts in the order of the library's own list: by their most shown ad."""
+    keyed = [(ad.get("impression_rank") or 10 ** 9, place, ad) for place, ad in enumerate(ranked)]
+    return [ad for _, _, ad in sorted(keyed, key=lambda item: item[:2])]
+
+
+def _other_cards(ad: dict) -> list[dict]:
+    """The second and third most shown ad of a concept: the ones read after its first."""
+    return [card for card in ad.get("members") or [] if card["library_id"] != ad["library_id"]][:CARDS_PER_CONCEPT - 1]
+
+
+def cards_to_read(ranked: list[dict], concepts: int, skip: frozenset | set = frozenset(),
+                  ceiling: int | None = None) -> list[tuple[dict, str]]:
+    """The ads to open so that the ``concepts`` most shown concepts are read, as (concept, card id).
+
+    Concepts are taken in the order of the library's own list, so the choice does not
+    depend on a rating that reach itself will change. First comes the most shown ad of
+    each concept: that is what makes a concept "read". Then, while the ceiling allows,
+    the second and third ad of those same concepts, the most shown first, so that a
+    concept split over many ads is not judged on one of them. A concept gives at most
+    ``CARDS_PER_CONCEPT`` ads. ``skip`` holds concepts already tried; ``ceiling`` is
+    the most ads opened in all (``read_ceiling`` when not given).
     """
-    pool = []
-    for ad in ranked:
-        cards = ad.get("members") or [{"library_id": ad["library_id"], "impression_rank": ad.get("impression_rank")}]
-        for card in cards[:CARDS_PER_CONCEPT]:
-            pool.append((card.get("impression_rank") or 10 ** 9, ad["library_id"] != card["library_id"],
-                         card["library_id"], ad))
-    pool.sort(key=lambda item: item[:3])
-    return [(ad, card_id) for _, _, card_id, ad in pool[:max(0, limit)]]
+    ceiling = read_ceiling(concepts) if ceiling is None else ceiling
+    chosen = [ad for ad in _by_list_order(ranked) if ad["library_id"] not in skip][:max(0, concepts)]
+    leads = [(ad, ad["library_id"]) for ad in chosen][:max(0, ceiling)]
+    extras = sorted((card.get("impression_rank") or 10 ** 9, card["library_id"], place)
+                    for place, ad in enumerate(chosen) for card in _other_cards(ad))
+    room = max(0, ceiling - len(leads))
+    return leads + [(chosen[place], card_id) for _, card_id, place in extras[:room]]
+
+
+def cards_left_out(targets: list[tuple[dict, str]]) -> int:
+    """Second and third ads of the concepts in ``targets`` that the ceiling kept closed."""
+    opened = {card_id for _, card_id in targets}
+    concepts = {ad["library_id"]: ad for ad, _ in targets}.values()
+    return sum(1 for ad in concepts for card in _other_cards(ad) if card["library_id"] not in opened)
 
 
 # --- rating ---------------------------------------------------------------------------

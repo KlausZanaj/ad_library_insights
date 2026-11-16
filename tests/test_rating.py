@@ -482,14 +482,24 @@ def test_reach_of_a_concept_adds_up_the_ads_that_were_read():
     assert concept["reach"]["country_reach"] == 201_059                # the detail still shows the most shown ad
 
 
-def test_cards_are_read_in_the_order_of_the_library_three_per_concept_at_most():
+def test_reading_covers_the_concepts_asked_for_before_it_goes_deeper_into_one():
     cards = [ad(f"z{n}", body="One text", advertiser="Big", impression_rank=n, video_url=f"https://v/{n}.mp4") for n in range(1, 6)]
     cards += [ad("old", started="2025-01-01", body="Old text", advertiser="Small", impression_rank=6),
               ad("new", started="2026-06-28", body="New text", advertiser="Other", impression_rank=7)]
     ranked = rating.group_concepts(cards, AS_OF)
-    chosen = [card for _, card in rating.cards_to_read(ranked, 5)]
-    assert chosen == ["z1", "z2", "z3", "old", "new"]                  # not z4, z5: three of one concept are enough
-    assert [card for _, card in rating.cards_to_read(ranked, 2)] == ["z1", "z2"]
+    # three concepts asked: the most shown ad of each first, then the second and third ad of the big one
+    chosen = [card for _, card in rating.cards_to_read(ranked, 3)]
+    assert chosen == ["z1", "old", "new", "z2", "z3"]                  # not z4, z5: three of one concept are enough
+    # two concepts asked, ceiling of four ads: before, "2" opened z1 and z2 and read one concept only
+    two = rating.cards_to_read(ranked, 2)
+    assert [card for _, card in two] == ["z1", "old", "z2", "z3"]
+    assert rating.read_ceiling(2) == 4 and rating.cards_left_out(two) == 0
+    # one concept asked: the ceiling of two ads leaves its third ad closed, and that is counted
+    one = rating.cards_to_read(ranked, 1)
+    assert [card for _, card in one] == ["z1", "z2"] and rating.cards_left_out(one) == 1
+    assert rating.cards_to_read(ranked, 0) == []
+    # a concept already tried is skipped: the next of the list takes its place
+    assert [card for _, card in rating.cards_to_read(ranked, 1, skip={"z1"}, ceiling=1)] == ["old"]
 
 
 def test_a_concept_with_a_fresh_ad_is_not_called_forgotten():

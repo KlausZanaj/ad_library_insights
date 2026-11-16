@@ -152,33 +152,59 @@ async def research_company(client: AdLibraryClient, country: str, page_id: str =
     return result
 
 
-def estimate_deep(result: dict, top_n: int, frames: bool = False) -> dict:
-    """Time the reach reading will take for the ``top_n`` most shown ads, before starting."""
-    targets = rating.cards_to_read(result["ads"], top_n)
+def estimate_deep(result: dict, top_n: int, frames: bool = False, ceiling: int | None = None) -> dict:
+    """Time the reach reading will take for the ``top_n`` most shown concepts, before starting.
+
+    ``ads`` is how many ads will be opened: one for each concept and, up to ``ceiling``,
+    the second and third ad of the same concepts.
+    """
+    ceiling = rating.read_ceiling(top_n) if ceiling is None else ceiling
+    targets = rating.cards_to_read(result["ads"], top_n, ceiling=ceiling)
     leads = [ad for ad, card_id in targets if card_id == ad["library_id"]]
     videos = sum(1 for ad in leads if ad.get("video_url")) if frames else 0
-    return {"ads": len(targets), "concepts": len(leads), "videos": videos,
+    return {"ads": len(targets), "concepts": len(leads), "videos": videos, "ceiling": ceiling,
             "seconds": details.estimate_seconds(len(targets), videos)}
 
 
 async def deepen(client: AdLibraryClient, result: dict, top_n: int = 10, frames: bool = False,
-                 on_progress=None, use_cache: bool = True) -> dict:
-    """Read reach and audience for the ``top_n`` most shown ads of a result, in place.
+                 on_progress=None, use_cache: bool = True, ceiling: int | None = None) -> dict:
+    """Read reach and audience for the ``top_n`` most shown concepts of a result, in place.
 
-    The ads opened are taken in the order of the library's own list (total impressions),
-    not by a rating that reach itself is about to change. Up to three ads of one concept
-    are read and their reach is added up, so a concept split over many ads is not judged
-    on one of them. Once reach is read the ads are rated again and the list is re-sorted.
+    The concepts are taken in the order of the library's own list (total impressions),
+    not by a rating that reach itself is about to change. The most shown ad of each is
+    opened, then the second and third ad of the same concepts while the ceiling of ads
+    opened allows (``rating.read_ceiling``): their reach is added up, so a concept split
+    over many ads is not judged on one of them. When an ad could not be opened and the
+    ceiling leaves room, the next concepts of the list are opened in its place, once, so
+    that ``top_n`` concepts are read where the list holds that many. ``deep`` says how
+    many concepts were read, how many ads were opened and whether the ceiling stopped
+    the reading. Once reach is read the ads are rated again and the list is re-sorted.
     Thumbnails and page logos are saved locally at the same time; with ``frames`` three
     stills of each video are saved too.
     """
-    targets = rating.cards_to_read(result["ads"], top_n)
+    ceiling = rating.read_ceiling(top_n) if ceiling is None else ceiling
+    targets = rating.cards_to_read(result["ads"], top_n, ceiling=ceiling)
     if not targets:
         return result
+
+    async def read(batch):
+        heads = [ad for ad, card_id in batch if card_id == ad["library_id"]]
+        clips = {ad["library_id"]: ad["video_url"] for ad in heads if ad.get("video_url")} if frames else {}
+        return await client.read_details(result["url"], [card_id for _, card_id in batch],
+                                         result.get("country") or None, clips, on_progress, use_cache)
+
+    outcomes = await read(targets)
+    unread = sum(1 for ad, card_id in targets
+                 if card_id == ad["library_id"] and not (outcomes.get(card_id) or {}).get("ok"))
+    if unread and len(targets) < ceiling:
+        # a concept that could not be opened is replaced by the next one of the list, within the ceiling
+        room = ceiling - len(targets)
+        more = rating.cards_to_read(result["ads"], min(unread, room), skip={ad["library_id"] for ad, _ in targets},
+                                    ceiling=room)
+        if more:
+            outcomes.update(await read(more))
+            targets = targets + more
     leads = [ad for ad, card_id in targets if card_id == ad["library_id"]]
-    videos = {ad["library_id"]: ad["video_url"] for ad in leads if ad.get("video_url")} if frames else {}
-    outcomes = await client.read_details(result["url"], [card_id for _, card_id in targets],
-                                         result.get("country") or None, videos, on_progress, use_cache)
     failed = []
     for ad, card_id in targets:
         outcome = outcomes.get(card_id) or {"ok": False, "error": "not read"}
@@ -211,7 +237,14 @@ async def deepen(client: AdLibraryClient, result: dict, top_n: int = 10, frames:
     signals.refresh(result["signals"], result["ads"], result.get("country") or None)
     result["advertisers"] = advertiser_table(result["ads"])           # ratings changed with reach
     with_reach = sum(1 for ad in leads if (ad.get("reach") or {}).get("available"))
-    result["deep"] = {"requested": top_n, "read": len(targets) - len(failed), "concepts": len(leads),
+    concepts_read = sum(1 for ad in leads if ad["library_id"] not in failed)
+    left_out = rating.cards_left_out(targets)
+    capped = len(targets) >= ceiling and (left_out > 0 or concepts_read < min(top_n, len(result["ads"])))
+    stopped = (f"Stopped at the ceiling of {ceiling} ads opened: {concepts_read} of the {top_n} concepts asked for "
+               f"were read; {left_out} more ads of these concepts were left closed, so their reach is a floor."
+               ) if capped else None
+    result["deep"] = {"requested": top_n, "read": len(targets) - len(failed), "concepts": concepts_read,
                       "failed": failed, "with_reach": with_reach, "frames": bool(frames),
+                      "ceiling": ceiling, "capped": capped, "left_out": left_out, "ceiling_note": stopped,
                       "note": None if with_reach or failed else details.NO_REACH_NOTE}
     return result

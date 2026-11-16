@@ -24,7 +24,8 @@ def company(tmp_path):
 
     async def flow():
         result = await service.research_company(studio.client, "IT", page_id=PAGE_ID, as_of=TODAY)
-        return await service.deepen(studio.client, result, 4, frames=True)      # four ads cover the three concepts
+        # three concepts, four ads opened: one concept of three ads is read in part (2 of 3)
+        return await service.deepen(studio.client, result, 3, frames=True, ceiling=4)
 
     return asyncio.run(flow())
 
