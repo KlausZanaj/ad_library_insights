@@ -504,7 +504,7 @@ def test_collected_count_is_zero_when_no_concept_was_read(app):
 
 
 def test_page_failed_command_copy_talks_about_the_command(site, page_of):
-    for lang, hand in (("it", "a mano"), ("en", "by hand")):
+    for lang, hand in (("it", "La copia non"), ("en", "The copy did not work")):
         page = page_of(lang, _result(site))
         page.evaluate("""() => { Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
             document.execCommand = () => false; }""")
@@ -513,7 +513,7 @@ def test_page_failed_command_copy_talks_about_the_command(site, page_of):
         page.click("[data-action=copy-command]")
         page.wait_for_function("document.querySelector('.status.err') !== null")
         shown = page.inner_text(".status")
-        assert hand in shown and "brief.md" not in shown
+        assert hand in shown and "brief.md" in shown and "\\" not in shown and ":/" not in shown
 
 
 def test_table_note_agrees_with_one_concept_and_texts_say_concepts():
