@@ -1065,7 +1065,7 @@ document.addEventListener('keydown', (event) => {
 });
 
 (async function start() {
-  T = await (await fetch('/static/strings.json')).json();
+  T = await (await fetch('/static/strings.json', { cache: 'no-store' })).json();
   try {
     const state = await api('/api/state');
     S.project = state.project; S.deepChoices = state.deep_choices;
