@@ -12,7 +12,7 @@ from __future__ import annotations
 LEVELS = ("data", "analysis", "plan")
 DEEP_CHOICES = (10, 20, 50)
 
-TOKENS_PER_AD = 260            # one ad: copy, button, destination, dates, score, reach, audience
+TOKENS_PER_AD = 400            # one concept: copy, button, destination, dates, score, reach, audience; measured at 340 to 510 on real prepared texts
 TOKENS_PER_IMAGE = 420         # one still frame or thumbnail read as a picture
 FRAMES_PER_AD = 3              # start, middle, end
 ADS_WITH_FRAMES = 10           # the creative review looks at the best ads only

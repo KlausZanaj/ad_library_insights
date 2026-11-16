@@ -470,3 +470,8 @@ def test_page_says_one_day_in_the_singular(site, page_of):
         page.evaluate("(id) => { const ad = findAd(id); ad.days_running = 12; ad.too_recent = false; renderOverlay(); }",
                       ad["library_id"])
         assert ("12 giorni" if lang == "it" else "12 days") in page.inner_text(".drawer")
+
+
+def test_estimate_uses_the_measured_tokens_per_concept():
+    assert consumption.TOKENS_PER_AD == 400
+    assert consumption.estimate("analysis", 10)["tokens"] == 22500      # (2500 + 10 * 400) * 3 + 3000
