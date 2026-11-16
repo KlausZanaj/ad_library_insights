@@ -127,6 +127,8 @@ function renderTop() {
   document.documentElement.lang = S.lang;
   document.documentElement.dataset.theme = S.theme;
   $('#modes').innerHTML = MODES.map((mode) => `<button data-action="mode" data-value="${mode}" aria-current="${mode === S.mode}">${esc(t(`mode.${mode}`))}</button>`).join('');
+  const tut = $('#tut-btn');
+  if (tut) tut.textContent = t('tut.btn');
   $('#theme').setAttribute('aria-label', t('theme.label'));
   $('#theme').innerHTML = toggle('theme', ['light', 'dark'], S.theme, (v) => t(`theme.${v}`));
 }
@@ -311,6 +313,13 @@ function renderWay() {
         ${L.hint ? `<p class="way-msg" role="status">${esc(t('way.c.hint'))}</p>` : ''}
       </article>
     </div>
+    <details class="lvl-details multi-cli">
+      <summary>${esc(t('way.multi.title'))}</summary>
+      <div class="multi-grid">
+        <div class="multi-box"><strong>${esc(t('way.multi.ag.t'))}</strong><span>${esc(t('way.multi.ag.d'))}</span><code>"ad-library-insights": { "command": "python", "args": ["-m", "ad_library_insights"] }</code></div>
+        <div class="multi-box"><strong>${esc(t('way.multi.cx.t'))}</strong><span>${esc(t('way.multi.cx.d'))}</span><code>codex mcp add ad-library-insights -- python -m ad_library_insights</code></div>
+      </div>
+    </details>
     <p class="way-how"><button class="linklike" data-action="how-open">${esc(t('way.how'))}</button></p>`;
 }
 let linkSeq = 0;
@@ -542,6 +551,30 @@ const kindTag = (ad) => (ad.kind && ad.kind !== 'standard' ? t(`kind.${ad.kind}`
 function verdictCell(ad) {
   return `<span class="v-${ad.verdict}">${esc(t(`verdict.${ad.verdict}`))}</span><span class="rel">${esc(t(`reliability.${ad.reliability}`))}</span>`;
 }
+function tableLegend() {
+  return `<details class="table-legend">
+    <summary>${esc(t('leg.title'))}</summary>
+    <div class="leg-grid">
+      <div class="leg-col"><h4>${esc(t('leg.g1'))}</h4><ul class="leg-list">
+        <li><strong class="v-scaling">${esc(t('verdict.scaling'))}:</strong><span>${esc(t('leg.v.scaling'))}</span></li>
+        <li><strong class="v-holding">${esc(t('verdict.holding'))}:</strong><span>${esc(t('leg.v.holding'))}</span></li>
+        <li><strong class="v-testing">${esc(t('verdict.testing'))}:</strong><span>${esc(t('leg.v.testing'))}</span></li>
+        <li><strong class="v-review">${esc(t('verdict.review'))}:</strong><span>${esc(t('leg.v.review'))}</span></li>
+        <li><strong class="v-average">${esc(t('verdict.average'))}:</strong><span>${esc(t('leg.v.other'))}</span></li>
+      </ul></div>
+      <div class="leg-col"><h4>${esc(t('leg.g2'))}</h4><ul class="leg-list">
+        <li><strong>${esc(t('reliability.high'))}:</strong><span>${esc(t('leg.r.high'))}</span></li>
+        <li><strong>${esc(t('reliability.medium'))}:</strong><span>${esc(t('leg.r.medium'))}</span></li>
+        <li><strong>${esc(t('reliability.low'))}:</strong><span>${esc(t('leg.r.low'))}</span></li>
+      </ul></div>
+      <div class="leg-col"><h4>${esc(t('leg.g3'))}</h4><ul class="leg-list">
+        <li><strong>${esc(t('t.score'))}:</strong><span>${esc(t('leg.c.score'))}</span></li>
+        <li><strong>${esc(t('t.creatives'))}:</strong><span>${esc(t('leg.c.creatives'))}</span></li>
+        <li><strong>${esc(t('t.perday'))}:</strong><span>${esc(t('leg.c.perday'))}</span></li>
+      </ul></div>
+    </div>
+  </details>`;
+}
 function tableSection(r) {
   const company = r.mode === 'company';
   const ads = [...r.ads].sort(SORTS[S.sort] || SORTS.score);
@@ -555,6 +588,7 @@ function tableSection(r) {
   const opened = r.deep ? r.deep.read : r.ads.reduce((sum, ad) => sum + (ad.reach ? 1 : 0) + Object.keys(ad.card_reach || {}).length, 0);
   const concepts = r.deep ? r.deep.concepts : r.ads.filter((ad) => ad.reach).length;
   return `<section><div class="sortbar"><span>${esc(t('sort.by'))}</span><div class="switch" role="group">${toggle('sort', ['score', 'perday', 'days'], S.sort, (v) => t(`sort.${v}`))}</div></div>
+    ${tableLegend()}
     <table class="ads${company ? '' : ' mixed'}"><thead><tr><th></th><th>${esc(t('t.ad'))}</th><th>${esc(t('t.tier'))}</th>
     <th class="r">${esc(t('t.score'))}</th><th class="r">${esc(t('t.days'))}</th><th class="r">${esc(t('t.creatives'))}</th>
     ${company ? '' : `<th>${esc(t('t.format'))}</th>`}<th class="r">${esc(t('t.reached', { country: region(r.country) }))}</th><th class="r">${esc(t('t.perday'))}</th></tr></thead>
@@ -882,6 +916,18 @@ function briefStatus(text, err) {
   S.overlay.status = { text, err };
   renderOverlay();
 }
+function tutorialDialog(overlay) {
+  const tab = Number(overlay.tab || 1);
+  const tabs = [1, 2, 3, 4].map((n) => `<button data-action="tut-tab" data-value="${n}" aria-selected="${n === tab}">${esc(t(`tut.t${n}`))}</button>`).join('');
+  const cards = [1, 2, 3, 4].map((c) => `<div class="tut-card"><strong>${esc(t(`tut.${tab}.c${c}.t`))}</strong><p>${esc(t(`tut.${tab}.c${c}.d`))}</p></div>`).join('');
+  return `<div class="dialog wide" role="dialog" aria-modal="true"><h2>${esc(t('tut.title'))}</h2><p class="lead">${esc(t('tut.lead'))}</p>
+    <div class="tut-tabs" role="tablist">${tabs}</div>
+    <div class="tut-cards">${cards}</div>
+    <div class="foot">
+      ${tab > 1 ? `<button class="btn quiet" data-action="tut-tab" data-value="${tab - 1}">${esc(t('how.prev'))}</button>` : ''}
+      ${tab < 4 ? `<button class="btn" data-action="tut-tab" data-value="${tab + 1}">${esc(t('how.next'))}</button>` : `<button class="btn" data-action="close">${esc(t('button.close'))}</button>`}
+    </div></div>`;
+}
 function renderOverlay() {
   const overlay = S.overlay, el = $('#overlay');
   if (!overlay) { el.innerHTML = ''; return; }
@@ -895,6 +941,7 @@ function renderOverlay() {
   else if (overlay.type === 'brief') inner = briefDialog(overlay);
   else if (overlay.type === 'link-confirm') inner = linkDialog(overlay);
   else if (overlay.type === 'how') inner = howDialog(overlay);
+  else if (overlay.type === 'tutorial') inner = tutorialDialog(overlay);
   el.innerHTML = `<div class="scrim" data-action="close"></div>${inner}`;
 }
 function render() { renderTop(); renderSearch(); renderResults(); renderOverlay(); }
@@ -1014,6 +1061,8 @@ const ACTIONS = {
   'how-open'() { S.overlay = { type: 'how', step: 1 }; renderOverlay(); },
   'how-next'() { S.overlay.step = Math.min(3, S.overlay.step + 1); renderOverlay(); },
   'how-prev'() { S.overlay.step = Math.max(1, S.overlay.step - 1); renderOverlay(); },
+  tutorial() { S.overlay = { type: 'tutorial', tab: 1 }; renderOverlay(); },
+  'tut-tab'(value) { if (S.overlay && S.overlay.type === 'tutorial') { S.overlay.tab = Number(value); renderOverlay(); } },
   deep(value) { S.deep = Number(value); renderSearch(); renderOverlay(); refreshEstimate(); },
   submit, guide() { S.overlay = { type: 'guide' }; renderOverlay(); },
   project() { openProject(false); },

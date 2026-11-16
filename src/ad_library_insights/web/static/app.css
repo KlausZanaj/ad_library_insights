@@ -77,6 +77,8 @@ button { cursor: pointer; }
 .modes button[aria-current="true"] { background: var(--surface); color: var(--text); font-weight: 640; box-shadow: var(--shadow-sm); }
 
 /* two- or three-way switches: theme, language, number of ads */
+.top-tut { margin-left: auto; }
+.top-tut + .switch { margin-left: 0; }
 .switch { display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--sunken); padding: 2px; gap: 2px; margin-left: auto; }
 .options .switch, .sortbar .switch, .use .switch { margin-left: 0; }
 .switch button { background: none; border: 0; border-radius: 6px; padding: 4px 12px; color: var(--muted); font-size: .88rem; min-width: 42px; font-weight: 500; }
@@ -219,7 +221,26 @@ table.cmp td.num { font-variant-numeric: tabular-nums; }
 .v-review { color: var(--warn); font-weight: 650; }
 .v-testing, .v-average, .v-ended { color: var(--muted); }
 .rel { display: block; color: var(--muted); font-size: .8rem; }
-.sortbar { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; color: var(--muted); }
+.sortbar { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; color: var(--muted); flex-wrap: wrap; }
+.table-legend { margin-bottom: 16px; background: var(--sunken); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; }
+.table-legend summary { cursor: pointer; font-size: .9rem; font-weight: 640; color: var(--accent); outline: none; }
+.leg-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line-soft); font-size: .86rem; }
+.leg-col h4 { margin: 0 0 8px; font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.leg-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 7px; }
+.leg-list li strong { display: inline-block; margin-right: 4px; color: var(--text); }
+.leg-list li span { color: var(--muted); line-height: 1.4; }
+.tut-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 18px; padding: 4px; background: var(--sunken); border: 1px solid var(--line-soft); border-radius: 8px; }
+.tut-tabs button { background: none; border: 0; padding: 8px 10px; border-radius: 6px; font-size: .86rem; font-weight: 560; color: var(--muted); text-align: center; }
+.tut-tabs button[aria-selected="true"] { background: var(--surface); color: var(--accent); font-weight: 650; box-shadow: var(--shadow-sm); }
+.tut-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+.tut-card { padding: 14px 16px; background: var(--sunken); border: 1px solid var(--line-soft); border-radius: 8px; }
+.tut-card strong { display: block; font-size: .95rem; font-weight: 650; margin-bottom: 4px; color: var(--text); }
+.tut-card p { font-size: .88rem; color: var(--muted); line-height: 1.48; }
+.multi-cli { margin-top: 14px; }
+.multi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line-soft); font-size: .86rem; }
+.multi-box { padding: 10px 12px; background: var(--sunken); border: 1px solid var(--line-soft); border-radius: 7px; }
+.multi-box strong { display: block; color: var(--text); margin-bottom: 4px; }
+.multi-box code { display: block; margin-top: 6px; padding: 6px 8px; background: var(--surface); border: 1px solid var(--line-soft); border-radius: 5px; font-size: .8rem; overflow-wrap: anywhere; }
 .tier-testing { color: var(--muted); }
 .review { display: block; color: var(--warn); font-size: .87rem; }
 .dim { color: var(--muted); font-size: .9rem; }
@@ -376,8 +397,8 @@ table.cmp td.num { font-variant-numeric: tabular-nums; }
 .how-title { margin-top: 4px; }
 
 @media (max-width: 960px) {
-  .lvl-grid { grid-template-columns: 1fr; }
-  .ways { grid-template-columns: 1fr; }
+  .lvl-grid, .ways, .leg-grid, .tut-cards, .multi-grid { grid-template-columns: 1fr; }
+  .tut-tabs { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 720px) {
   .topbar-in, .search-in, .wrap, .page { padding-left: 16px; padding-right: 16px; }

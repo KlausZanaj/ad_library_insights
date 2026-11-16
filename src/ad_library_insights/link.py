@@ -214,3 +214,31 @@ def connect(settings: Settings, overwrite_skills: bool = False) -> dict:
         return {"ok": False, "error": "skills_failed", "detail": type(exc).__name__, "server": server}
     return {"ok": True, "server": server, "skills": skills,
             "skills_available": bool(_skill_files(settings.skills_source))}
+
+
+# --- Google Antigravity and ChatGPT Codex CLI helpers ----------------------------------------
+
+def codex_arguments(codex: str, python: str) -> list[str]:
+    """The command to register the MCP server in ChatGPT Codex CLI."""
+    return [codex, "mcp", "add", NAME, "--", python, "-m", "ad_library_insights"]
+
+
+def codex_shown_command(python: str | None = None) -> str:
+    """The Codex CLI registration command as the user would type it."""
+    args = codex_arguments("codex", python or sys.executable)
+    if sys.platform.startswith("win"):
+        return subprocess.list2cmdline(args)
+    return shlex.join(args)
+
+
+def antigravity_mcp_entry(python: str | None = None) -> dict:
+    """The ``mcpServers`` entry for Google Antigravity (``~/.gemini/antigravity/mcp_config.json``)."""
+    return {NAME: {"command": python or sys.executable, "args": ["-m", "ad_library_insights"]}}
+
+
+def install_to_folder(source: Path | None = None, target: Path | None = None, overwrite: bool = False) -> dict:
+    """Copy the program's skills to an assistant skills folder (e.g. Antigravity or Codex)."""
+    src = source or default_skills_source()
+    dst = target or (Path.home() / ".gemini" / "antigravity" / "skills")
+    return install_skills(src, dst, overwrite=overwrite)
+

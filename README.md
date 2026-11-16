@@ -1,74 +1,66 @@
 # Ad Library Insights
 
-**See what a competitor really keeps running on Meta, and why, without an account, a token or a paid tool.**
+**See which ads a competitor really keeps funding on Meta, and why, without an account, a token or a paid tool.**
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Tests: offline](https://img.shields.io/badge/tests-offline-informational)](#tests)
 
-Ad Library Insights reads the public Meta Ad Library and turns it into research you can act on: a
-ranked list of the ads a company keeps on air, how many people each one reaches per day, how its
-copy is built, and a data pack your own AI assistant can turn into an analysis or a plan.
+Ad Library Insights reads the public Meta Ad Library and turns it into structured, verifiable competitive research: a ranked list of the creative concepts an advertiser keeps on air, how many people each one reaches per day in your target country, how its copy and video stills are built, and a deterministic data pack your own AI assistant can turn into a four-lens diagnosis or a break-even CPA test plan.
 
-It is a local web app, a command-line tool and an MCP server. Everything runs on your computer.
+It runs as a **local web app** (`127.0.0.1`), a **command-line tool**, and a standard **MCP server** with ready-made skills and four specialist sub-agents. Everything runs on your computer.
 
-![Ranked concepts of one advertiser, with rating, verdict, days on air and people reached](docs/images/results-table.png)
+![Ranked concepts of one advertiser, with verdict, rating, days on air and people reached](docs/images/results-table.png)
 
-## The problem it solves
+---
 
-The Ad Library shows every ad a company is running, as an endless wall of cards. It does not tell
-you which of those ads matter. Paging through hundreds of near-identical cards to guess what works
-is slow, and the guess is usually "the oldest one".
+## Why this exists
 
-Ad Library Insights does the reading for you:
+The public Ad Library shows every active ad as an endless wall of cards, but it hides what a media buyer actually needs to know.
 
-- **One row per idea, not per card.** Identical copies, automatic versions, catalogue ads and
-  translations are merged into one concept, so 200 cards become the 14 ideas behind them.
-- **A rating you can question.** Every concept gets 0-100 points from three parts that are always
-  shown: scale (people reached per day in the country you searched), staying power (days on air)
-  and creative investment (how many different creatives carry the same text). Each rating says how
-  reliable it is and what it was measured on.
-- **Honest numbers.** A figure always says what it measures and on whom. An estimate is never shown
-  as data. Where Meta publishes no reach, the app says so instead of filling the gap.
-- **No AI bill from the tool.** The program is plain code. For the Analysis and Plan levels it
-  prepares the data and you hand it to the assistant you already use.
+| Problem | Raw Meta Ad Library | Plain Scrapers + Generic Prompt | **Ad Library Insights** |
+|---|---|---|---|
+| **Duplicate & catalogue noise** | Lists 200+ near-identical cards across ad sets, dynamic variations, product feeds and translations. | Counts 50 catalogue items or copies as "50 winning ads", inflating copy reuse. | **One row per concept.** Identical copies, dynamic versions, catalogue feeds and translations (via Union-Find on media keys and emoji/digit skeletons) merge into the 14 real ideas behind 212 cards. |
+| **"Oldest ad = winner" trap** | No ranking by daily delivery in a single country. | Sorts by start date, putting a forgotten 500-day retargeting ad (90 people/day) at #1 above an ad scaling at 117,000 people/day. | **60 / 25 / 15 scoring.** Weights daily reach in the searched country (60 pts), staying power up to 90 days (25 pts) and distinct creatives up to 10 (15 pts). |
+| **1-day launch spikes & EU vs country mix-ups** | Highlights total EU reach even when you only sell in one country. | Treats a 1-day launch spike or EU-wide delivery as local scale. | **Country-specific & 7-day floor.** Rates strictly on the searched country's reach, divides by at least 7 days (`MIN_RATE_DAYS`), and never lets an unread ad outscore a read one. |
+| **Hallucinated math in AI test plans** | None. | Dumps raw JSON into one prompt; the model invents budgets, miscalculates CPA/ROAS and writes generic advice. | **Deterministic Python math + 4 Specialists.** Code computes margin, break-even CPA, 2-3x cut rules and test budgets; four isolated sub-agents cross-check evidence citing every ad ID. |
 
-## Three levels
+---
 
-![The three levels: Data, Analysis, Plan](docs/images/levels.png)
+## Three operating levels
+
+![The three levels: Level 1, Level 2, Level 3](docs/images/levels.png)
 
 | Level | What you get | What it uses |
 |---|---|---|
-| **Data** | The ranked concepts, days on air, reach and audience, and how the company advertises: formats, launch pace, languages, buttons, destinations. | Nothing: plain code, no AI. |
-| **Analysis** | A data pack and a ready text for your own assistant, to explain what the company runs and why it reaches what it reaches, with evidence for every claim. | Your assistant's limits. |
-| **Plan** | The analysis applied to your product: ad ideas, a test plan with budgets and a cut rule computed from your margin, and a one-page report. | More of your assistant's limits. |
+| **Level 1 · Market Map & Concept Ranking** | Ranked creative concepts (0-100), interactive table guide, days on air, country reach, audience demographics, format mix, launch pace, buttons and destinations. | **Nothing:** 100% local Python code, free, no AI. |
+| **Level 2 · Four-Lens Competitive Diagnosis** | A sliced data pack (`overview.md`, `copy.md`, `creative.md` + video stills at 2%/50%/97%, `reach.md`, `testing.md`) and a ready brief to explain *why* the top concepts hold up, backed by ad ID citations. | Your own AI assistant (Claude Code, Google Antigravity, Codex, ChatGPT or Claude). |
+| **Level 3 · Test Strategy & Break-Even CPA** | Pre-spend Pixel/CAPI check, deterministic unit economics (net margin, break-even CPA, 2-3x CPA cut rule, first-round budget), five single-variable ad scripts anchored to winning competitor patterns, and a one-page decision report. | Your own AI assistant + your saved local product card. |
 
-Before an Analysis or a Plan the app shows what will be read and an estimate of the size, and waits
-for your confirmation. It is an estimate: limits depend on your plan and model.
+Before starting a Level 2 or Level 3 search, the app shows the exact number of concepts to open, the ceiling of detail views, and a token/image estimate, waiting for your confirmation.
 
 ![Usage estimate, confirmed before anything starts](docs/images/usage-estimate.png)
 
-A full example made from one real search is in [`examples/`](examples): the
-[analysis](examples/kingshot-it-2026-11-14/analisi.md), the
-[plan](examples/kingshot-it-2026-11-14/piano.md) and the data pack both were written from. A test
-checks that every figure in the two texts is written in the pack.
+A complete real-world example produced from a saved search is in [`examples/`](examples): the [analysis](examples/kingshot-it-2026-11-14/analisi.md), the [plan](examples/kingshot-it-2026-11-14/piano.md) and the [data pack](examples/kingshot-it-2026-11-14/pacchetto) they were written from. An automated test in [`tests/test_examples.py`](tests/test_examples.py) verifies that every single figure and ad ID in both documents exists in the data pack.
 
-## What else it does
+---
 
-- **Search by keyword** in any country, or **analyse one company** from its page.
-- **Compare two companies** on the same numbers, with the differences written out. It names no
-  winner, because the Ad Library shows no spend and no sales.
-- **What changed**: every search is saved locally; from the second search of the same company or
-  keyword it lists new ads, ads no longer on air and ads whose copy, button or destination changed.
-- **Copy breakdown**: hook, promise, proof and call to action of the best ads, as structured output.
-- **Reports**: a Markdown brief and a CSV with one row per ad.
-- **Break-even check**: your break-even cost per purchase from price and costs, and the list of your
-  own ads that spent two to three times that with no add to cart and no sale.
-- **Italian and English** interface, light and dark theme.
+## What else is built in
+
+- **Four research modes**:
+  1. **Search by keyword** in any country (with automatic suggestions when a wording returns mostly off-topic ads).
+  2. **Analyse a company** from its verified Facebook page.
+  3. **Compare two companies** side by side across 26 objective indicators (volume, launch pace, video share, copy proof, median daily reach, audience breadth, platforms and destinations).
+  4. **What changed & cohort survival**: every search is saved locally; from the second search of the same company, it lists new, stopped and modified ads and computes the **survival rate by age cohort**.
+- **Interactive Table Guide & In-App Step-by-Step Tutorial**: click the **Tutorial** button in the top bar for a 4-tab operating walkthrough, or expand the **Table guide** above any ranking to inspect the exact meaning of every Verdict (`Scaling`, `Holding up`, `Testing`, `Worth checking`, `Average`, `Ended`), Reliability grade (`High`, `Medium`, `Low`) and column.
+- **Break-even CPA checker**: computes your break-even cost per purchase from selling price, product cost, shipping, payment fees and return rate, and flags ads from an Ads Manager CSV export that spent 2-3x break-even CPA with zero sales.
+- **Bilingual & dual-theme UI**: Italian and English interface, Apple Light and Deep Blue Dark themes.
 
 ![Summary of how a company advertises](docs/images/results-summary.png)
 
 ![One concept explained: the three parts of its rating](docs/images/ad-panel.png)
+
+---
 
 ## Installation
 
@@ -92,72 +84,45 @@ pip install -e .
 python -m playwright install chromium
 ```
 
-If PowerShell refuses to run the activation script, run
-`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once, or skip activation and call
-`.venv\Scripts\python.exe -m ad_library_insights` in place of `ad-library-insights`.
+If PowerShell refuses to run the activation script, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once, or call `.venv\Scripts\python.exe -m ad_library_insights` directly.
 
-## Open the app
+---
+
+## Quick start: Web App (`avvia.bat`)
+
+On Windows, double-click **`avvia.bat`**. On its first run it creates the virtual environment and installs dependencies; after that it opens the local web app in your browser right away. On any OS with the environment active:
 
 ```bash
 ad-library-insights app
 ```
 
-The app opens in your browser and runs on your computer only (`127.0.0.1`). On Windows you can also
-double-click `avvia.bat`: the first time it creates the environment and installs everything, after
-that it just opens the app.
-
-1. Choose a mode (keyword, company, compare, what changed), a country and a level.
-2. For a company, type its name and pick the right page from the list.
-3. Choose how many concepts to read in depth (10, 20 or 50). A concept is one text with every ad
-   that carries it. For each, the program opens its most shown ad, then its second and third, up to
-   a ceiling of two ads opened per concept asked. If the ceiling stops the reading, the result says so.
-4. For Analysis and Plan, press "Prepare analysis" or "Prepare plan" and paste the text into your
-   assistant, or use the pack with Claude Code as described below.
+1. **Pick a mode and a depth level (1, 2 or 3).** Clicking any level row expands its step-by-step workflow and interactive architecture card.
+2. **Choose how many concepts to read in depth (10, 20 or 50).** For each concept, the program opens its most shown ad first, retries on its second ad if needed, and then reads second and third ads up to a ceiling of two ads opened per concept requested.
+3. **Connect or export for Levels 2 and 3:**
+   - **1-Click Claude Code setup**: press **Connect now** on the page to register the local MCP server and copy all 5 skills (`~/.claude/skills`) and 4 specialist sub-agents (`~/.claude/agents`).
+   - **Universal 1-Click Copy**: press **Copy for your assistant** to copy a self-contained single-pass brief for ChatGPT, Claude Web or Gemini, and **Open stills folder** to attach the extracted video frames.
 
 ![The text for your assistant is copied, never shown](docs/images/brief-dialog.png)
 
-## Analysis and Plan with your own assistant
+---
 
-The program never calls a model. For these two levels it writes the data and you choose who reads it.
+## Connect to Claude Code, Google Antigravity, Codex CLI or Claude Desktop
 
-- **Any assistant, one pass.** "Copy for your assistant" copies one text with role, method, rules of
-  evidence and the data inside. Paste it into the assistant you use.
-- **Claude Code, with specialists.** The same data is saved as a pack: `overview.md` and one file
-  per specialist (`copy.md`, `creative.md`, `reach.md`, `testing.md`, plus `project.md` for a plan).
-  The four sub-agents in `.claude/agents/` each read only their own file; the skills
-  `competitor-analysis` and `competitor-plan` coordinate them and join the findings. Open this
-  repository in Claude Code so the agents are found, and install the skills.
+The program never calls an external LLM API. Instead, it exposes a standard MCP server (`python -m ad_library_insights`), 5 skills in [`skills/`](skills), and 4 specialist sub-agents in [`.claude/agents/`](.claude/agents).
 
-A plan needs your project card: product, price, product cost, market, goal and main problem. It is
-asked once and kept on your computer. The amounts of the plan (margin, break-even, test budgets, cut
-rule) are computed by the program from that card, not written by the assistant.
+### 1. Claude Code (1-Click in the app or via CLI)
 
-### Skills
-
-Copy the folders inside `skills/` to `~/.claude/skills/` (all projects) or to `.claude/skills/` in a
-project.
-
-| Skill | Use it to |
-|---|---|
-| `ad-library-research` | Map a market or a competitor and see how the ads that stay on air are written. |
-| `competitor-analysis` | The Analysis level: copy, creative, reach and audience, testing and destinations, joined into causes with their evidence. |
-| `competitor-plan` | The Plan level: diagnosis of your project, five ad ideas, a test plan built on break-even, a one-page report. |
-| `breakeven-cpa-check` | Decide which of your own ads to cut, from your margin and an Ads Manager export. |
-| `weekly-competitor-report` | Track a fixed watchlist and report what is new, what stopped and what changed. |
-
-## Use it as an MCP server
-
-Point the client at the Python interpreter of the virtual environment.
-
-Claude Code:
+You can connect automatically from the web app by clicking **Connect now**, or run:
 
 ```bash
-claude mcp add ad-library-insights -- /absolute/path/.venv/bin/python -m ad_library_insights
+claude mcp add ad-library-insights --scope user -- /absolute/path/.venv/bin/python -m ad_library_insights
 ```
 
-On Windows the interpreter is `C:\absolute\path\.venv\Scripts\python.exe`.
+*(On Windows use `C:\absolute\path\.venv\Scripts\python.exe`).* Copy the folders in `skills/` to `~/.claude/skills/` and the files in `.claude/agents/` to `~/.claude/agents/`.
 
-Claude Desktop (`claude_desktop_config.json`):
+### 2. Google Antigravity
+
+Add the server to `~/.gemini/antigravity/mcp_config.json`:
 
 ```json
 {
@@ -170,24 +135,59 @@ Claude Desktop (`claude_desktop_config.json`):
 }
 ```
 
-Then ask in plain language; the client picks the tools.
+And copy the folders inside `skills/` into `~/.gemini/antigravity/skills/` (or `.agent/skills/` inside your workspace).
+
+### 3. ChatGPT Codex CLI
+
+Register the MCP server and copy the skills into `~/.codex/skills/`:
+
+```bash
+codex mcp add ad-library-insights -- /absolute/path/.venv/bin/python -m ad_library_insights
+```
+
+### 4. Claude Desktop (`claude_desktop_config.json`)
+
+```json
+{
+  "mcpServers": {
+    "ad-library-insights": {
+      "command": "C:\\absolute\\path\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "ad_library_insights"]
+    }
+  }
+}
+```
+
+### Included Skills & Specialist Sub-Agents
+
+| Skill / Agent | Role |
+|---|---|
+| `ad-library-research` | Map a market or advertiser and break down the hooks, promises, proof and CTAs of the top concepts. |
+| `competitor-analysis` | **Level 2 Coordinator:** runs the 4 specialist sub-agents in parallel (`ad-copy-analyst`, `ad-creative-analyst`, `ad-reach-analyst`, `ad-testing-analyst`) and cross-checks converging evidence. |
+| `competitor-plan` | **Level 3 Coordinator:** diagnoses your product card, enforces the Pixel/CAPI tracking check, writes 5 ad concepts and builds a 7-day test plan on deterministic break-even numbers. |
+| `breakeven-cpa-check` | Computes break-even CPA from unit economics and flags underperforming ads from an Ads Manager CSV export. |
+| `weekly-competitor-report` | Tracks a fixed watchlist across saved searches and reports new, stopped and changed ads plus cohort survival. |
+
+### MCP Tools
 
 | Tool | Purpose |
 |---|---|
-| `search_ads(country, query, advertiser, ..., deep_ads)` | Ranked concepts for a keyword and/or an advertiser name. `deep_ads` reads reach and audience for that many of the most shown concepts. |
-| `find_advertiser_pages(name, country)` | The pages the library suggests for a name, with followers and category. |
+| `search_ads(country, query, advertiser, ..., deep_ads)` | Ranked concepts for a keyword and/or advertiser name. `deep_ads` reads reach and audience for that many of the most shown concepts. |
+| `find_advertiser_pages(name, country)` | Advertiser pages suggested by the library for a name, with followers and category. |
 | `analyze_company(country, page_id \| name, deep_ads, frames)` | Every active ad of one page, ranked, with company signals, reach and audience. |
-| `compare_companies(country, page_id_a, page_id_b, deep_ads)` | Two pages side by side on the same numbers. |
-| `what_changed(country, query \| page_id)` | New, stopped and changed ads since the previous search. |
-| `estimate_consumption(level, ads, frames)` | Rough size of an Analysis or a Plan, to confirm before collecting. |
-| `prepare_analysis(country, level, page_id \| query, ads, frames)` | Collects the data and writes the pack. |
-| `get_project()` / `save_project(...)` | The project card the Plan level is written for. |
-| `analyze_top_ads(country, query, advertiser, top_n)` | Hook, promise, proof and call to action of the top ads. |
-| `export_report(country, output_dir, query, advertiser, top_n, formats)` | Writes the Markdown brief and/or the CSV. |
-| `scrape_library_url(url, ...)` | The same ranking for an Ad Library address you filtered by hand. |
-| `check_breakeven_cpa(price, product_cost, ..., ads \| csv_path)` | Break-even cost per purchase and the list of ads to cut. |
+| `compare_companies(country, page_id_a, page_id_b, deep_ads)` | Two pages side by side on the same 26 metrics. |
+| `what_changed(country, query \| page_id)` | New, stopped and changed ads since the previous search, plus cohort survival. |
+| `estimate_consumption(level, ads, frames)` | Token, image and time estimate for a Level 2 or Level 3 run. |
+| `prepare_analysis(country, level, page_id \| query, ads, frames)` | Collects the data and writes the specialist pack (`overview.md`, `copy.md`, `creative.md`, `reach.md`, `testing.md`, `project.md`, `brief.md`, `frames/`). |
+| `get_project()` / `save_project(...)` | Reads or validates and saves the local product card for Level 3. |
+| `analyze_top_ads(country, query, advertiser, top_n)` | Rule-based hook, promise, proof and CTA breakdown of the top concepts. |
+| `export_report(country, output_dir, query, advertiser, top_n, formats)` | Exports a Markdown brief and/or a 38-column CSV. |
+| `scrape_library_url(url, ...)` | Runs the same ranking pipeline on a pre-filtered Ad Library URL. |
+| `check_breakeven_cpa(price, product_cost, ..., ads \| csv_path)` | Break-even CPA calculation and cut list from unit economics. |
 
-## Use it from the command line
+---
+
+## Command-line usage
 
 ```bash
 ad-library-insights report --country DE --query "<keyword>" --top 10 --out reports
@@ -196,68 +196,30 @@ ad-library-insights company --country US --page-id <page id> --deep 20 --out rep
 ad-library-insights breakeven --price 60 --product-cost 20 --shipping-cost 5 --fee-pct 3 --csv export.csv
 ```
 
-`pages` lists the advertiser pages matching a name; `company` analyses one of them. `--deep` is the
-number of most shown concepts whose reach and audience are read (about three seconds per ad opened;
-progress and time left are printed).
+---
 
-## How the rating works
+## How the rating works (60 / 25 / 15)
 
-1. **One ad per concept.** Identical copies, versions of a dynamic ad, catalogue ads and
-   translations are merged. They do not count as different creatives.
-2. **Scale, up to 60 points.** People reached per day in the country searched: people reached
-   divided by the days on air, seven at the least. It is measured against the best ad of the same
-   search, on a log scale. Where reach was not read, the scale is a prudent estimate from the
-   position in Meta's list, never above the weakest ad that was read. Where Meta publishes no reach
-   for that country, the position in the list is used and the rating says so.
-3. **Staying power, up to 25 points.** Days the concept has been on air, full at 90.
-4. **Creative investment, up to 15 points.** Different creatives carrying the same text, full at 10.
-5. **Reliability.** High when reach in the country searched was read; medium when the scale comes
-   from the position in the list; low when neither is known.
-6. **Verdict.** Scaling, holding, testing, average, to review, or ended. An ad on air for less than
-   seven days is "too recent to judge", whatever its numbers.
+1. **One ad per concept.** Identical copies, versions of a dynamic ad, catalogue ads and translations are merged. They do not count as separate creatives.
+2. **Scale, up to 60 points.** People reached per day in the country searched: unique people reached divided by days on air (`7` at the least). Measured against the best ad of the search (among those of 7 days or more) on a base-1000 log scale. Unread ads get a prudent position estimate that never exceeds the weakest read ad.
+3. **Staying power, up to 25 points.** Days the concept has been on air, full at 90 days.
+4. **Creative investment, up to 15 points.** Distinct videos or images carrying the same copy, full at 10 creatives (catalogues count as 1).
+5. **Reliability (`high`, `medium`, `low`) & Verdict (`scaling`, `holding`, `testing`, `review`, `average`, `ended`).** Ads under 7 days are marked `too recent to judge`. `scaling` and `review` require read reach across at least 5 concepts.
 
-The weights never change. [docs/valutazione.md](docs/valutazione.md) shows the rating before and
-after its corrections on three real searches, and [docs/controllo-qualita.md](docs/controllo-qualita.md)
-lists what every number measures, the independent reviews and the hard cases.
+The weights never change. See [`docs/valutazione.md`](docs/valutazione.md) and [`docs/riepilogo-prima-e-dopo.md`](docs/riepilogo-prima-e-dopo.md) for before-and-after proofs on three real searches, and [`docs/controllo-qualita.md`](docs/controllo-qualita.md) for the full audit trail and hard cases.
 
-## How it reads the library
-
-1. **Render.** Playwright opens the public Ad Library page in headless Chromium and scrolls until no
-   new ads load.
-2. **Read.** Ads are taken from the data the page itself loads: text, button, destination, format,
-   platforms, start date. The list is ordered by total impressions, highest first.
-3. **Reach and audience.** For the most shown concepts the detail view of the ad is opened: reach in
-   the country searched, in the EU and in the UK, age, gender, locations chosen or excluded.
-4. **Fetch policy.** Results are cached on disk for six hours. Pages are requested at least 20
-   seconds apart and at most 30 per hour. A page that shows no ads and no "no results" message is
-   retried twice. Empty pages are never cached.
-5. **Signals.** Plain code computes reach per day, audience breadth, format mix, new ads per week,
-   languages, buttons, destinations and repeated copy.
-
-Cache, saved pictures, saved searches and packs live in `~/.ad_library_insights` (override with the
-`AD_LIBRARY_INSIGHTS_HOME` environment variable).
+---
 
 ## Known limits
 
-- **No spend and no sales.** The Ad Library does not publish them. The rating is a clue about what
-  an advertiser keeps paying for, not a measure of profit.
-- **Reach exists only for the EU and the UK.** Meta publishes reach and audience for ads delivered
-  in the European Union or the United Kingdom. For a search elsewhere the app says that reach is not
-  published and rates on the position in the list.
-- **Reach is a floor for concepts split over many ads.** At most three ads of a concept are opened;
-  next to every figure is how many of its ads were read.
-- **Ads already stopped are not visible.** A single search shows what is on air today. How many ads
-  a company cuts can be measured only from the second saved search of the same company.
-- **It reads a web page, not an API.** A change in the page can break the reading until the parser
-  is updated. When the page serves no ads the app reports it as blocked instead of "no ads".
-- **Company analysis needs the right page.** Several pages can share a name: the app lists them and
-  you choose. A brand that advertises from several pages is analysed page by page.
-- **A start date resets when an ad is edited**, so frequently edited ads look younger than they are.
-- **The copy breakdown is a first pass by rules**, in English, Italian, Spanish, French and German.
-  Expect wrong labels on unusual copy.
-- **The usage estimate is an estimate**, and with video stills it tends to run low.
-- **Speed.** A fresh search takes roughly 10 to 40 seconds, a company with a few hundred ads about a
-  minute, and each ad opened about three seconds.
+- **No spend and no sales.** The Ad Library does not publish them. The rating is a clue about what an advertiser keeps funding, not proof of profit.
+- **Reach exists only for the EU and the UK.** Meta publishes reach and audience for ads delivered in the European Union or the United Kingdom. Elsewhere the app states that reach is not published and rates on impression position.
+- **Reach is a floor for concepts split over many ads.** Up to three ads per concept are opened and summed, and every figure states how many ads of the concept were read.
+- **Ads already stopped are not visible in a single search.** Cut rates and survival require a second saved search of the same company.
+- **It reads a web page, not an API.** Layout changes can require parser updates; when no cards are served after retries, the tool reports `blocked` rather than "no results".
+- **Start dates reset on edits,** and the rule-based copy breakdown is a first pass in English, Italian, Spanish, French and German.
+
+---
 
 ## Tests
 
@@ -266,9 +228,7 @@ pip install -e ".[dev]"
 python -m pytest
 ```
 
-The suite runs offline: no test makes a real request. The browser is replaced by a scripted reader
-and time by a fake clock; the interface tests run a local page in headless Chromium and are skipped
-where Chromium is not installed.
+The 420-test suite runs entirely offline using recorded fixtures in `tests/fixtures/`, a scripted renderer and a deterministic fake clock.
 
 ## License
 

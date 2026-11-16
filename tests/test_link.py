@@ -250,3 +250,15 @@ def test_connecting_also_copies_specialist_sub_agents_when_present(tmp_path):
     assert (agents_dst / "ad-copy-analyst.md").read_text(encoding="utf-8") == "# copy specialist\n"
     after = link.skills_state(skills_src, skills_dst, agents_src, agents_dst)
     assert after["installed"] and after["missing"] == 0
+
+
+def test_codex_and_antigravity_helpers_build_commands_and_copy_skills(tmp_path):
+    cmd = link.codex_shown_command("/path/to/python")
+    assert cmd.startswith("codex mcp add ad-library-insights -- ") and cmd.endswith("-m ad_library_insights")
+    entry = link.antigravity_mcp_entry("/path/to/python")
+    assert entry == {"ad-library-insights": {"command": "/path/to/python", "args": ["-m", "ad_library_insights"]}}
+    src, dst = tmp_path / "skills", tmp_path / "antigravity" / "skills"
+    (src / "sk").mkdir(parents=True)
+    (src / "sk" / "SKILL.md").write_text("# skill\n", encoding="utf-8")
+    copied = link.install_to_folder(src, dst)
+    assert copied == {"copied": 1, "kept": []} and (dst / "sk" / "SKILL.md").is_file()
