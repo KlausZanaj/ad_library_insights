@@ -38,6 +38,14 @@ function t(key, vars) {
 }
 const num = (value) => (value == null ? '—' : new Intl.NumberFormat(S.lang, { useGrouping: 'always' }).format(value));
 const pct = (share) => `${Math.round((share || 0) * 100)}%`;
+/* A number with its noun, singular for one: count(1, 'n.days') is "1 giorno" / "1 day". */
+const count = (n, key) => t(`${key}.${n === 1 ? 'one' : 'other'}`, { n: num(n) });
+const days = (n) => (n == null ? '—' : count(n, 'n.days'));
+/* An age span as the targeting has it; 65 is the top Meta offers and means 65 and over. */
+function ageRange(low, high) {
+  if (low == null && high == null) return '—';
+  return `${low ?? 18}-${high == null ? 65 : high}${high == null || high >= 65 ? '+' : ''}`;
+}
 function named(type, code) {
   try { return new Intl.DisplayNames([S.lang], { type }).of(code) || code; } catch { return code; }
 }
@@ -149,7 +157,7 @@ function renderSearch() {
   <div class="options">
     <span>${esc(t('deep.before'))}</span>
     <div class="switch" role="group">${toggle('deep', S.deepChoices, S.deep, String)}</div>
-    <span>${esc(t('deep.after'))}${S.estimate ? ` · ${esc(t('deep.time', { time: dur(S.estimate.seconds) }))}` : ''}</span>
+    <span>${esc(t('deep.after'))}${S.estimate && S.estimate.seconds ? ` · ${esc(t('deep.time', { time: dur(S.estimate.seconds) }))}` : ''}</span>
     <span class="gap"></span>
     <span>${esc(t('project.label'))}:</span>
     <button class="linklike" data-action="project">${esc(S.project
@@ -200,7 +208,8 @@ function headSection(r) {
   const loaded = t('result.loaded', { loaded: num(r.ads_parsed), total: num(total),
     time: `${t(r.from_cache ? 'result.cache' : 'result.fresh')}${r.fetched_at ? `, ${clock(r.fetched_at)}` : ''}` });
   const title = company ? esc(page.name || r.query) : esc(t('result.keyword', { query: r.query, country: region(r.country) }));
-  const sub = company ? `${esc(t('result.sub.company', { category: page.category || '—', followers: num(page.followers), country: region(r.country) }))}<br>${esc(loaded)}` : esc(loaded);
+  const facts = { category: page.category, followers: num(page.followers), country: region(r.country) };
+  const sub = company ? `${esc(t(page.category ? 'result.sub.company' : 'result.sub.company.nocat', facts))}<br>${esc(loaded)}` : esc(loaded);
   return `<section class="rhead">${company ? avatar(page.logo, page.name, true) : ''}
     <div class="grow"><h1>${title}</h1><p>${sub}</p></div>
     <div class="rlinks"><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(t('link.meta'))}</a>
@@ -220,6 +229,15 @@ function readySection(r) {
   if (level === 'data') return '';
   return `<section class="ready"><p>${esc(t(`brief.ready.${level}`))}</p>
     <button class="btn" data-action="brief">${esc(t(`brief.make.${level}`))}</button></section>`;
+}
+/* When the ceiling of ads opened stopped the reading, say it with the numbers. */
+function cappedSection(r) {
+  const d = r.deep;
+  if (!d || !d.capped) return '';
+  let text = t(d.concepts === 1 ? 'deep.capped.one' : 'deep.capped.other',
+    { n: num(d.concepts), requested: num(d.requested), ceiling: num(d.ceiling) });
+  if (d.left_out) text += ` ${count(d.left_out, 'deep.left')}`;
+  return `<section class="changes capped"><p>${esc(text)}</p></section>`;
 }
 function metricsSection(r) {
   const s = r.signals;
@@ -299,12 +317,13 @@ function tableSection(r) {
     <td class="tier">${verdictCell(ad)}</td>
     <td class="r">${Math.round(ad.score)}</td><td class="r">${num(ad.days_running)}</td><td class="r">${num(ad.creatives)}</td>
     ${company ? '' : `<td class="fmt">${esc(t(`format.${ad.media_type || 'unknown'}`))}</td>`}${reachCells(ad)}</tr>`).join('');
-  const read = r.ads.reduce((sum, ad) => sum + (ad.reach ? 1 : 0) + Object.keys(ad.card_reach || {}).length, 0);
+  const opened = r.deep ? r.deep.read : r.ads.reduce((sum, ad) => sum + (ad.reach ? 1 : 0) + Object.keys(ad.card_reach || {}).length, 0);
+  const concepts = r.deep ? r.deep.concepts : r.ads.filter((ad) => ad.reach).length;
   return `<section><div class="sortbar"><span>${esc(t('sort.by'))}</span><div class="switch" role="group">${toggle('sort', ['score', 'perday', 'days'], S.sort, (v) => t(`sort.${v}`))}</div></div>
     <table class="ads${company ? '' : ' mixed'}"><thead><tr><th></th><th>${esc(t('t.ad'))}</th><th>${esc(t('t.tier'))}</th>
     <th class="r">${esc(t('t.score'))}</th><th class="r">${esc(t('t.days'))}</th><th class="r">${esc(t('t.creatives'))}</th>
     ${company ? '' : `<th>${esc(t('t.format'))}</th>`}<th class="r">${esc(t('t.reached', { country: region(r.country) }))}</th><th class="r">${esc(t('t.perday'))}</th></tr></thead>
-    <tbody>${rows}</tbody></table><p class="tablenote">${esc(t('t.note', { n: read }))}</p></section>`;
+    <tbody>${rows}</tbody></table><p class="tablenote">${esc(t('t.note', { concepts: count(concepts, 'n.concepts'), opened: count(opened, 'n.ads') }))}</p></section>`;
 }
 function renderResults() {
   const el = $('#results');
@@ -316,7 +335,7 @@ function renderResults() {
   if (S.pages) { el.innerHTML = pagesSheet(); return; }
   const r = S.result;
   if (!r || !(r.ads || []).length || S.resultMode !== S.mode) { el.innerHTML = ''; return; }
-  el.innerHTML = `<div class="sheet">${headSection(r)}${readySection(r)}${changesSection(r)}${metricsSection(r)}${factsSection(r)}${tableSection(r)}</div>`;
+  el.innerHTML = `<div class="sheet">${headSection(r)}${readySection(r)}${cappedSection(r)}${changesSection(r)}${metricsSection(r)}${factsSection(r)}${tableSection(r)}</div>`;
 }
 
 /* ---------- two companies ---------- */
@@ -553,10 +572,11 @@ function confirmDialog() {
       <div><span class="k">${esc(t('confirm.data'))}</span><span>${esc(t('confirm.data.x'))}</span></div>
       <div><span class="k">${esc(t(`level.${S.level}`))}</span><span>${esc(t('confirm.ai.x'))}</span></div>
       <div><span class="k">${esc(t('confirm.ads'))}</span><span class="v"><span class="switch" role="group">${toggle('deep', S.deepChoices, S.deep, String)}</span></span></div>
-      <div><span class="k">${esc(t('confirm.frames'))}</span><span class="v"><label class="check"><input type="checkbox" data-change="frames" ${S.frames ? 'checked' : ''}>${esc(t('confirm.frames.on'))}</label><span class="muted">${esc(t('confirm.images', { n: num(e.images ?? 0) }))}</span></span></div>
+      <div><span class="k">${esc(t('confirm.opened'))}</span><span class="v">${esc(t('confirm.opened.v', { n: num(e.ceiling ?? S.deep * 2) }))}</span></div>
+      <div><span class="k">${esc(t('confirm.frames'))}</span><span class="v"><label class="check"><input type="checkbox" data-change="frames" ${S.frames ? 'checked' : ''}>${esc(t('confirm.frames.on'))}</label><span class="muted">${esc(count(e.images ?? 0, 'n.images'))}</span></span></div>
       <div><span class="k">${esc(t('confirm.tokens'))}</span><span class="v">${esc(t('confirm.tokens.v', { n: num(e.tokens ?? 0) }))}</span></div>
       <div><span class="k">${esc(t('confirm.band'))}</span><span class="v big">${esc(e.band ? t(`band.${e.band}`) : '—')}</span></div>
-      <div><span class="k">${esc(t('confirm.time'))}</span><span class="v">${e.seconds ? esc(dur(e.seconds)) : '—'}</span></div>
+      <div><span class="k">${esc(t('confirm.time'))}</span><span class="v">${e.seconds ? esc(t('confirm.time.v', { time: dur(e.seconds) })) : '—'}</span></div>
     </div>
     <p class="smallnote">${esc(t('confirm.note'))}</p>
     <div class="foot"><button class="btn quiet" data-action="close">${esc(t('button.back'))}</button><button class="btn" data-action="confirm-go">${esc(t('confirm.go'))}</button></div></div>`;
@@ -582,17 +602,45 @@ function briefDialog(overlay) {
   const frames = made.collected.frames
     ? `<label class="check"><input type="checkbox" data-change="brief-frames" ${made.frames ? 'checked' : ''}>${esc(t('confirm.frames.on'))}</label>`
     : `<span class="muted">${esc(t('brief.frames.none'))}</span>`;
+  /* The text itself is never shown: the user copies it, and the stills open in their own folder. */
+  const stills = made.images.length && made.frames_key
+    ? `<div><span class="k">${esc(t('brief.stills'))}</span><span class="v"><span>${esc(count(made.images.length, 'brief.stills.v'))}</span>
+        <button class="btn quiet small" data-action="open-frames">${esc(t('button.frames'))}</button></span></div>` : '';
+  const status = overlay.status || {};
   return `<div class="dialog wide" role="dialog" aria-modal="true"><h2>${esc(t(`brief.title.${made.level}`))}</h2><p class="lead">${esc(t('brief.how'))}</p>
     <div class="use tight">
       <div><span class="k">${esc(t('brief.ads'))}</span><span class="v">${choices.length > 1 ? `<span class="switch" role="group">${toggle('brief-ads', choices, made.ads, String)}</span>` : num(made.ads)}</span></div>
-      <div><span class="k">${esc(t('brief.frames'))}</span><span class="v">${frames}</span></div>
+      <div><span class="k">${esc(t('brief.frames'))}</span><span class="v">${frames}</span></div>${stills}
       <div><span class="k">${esc(t('confirm.band'))}</span><span class="v">${esc(t('brief.size', { n: num(made.size.tokens), band: t(`band.${made.size.band}`).toLowerCase() }))}</span></div>
     </div>
-    <textarea class="brieftext" id="brieftext" readonly>${esc(made.text)}</textarea>
-    ${made.images.length ? `<p class="smallnote">${esc(t('brief.attach', { n: made.images.length }))}</p><ul class="attach">${made.images.map((path) => `<li>${esc(path)}</li>`).join('')}</ul>` : ''}
     <h3 class="sub">${esc(t('brief.code'))}</h3><p class="smallnote" style="margin-top:4px">${esc(t('brief.code.x'))}</p>
-    <p class="command">${esc(t(`brief.command.${made.level}`, { folder: made.folder }))}</p>
+    <div class="cmdline"><p class="command">${esc(t(`brief.command.${made.level}`, { folder: made.folder_name }))}</p>
+      <button class="btn quiet small" data-action="copy-command">${esc(t('button.copy.command'))}</button></div>
+    <p class="status${status.err ? ' err' : ''}" role="status" aria-live="polite">${esc(status.text || '')}</p>
     <div class="foot"><button class="btn quiet" data-action="close">${esc(t('button.close'))}</button><button class="btn" data-action="copy-brief">${esc(t('button.copy'))}</button></div></div>`;
+}
+/* Copy to the clipboard; where the clipboard API is missing or refused, a hidden
+   text box and the older copy command do it. Returns whether the copy went through. */
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(text); return true; }
+  } catch { /* fall back below */ }
+  const box = document.createElement('textarea');
+  box.value = text;
+  box.setAttribute('readonly', '');
+  box.setAttribute('aria-hidden', 'true');
+  box.className = 'offscreen';
+  document.body.appendChild(box);
+  box.select();
+  let done = false;
+  try { done = document.execCommand('copy'); } catch { done = false; }
+  box.remove();
+  return done;
+}
+function briefStatus(text, err) {
+  if (!S.overlay || S.overlay.type !== 'brief') return;
+  S.overlay.status = { text, err };
+  renderOverlay();
 }
 function renderOverlay() {
   const overlay = S.overlay, el = $('#overlay');
@@ -707,10 +755,21 @@ const ACTIONS = {
   },
   'open-ad'(value) { S.overlay = { type: 'ad', id: value }; renderOverlay(); },
   close() { S.overlay = null; renderOverlay(); },
-  async 'copy-brief'(value, el) {
-    const box = $('#brieftext');
-    try { await navigator.clipboard.writeText(box.value); } catch { box.select(); document.execCommand('copy'); }
-    el.textContent = t('button.copied');
+  async 'copy-brief'() {
+    const made = S.overlay.made;
+    if (await copyText(made.text)) briefStatus(t('brief.copied'));
+    else briefStatus(t('brief.copy.failed', { folder: made.folder_name }), true);
+  },
+  async 'copy-command'() {
+    const made = S.overlay.made;
+    if (await copyText(t(`brief.command.${made.level}`, { folder: made.folder }))) briefStatus(t('brief.copied.command'));
+    else briefStatus(t('brief.copy.failed', { folder: made.folder_name }), true);
+  },
+  async 'open-frames'() {
+    try {
+      await api('/api/frames/open', { method: 'POST', body: { key: S.overlay.made.frames_key } });
+      briefStatus(t('brief.frames.opened'));
+    } catch { briefStatus(t('brief.frames.failed'), true); }
   },
 };
 document.addEventListener('click', (event) => {

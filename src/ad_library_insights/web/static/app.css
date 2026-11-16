@@ -284,12 +284,14 @@ table.cmp td.num { font-variant-numeric: tabular-nums; }
 .use.tight { margin-top: 18px; }
 .use.tight > div { padding: 9px 0; }
 .dialog h3.sub { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line-soft); font-size: 1rem; font-weight: 600; }
-.command { margin-top: 10px; padding: 10px 12px; background: var(--sunken); border: 1px solid var(--line-soft); border-radius: var(--radius); font-family: Consolas, "Cascadia Mono", ui-monospace, monospace; font-size: .87rem; overflow-wrap: anywhere; user-select: all; }
+.cmdline { display: flex; align-items: center; gap: 16px; margin-top: 10px; }
+.command { flex: 1; font-family: Consolas, "Cascadia Mono", ui-monospace, monospace; font-size: .87rem; overflow-wrap: anywhere; }
 .check { display: inline-flex; align-items: center; gap: 8px; }
 .check input { width: 17px; height: 17px; accent-color: var(--accent); }
 .form { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 20px; margin-top: 22px; }
 .form .full { grid-column: 1 / -1; }
 .form .bad input, .form .bad select, .form .bad textarea { border-color: var(--warn); }
 .form em { display: block; font-style: normal; color: var(--warn); font-size: .87rem; margin-top: 4px; }
-.brieftext { margin-top: 18px; height: 300px; font-family: Consolas, "Cascadia Mono", ui-monospace, monospace; font-size: .87rem; line-height: 1.45; background: var(--sunken); }
-.attach { margin: 6px 0 0; padding-left: 18px; color: var(--muted); font-size: .87rem; overflow-wrap: anywhere; max-height: 132px; overflow-y: auto; }
+.status { min-height: 1.5em; margin-top: 18px; font-size: .95rem; }
+.status.err { color: var(--warn); }
+.offscreen { position: fixed; left: -10000px; top: 0; width: 1px; height: 1px; opacity: 0; }

@@ -239,3 +239,184 @@ def test_page_uses_only_texts_that_exist():
     script = (STATIC / "app.js").read_text(encoding="utf-8")
     literal = set(re.findall(r"""\bt\('([a-z0-9_.]+)'""", script))
     assert literal and not sorted(key for key in literal if key not in strings)
+    counted = set(re.findall(r"""\bcount\([^;]*?, '([a-z0-9_.]+)'\)""", script))   # one and other
+    assert counted and not sorted(f"{key}.{form}" for key in counted for form in ("one", "other")
+                                  if f"{key}.{form}" not in strings)
+
+
+# --- the page in a browser, on saved data ---------------------------------------------
+# A real server on 127.0.0.1 with the scripted client: no request leaves the computer.
+
+def _post(base, path, body):
+    import urllib.request
+    request = urllib.request.Request(base + path, data=json.dumps(body).encode(), method="POST",
+                                     headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(request) as answer:
+        return json.loads(answer.read())
+
+
+def _get(base, path):
+    import urllib.request
+    with urllib.request.urlopen(base + path) as answer:
+        return json.loads(answer.read())
+
+
+@pytest.fixture(scope="module")
+def site(tmp_path_factory):
+    import socket
+    import threading
+    from types import SimpleNamespace
+
+    sync_api = pytest.importorskip("playwright.sync_api")
+    import uvicorn
+
+    tmp = tmp_path_factory.mktemp("site")
+    web = create_app(Studio(tmp).client, home=tmp / "home")
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    server = uvicorn.Server(uvicorn.Config(web, host="127.0.0.1", port=port, log_level="warning"))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    for _ in range(250):
+        if server.started:
+            break
+        time.sleep(0.02)
+    base = f"http://127.0.0.1:{port}"
+    job = _post(base, "/api/jobs", {"mode": "company", "page_id": PAGE_ID, "country": "IT",
+                                    "level": "analysis", "deep": 2, "frames": True})
+    for _ in range(250):
+        job = _get(base, f"/api/jobs/{job['id']}")
+        if job["status"] != "running":
+            break
+        time.sleep(0.02)
+    with sync_api.sync_playwright() as pw:
+        try:
+            browser = pw.chromium.launch()
+        except Exception as exc:                      # no browser installed on this machine
+            pytest.skip(f"no browser for the page tests: {exc}")
+        yield SimpleNamespace(base=base, browser=browser, web=web, job=job, home=tmp / "home")
+        browser.close()
+    server.should_exit = True
+    thread.join(5)
+
+
+@pytest.fixture
+def page_of(site):
+    contexts, errors = [], []
+
+    def open_page(lang="it", result=None):
+        context = site.browser.new_context(viewport={"width": 1440, "height": 900})
+        contexts.append(context)
+        page = context.new_page()
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.add_init_script(f"try {{ localStorage.setItem('lang', '{lang}'); }} catch (e) {{}}")
+        page.goto(site.base)
+        page.wait_for_function("typeof T !== 'undefined' && Object.keys(T.it).length > 0")
+        if result is not None:
+            page.evaluate("""([r, id]) => { S.mode = r.mode; S.result = r; S.resultMode = r.mode;
+                S.jobId = id; S.pages = null; S.overlay = null; render(); }""", [result, site.job["id"]])
+        return page
+
+    yield open_page
+    for context in contexts:
+        context.close()
+    assert not errors
+
+
+def _result(site, **changes):
+    result = json.loads(json.dumps(site.job["result"]))
+    for key, value in changes.items():
+        result[key] = value
+    return result
+
+
+def test_page_brief_text_is_never_shown_and_copies_with_a_confirmation(site, page_of):
+    page = page_of("it", _result(site))
+    page.click("[data-action=brief]")
+    page.wait_for_selector(".dialog [data-action=copy-brief]")
+    made = page.evaluate("S.overlay.made")
+    html = page.content()
+    assert page.locator("textarea").count() == 0
+    assert "specialista di performance marketing" in made["text"]
+    assert "specialista di performance marketing" not in html and made["text"][:200] not in html
+    assert made["folder"] not in html and str(site.home) not in html     # no path of the computer
+    assert made["folder_name"] in html
+    page.evaluate("navigator.clipboard.writeText = async (text) => { window.copied = text; }")
+    page.click("[data-action=copy-brief]")
+    page.wait_for_function("document.querySelector('.status').textContent.length > 0")
+    assert page.evaluate("window.copied") == made["text"]
+    assert page.inner_text(".status") == "Testo copiato. Incollalo nel tuo assistente."
+    assert page.inner_text("[data-action=copy-brief]") == "Copia per il tuo assistente"
+    page.click("[data-action=copy-command]")
+    page.wait_for_function("document.querySelector('.status').textContent.startsWith('Comando')")
+    assert made["folder"] in page.evaluate("window.copied")              # copied whole, shown by name
+
+
+def test_page_copy_falls_back_without_the_clipboard_api(site, page_of):
+    page = page_of("en", _result(site))
+    page.evaluate("""() => { Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+        document.execCommand = (name) => { window.fallback = [name, document.querySelector('textarea.offscreen').value]; return true; }; }""")
+    page.click("[data-action=brief]")
+    page.wait_for_selector(".dialog [data-action=copy-brief]")
+    assert page.inner_text("[data-action=copy-brief]") == "Copy for your assistant"
+    page.click("[data-action=copy-brief]")
+    page.wait_for_function("document.querySelector('.status').textContent.length > 0")
+    name, copied = page.evaluate("window.fallback")
+    assert name == "copy" and copied == page.evaluate("S.overlay.made.text")
+    assert page.inner_text(".status") == "Text copied. Paste it into your assistant."
+    assert page.locator("textarea").count() == 0                         # the helper box is gone again
+    page.evaluate("document.execCommand = () => false")
+    page.click("[data-action=copy-brief]")
+    page.wait_for_function("document.querySelector('.status.err') !== null")
+    assert "brief.md" in page.inner_text(".status")
+
+
+def test_page_opens_the_stills_folder_only_when_there_are_stills(site, page_of):
+    opened = []
+    site.web.state.workspace.opener = opened.append
+    page = page_of("it", _result(site))
+    page.click("[data-action=brief]")
+    page.wait_for_selector("[data-action=open-frames]")
+    assert page.inner_text("[data-action=open-frames]") == "Apri cartella fotogrammi"
+    page.click("[data-action=open-frames]")
+    page.wait_for_function("document.querySelector('.status').textContent.length > 0")
+    assert page.inner_text(".status") == "Cartella dei fotogrammi aperta sul tuo computer."
+    assert len(opened) == 1 and opened[0].name == "frames" and opened[0].is_dir()
+    assert str(opened[0]) not in page.content()
+    page.uncheck("[data-change=brief-frames]")
+    page.wait_for_function("document.querySelector('[data-action=open-frames]') === null")
+
+
+def test_page_shows_the_usage_estimate_before_starting(site, page_of):
+    for lang, words in (("it", ["Concetti da leggere", "al massimo 20, due per concetto", "30 immagini",
+                                "token", "Consumo stimato", "Sono stime"]),
+                        ("en", ["Concepts to read", "at most 20, two per concept", "30 pictures",
+                                "tokens", "Estimated usage", "These are estimates"])):
+        page = page_of(lang)
+        page.evaluate("() => { S.level = 'analysis'; S.frames = true; S.query = 'desk'; render(); gate({ mode: 'keyword', query: 'desk' }); }")
+        page.wait_for_function("S.estimate && S.estimate.level === 'analysis' && S.estimate.images === 30 && document.querySelector('.dialog [data-action=confirm-go]')")
+        page.wait_for_timeout(50)
+        text = page.inner_text(".dialog")
+        assert all(word in text for word in words), (lang, text)
+        assert "%" not in text                                           # no promise of a share of a limit
+        band = page.inner_text(".dialog .v.big")
+        assert band in ("Basso", "Medio", "Alto", "Low", "Medium", "High")
+
+
+def test_page_says_concepts_and_explains_the_ceiling(site, page_of):
+    deep = {"requested": 20, "read": 40, "concepts": 18, "failed": [], "with_reach": 18, "ceiling": 40,
+            "capped": True, "left_out": 7, "ceiling_note": "Stopped at the ceiling of 40 ads opened", "note": None}
+    page = page_of("it", _result(site, deep=deep))
+    text = page.inner_text("#results")
+    assert ("Letti 18 concetti su 20: raggiunto il tetto di 40 annunci aperti. Di questi concetti "
+            "restano chiusi 7 annunci: la loro copertura è un minimo.") in text
+    assert "Stopped at the ceiling" not in page.content()
+    assert "Copertura letta per 18 concetti" in text and "aprendo 40 annunci" in text
+    assert "concetti della classifica" in page.inner_text("#search")
+    page = page_of("en", _result(site, deep={**deep, "left_out": 1}))
+    text = page.inner_text("#results")
+    assert ("Read 18 concepts out of 20: the ceiling of 40 ads opened was reached. 1 more ad of these "
+            "concepts was left closed: their reach is a floor.") in text
+    page = page_of("it", _result(site, deep={**deep, "capped": False}))
+    assert "tetto" not in page.inner_text("#results")
