@@ -90,7 +90,8 @@ def test_project_card_errors_name_the_field(tmp_path):
 def test_project_endpoints(app):
     client, _ = app
     assert client.get("/api/state").json()["project"] is None
-    assert client.put("/api/project", json={"product": "x"}).status_code == 400
+    refused = client.put("/api/project", json={"product": "x"})
+    assert refused.status_code == 200 and refused.json()["project"] is None and "price" in refused.json()["errors"]
     saved = client.put("/api/project", json=CARD).json()["project"]
     assert saved["price"] == 349.0
     assert client.get("/api/project").json()["project"]["market"] == "DE"
@@ -553,3 +554,14 @@ def test_page_table_shows_reach_when_only_a_later_ad_of_the_concept_was_read(sit
     texts = cells.all_inner_texts()
     assert "123,456" in texts and "789" in texts
     assert "2 ads read out of 3" in (cells.filter(has_text="123,456").first.get_attribute("title") or "")
+
+
+def test_page_refused_project_card_shows_errors_without_a_failed_request(site, page_of):
+    page = page_of("it")
+    failed = []
+    page.on("response", lambda response: failed.append(response.url) if response.status >= 400 else None)
+    page.click("[data-action=project]")
+    page.click("[data-action=save-project]")
+    page.wait_for_selector(".field.bad em")
+    assert page.locator(".field.bad").count() >= 3
+    assert failed == []

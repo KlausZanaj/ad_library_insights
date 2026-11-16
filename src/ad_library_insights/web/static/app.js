@@ -739,9 +739,10 @@ function openProject(thenSearch) {
 async function saveProject() {
   const overlay = S.overlay;
   document.querySelectorAll('[data-pf]').forEach((el) => { overlay.draft[el.dataset.pf] = el.value; });
-  try {
-    S.project = (await api('/api/project', { method: 'PUT', body: overlay.draft })).project;
-  } catch (error) { overlay.errors = (error.data && error.data.errors) || {}; return renderOverlay(); }
+  let saved;
+  try { saved = await api('/api/project', { method: 'PUT', body: overlay.draft }); } catch (error) { saved = { errors: {} }; }
+  if (!saved.project) { overlay.errors = saved.errors || {}; return renderOverlay(); }
+  S.project = saved.project;
   S.overlay = null; render();
   if (overlay.thenSearch && S.pending) gate(S.pending);
 }

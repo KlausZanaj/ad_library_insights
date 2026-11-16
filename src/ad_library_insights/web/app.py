@@ -223,7 +223,7 @@ class Workspace:
     async def put_project(self, request: Request) -> Response:
         card, errors = project.save(await request.json(), self.home)
         if errors:
-            return JSONResponse({"errors": errors}, status_code=400)
+            return JSONResponse({"errors": errors, "project": None})   # 200: a refused card is not a failed request
         return JSONResponse({"project": card})
 
     async def create_job(self, request: Request) -> Response:
