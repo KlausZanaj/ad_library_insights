@@ -221,8 +221,8 @@ When a name matches several pages, `company --name` stops and lists them so you 
 pick the right `--page-id`. `--deep` is the number of top-ranked ads whose reach and
 audience are read (about three seconds each; progress and time left are printed).
 
-The `examples/` folder contains a report produced by a live run, and a folder with an Analysis and a
-Plan written from one real company search, next to the data pack they were written from.
+The `examples/` folder holds an Analysis and a Plan written from one real company search, next to the
+data pack they were written from.
 
 ## How it works
 
