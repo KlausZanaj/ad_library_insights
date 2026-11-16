@@ -584,3 +584,23 @@ def test_levels_over_mcp(tmp_path, monkeypatch):
     assert len(plan["images"]) == 6 and plan["reach_read"] == 2 and plan["size"]["band"]
     assert "project" not in analysis["files"] and analysis["images"] == []
     assert "Scrivi in italiano." in Path(plan["files"]["brief"]).read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("goal", [
+    "between 20 and 30 orders a day", "tra 20 e 30 ordini al giorno", "20/30 ordini al giorno",
+    "300 ordini in 30 giorni", "500 orders in 90 days", "30 ordini ogni 2 giorni", "10 orders every 2 days",
+    "50 orders in 2 months", "100 orders by Friday", "15 sales per weekend", "60 orders bi-weekly",
+    "40 orders every other day",
+])
+def test_a_goal_with_a_range_or_an_odd_period_is_asked_not_guessed(goal):
+    assert briefs.orders_per_day(goal) is None
+
+
+@pytest.mark.parametrize("goal, a_day", [
+    ("20 ordini al giorno", 20), ("20 ordini/giorno", 20), ("20 orders a day", 20), ("20 orders per day", 20),
+    ("20 orders daily", 20), ("140 ordini a settimana", 20), ("140 ordini alla settimana", 20),
+    ("140 orders/week", 20), ("140 orders weekly", 20), ("1.500 ordini al mese", 50), ("1,500 orders a month", 50),
+    ("600 ordini mensili", 20), ("600 vendite ogni mese", 20), ("600 sales each month", 20),
+])
+def test_a_plain_goal_is_still_read(goal, a_day):
+    assert briefs.orders_per_day(goal) == a_day

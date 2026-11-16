@@ -28,11 +28,15 @@ TEST_MULTIPLIER = 2.5              # spend allowed per test ad, in break-even CP
 TEST_SHARE = 0.2                   # rule of thumb: the part of ad spend kept for testing new ads
 
 _ORDERS = re.compile(r"(?<![\d.,])(\d+(?:[.,]\d+)*)\s*(?:ordini|ordine|orders?|vendite|vendita|sales?|acquisti|acquisto|"
-                     r"purchases?)\b(.{0,14})", re.I)
-# the period is read only in the words right after the noun: "a day", "al mese", "/week", "per month"
-_PERIODS = (("giorn", 1), ("day", 1), ("daily", 1), ("dì", 1), ("settiman", 7), ("week", 7), ("mese", 30),
-            ("mensil", 30), ("month", 30))
-_RANGE = re.compile(r"\d\s*(?:-|–|—|\ba\b|\bto\b|\bo\b|\bor\b)\s*$", re.I)
+                     r"purchases?)\b(?=(.{0,24}))", re.I)
+# the period is read only when it comes right after the noun, as a whole word and with no figure in
+# between: "a day", "al mese", "/week", "per month". "in 30 giorni", "ogni 2 giorni", "by Friday" are not read.
+_PERIOD = re.compile(r"^\s*(?:/|al|alla|allo|a|an|per|ogni|each|every)?\s*(?:"
+                     r"(?P<day>giorno|giornalier[ie]|dì|day|daily)|"
+                     r"(?P<week>settimana|settimanal[ie]|week|weekly)|"
+                     r"(?P<month>mese|mensil[ie]|month|monthly))(?![\w-])", re.I)
+_SPANS = {"day": 1, "week": 7, "month": 30}
+_RANGE = re.compile(r"\d\s*(?:-|–|—|/|\ba\b|\bto\b|\bo\b|\bor\b|\be\b|\bed\b|\band\b)\s*$", re.I)
 
 _T = {
     "en": {
@@ -362,14 +366,13 @@ def orders_per_day(goal: str) -> float | None:
     found = list(_ORDERS.finditer(goal))
     if len(found) != 1:
         return None
-    figure, after = found[0].group(1), found[0].group(2).casefold()
+    figure, period = found[0].group(1), _PERIOD.match(found[0].group(2))
     if _RANGE.search(goal[:found[0].start()]):
         return None                                   # "20-30 orders a day": which one?
     orders = _number(figure)
-    days = next((span for word, span in _PERIODS if word in after), None)
-    if not orders or orders <= 0 or days is None:
+    if not orders or orders <= 0 or period is None:
         return None
-    return round(orders / days, 2)
+    return round(orders / _SPANS[period.lastgroup], 2)
 
 
 def test_numbers(project: dict, ideas: int = IDEAS, multiplier: float = TEST_MULTIPLIER,
