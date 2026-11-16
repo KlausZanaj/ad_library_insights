@@ -501,3 +501,16 @@ def test_collected_count_is_zero_when_no_concept_was_read(app):
     made = client.post("/api/brief", json={"job_id": job["id"], "level": "analysis", "ads": 2,
                                            "frames": False, "lang": "it"}).json()
     assert made["collected"]["ads"] == 0
+
+
+def test_page_failed_command_copy_talks_about_the_command(site, page_of):
+    for lang, hand in (("it", "a mano"), ("en", "by hand")):
+        page = page_of(lang, _result(site))
+        page.evaluate("""() => { Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+            document.execCommand = () => false; }""")
+        page.click("[data-action=brief]")
+        page.wait_for_selector(".dialog [data-action=copy-command]")
+        page.click("[data-action=copy-command]")
+        page.wait_for_function("document.querySelector('.status.err') !== null")
+        shown = page.inner_text(".status")
+        assert hand in shown and "brief.md" not in shown

@@ -774,7 +774,7 @@ const ACTIONS = {
   async 'copy-command'() {
     const made = S.overlay.made;
     if (await copyText(t(`brief.command.${made.level}`, { folder: made.folder }))) briefStatus(t('brief.copied.command'));
-    else briefStatus(t('brief.copy.failed', { folder: made.folder_name }), true);
+    else briefStatus(t('brief.copy.failed.command'), true);
   },
   async 'open-frames'() {
     try {
