@@ -251,24 +251,34 @@ function metricsSection(r) {
   ];
   return `<section class="metrics">${cells.map(([value, label, why]) => `<div class="metric"><b>${esc(value)}</b><span>${esc(label)}</span><small>${esc(why)}</small></div>`).join('')}</section>`;
 }
-function placeNames(places, total) {
+/* The first few places, then "e altri N": `all` is the full count when the list was cut. */
+function placeNames(places, total, all, limit = 8) {
   if (!places.length) return esc(t('f.places.none'));
-  const shown = places.slice(0, 12).map((place) => {
-    const count = total && place.ads < total ? ` ${t('f.places.count', { n: place.ads, total })}` : '';
-    return esc(placeLabel(place)) + (count ? `<span class="dim">${esc(count)}</span>` : '');
+  const shown = places.slice(0, limit).map((place) => {
+    const share = total && place.ads < total ? ` ${t('f.places.count', { n: place.ads, total })}` : '';
+    return esc(placeLabel(place)) + (share ? `<span class="dim">${esc(share)}</span>` : '');
   });
-  return shown.join(', ') + (places.length > 12 ? `<span class="dim"> +${places.length - 12}</span>` : '');
+  const every = Math.max(all ?? 0, places.length), rest = every - shown.length;
+  if (rest <= 0) return shown.join(', ');
+  return `<span class="dim">${esc(count(every, 'n.places'))}: </span>${shown.join(', ')}<span class="dim"> ${esc(count(rest, 'list.more'))}</span>`;
+}
+function ageNames(ranges, total) {
+  if (!ranges.length) return '—';
+  const [main] = ranges;
+  const share = total && main.ads < total ? ` ${t('f.places.count', { n: main.ads, total })}` : '';
+  const others = ranges.length > 1 ? `${share ? ',' : ''} ${count(ranges.length - 1, 'f.age.more')}` : '';
+  return esc(ageRange(main.age_min, main.age_max)) + (share || others ? `<span class="dim">${esc(share + others)}</span>` : '');
 }
 const shareRows = (rows, label) => `<ul class="rows">${rows.slice(0, 5).map((row) => `<li><span>${esc(label(row))}</span><span>${pct(row.share)}</span></li>`).join('') || `<li><span class="dim">—</span></li>`}</ul>`;
 function factsSection(r) {
   const s = r.signals, audience = s.audience, reach = s.reach;
   const places = audience && audience.locations_included.length
-    ? `<dl><dt>${esc(t('f.places.in'))}</dt><dd>${placeNames(audience.locations_included, audience.ads_with_audience)}</dd>
-       <dt>${esc(t('f.places.out'))}</dt><dd>${placeNames(audience.locations_excluded, audience.ads_with_audience)}</dd></dl>
+    ? `<dl><dt>${esc(t('f.places.in'))}</dt><dd>${placeNames(audience.locations_included, audience.ads_with_audience, audience.locations_included_count)}</dd>
+       <dt>${esc(t('f.places.out'))}</dt><dd>${placeNames(audience.locations_excluded, audience.ads_with_audience, audience.locations_excluded_count, 3)}</dd></dl>
        <p class="note">${esc(t('f.places.note'))}</p>`
     : `<p class="note" style="margin-top:0">${esc(t('f.places.unread'))} ${esc(t('f.places.note'))}</p>`;
   const who = audience ? `<dl>
-      <dt>${esc(t('f.audience.age'))}</dt><dd>${audience.age_ranges.slice(0, 3).map((a) => `${a.age_min}–${a.age_max}${a.age_max >= 65 ? '+' : ''}`).join(', ')}</dd>
+      <dt>${esc(t('f.audience.age'))}</dt><dd>${ageNames(audience.age_ranges, audience.ads_with_audience)}</dd>
       <dt>${esc(t('f.audience.gender'))}</dt><dd>${Object.keys(audience.genders).map((g) => esc(t(`gender.${g}`))).join(', ')}</dd>
       <dt>${esc(t('f.audience.breadth'))}</dt><dd>${Object.keys(audience.breadth).map((b) => esc(t(`breadth.${b}`))).join(', ') || '—'}</dd></dl>`
     : '<p class="dim">—</p>';
@@ -362,7 +372,8 @@ function cmpValue(row, value) {
     case 'platforms': return esc(list(value, (i) => `${PLATFORMS[i.label] || i.label} ${pct(i.share)}`));
     case 'genders': return esc(list(value, (g) => t(`gender.${g}`)));
     case 'breadths': return esc(list(value, (b) => t(`breadth.${b}`)));
-    case 'places': return esc(list(value, placeLabel));
+    case 'places': return value && value.length ? placeNames(value, null, value.length, row.key === 'locations_excluded' ? 3 : 8) : '—';
+    case 'text': return esc(row.key === 'age_range' && value ? ageRange(...String(value).split('-').map((part) => (/^\d+$/.test(part) ? Number(part) : null))) : value ?? '—');
     default: return esc(value ?? '—');
   }
 }
@@ -383,7 +394,7 @@ function compareSheet(r) {
   }).join('');
   const top = (side) => `<div><table class="ads"><tbody>${side.ads.slice(0, 5).map((ad) => `<tr class="pick" data-action="open-ad" data-value="${esc(ad.library_id)}">
     <td><div class="adcell">${ad.thumbnail ? `<img class="thumb" src="${esc(ad.thumbnail)}" alt="" loading="lazy">` : '<span class="thumb"></span>'}
-      <div class="adtext"><div>${esc(firstLine(ad) || t('t.notext'))}</div><small>${esc(`${t(`verdict.${ad.verdict}`)} · ${t('d.days', { days: num(ad.days_running) })} · ${t('f.reused.n', { n: num(ad.creatives) })}`)}</small></div></div></td>
+      <div class="adtext"><div>${esc(firstLine(ad) || t('t.notext'))}</div><small>${esc(`${t(`verdict.${ad.verdict}`)} · ${days(ad.days_running)} · ${t('f.reused.n', { n: num(ad.creatives) })}`)}</small></div></div></td>
     <td class="r">${Math.round(ad.score)}</td></tr>`).join('')}</tbody></table></div>`;
   return `<div class="sheet">
     <section class="cmphead">${head(a)}${head(b)}</section>
@@ -446,7 +457,7 @@ function newsDetail(c) {
   const what = (ad) => `<td>${ad.fields.map((f) => esc(t(`field.${f}`))).join(', ')}${ad.before.opening && ad.fields.includes('text') ? `<span class="was">${esc(t('news.before', { value: ad.before.opening }))}</span>` : ''}</td>`;
   const kind = (ad) => `<td class="dim">${esc(t(ad.new_text ? 'news.newtext' : 'news.reused'))}</td>`;
   return `<div class="sheet">
-    <section class="rhead"><div class="grow"><h1>${esc(title)}</h1><p>${esc(t('news.span', { from: stamp(c.previous.taken_at), to: stamp(c.current.taken_at), gap: c.days_between < 1 ? t('gap.hours', { n: Math.max(1, Math.round(c.days_between * 24)) }) : t('gap.days', { n: num(Math.round(c.days_between)) }) }))}</p></div>
+    <section class="rhead"><div class="grow"><h1>${esc(title)}</h1><p>${esc(t('news.span', { from: stamp(c.previous.taken_at), to: stamp(c.current.taken_at), gap: c.days_between < 1 ? t('gap.hours', { n: Math.max(1, Math.round(c.days_between * 24)) }) : days(Math.round(c.days_between)) }))}</p></div>
       <div class="rlinks"><button class="linklike" data-action="news-refresh" data-value="${esc(c.subject.key)}">${esc(t('news.refresh'))}</button></div></section>
     <section class="metrics three">${cells.map(([value, label, why]) => `<div class="metric"><b>${num(value)}</b><span>${esc(label)}</span><small>${esc(why)}</small></div>`).join('')}</section>
     ${c.sample ? `<section><p class="muted">${esc(t('news.sample'))}</p></section>` : ''}
@@ -499,12 +510,12 @@ function adDrawer(ad, r) {
   const cardsNote = ad.reach_total == null || (ad.cards || 1) < 2 ? ''
     : (ad.reach_cards_read || 1) > 1 ? t('d.reach.cards', { k: ad.reach_cards_read, n: ad.cards }) : t('d.reach.cards.one', { n: ad.cards });
   const ageNote = ad.ad_days != null && ad.days_running != null && ad.days_running - ad.ad_days >= 30
-    ? t('d.concept.age', { days: num(ad.days_running), ad: num(ad.ad_days) }) : '';
+    ? t('d.concept.age', { days: days(ad.days_running), ad: days(ad.ad_days) }) : '';
   const scaleWhy = ad.scale_basis === 'reach' ? t('d.scale.reach', { n: num(ad.reach_per_day), country: where, total: num(ad.reach_total) })
     : ad.reach_per_day_estimate != null ? t('d.scale.estimate', { n: num(ad.reach_per_day_estimate), rank: num(ad.impression_rank) })
     : ad.scale_basis === 'impressions' ? t('d.scale.impressions', { n: num(ad.impression_rank) }) : t('d.scale.none');
   const reach = ad.reach, audience = ad.audience;
-  const places = (list) => (list.length ? list.map((p) => esc(placeLabel(p))).join(', ') : esc(t('f.places.none')));
+  const places = (list, limit) => placeNames(list, null, list.length, limit);
   let reachHtml;
   if (!reach) reachHtml = `<p class="muted">${esc(t('d.reach.unread'))}</p>`;
   else if (!reach.available) reachHtml = `<p class="muted">${esc(t('d.reach.none'))}</p>`;
@@ -512,7 +523,7 @@ function adDrawer(ad, r) {
     const countries = reach.regions.flatMap((g) => g.countries).sort((a, b) => b.reach - a.reach).slice(0, 8);
     reachHtml = `<dl>
       ${ad.reach_total != null ? `<dt>${esc(t('d.reach.country', { country: where }))}</dt><dd>${num(ad.reach_total)}</dd>
-      <dt>${esc(t('d.reach.perday', { country: where }))}</dt><dd>${num(ad.reach_per_day)}${(ad.reach_cards_read || 1) > 1 ? '' : ` <span class="muted">· ${esc(t('d.reach.perday.x', { total: num(ad.reach_total), days: num(rateDays) }))}</span>`}</dd>` : ''}
+      <dt>${esc(t('d.reach.perday', { country: where }))}</dt><dd>${num(ad.reach_per_day)}${(ad.reach_cards_read || 1) > 1 ? '' : ` <span class="muted">· ${esc(t('d.reach.perday.x', { total: num(ad.reach_total), days: days(rateDays) }))}</span>`}</dd>` : ''}
       ${reach.eu_total != null ? `<dt>${esc(t('d.reach.total'))}</dt><dd>${num(reach.eu_total)}</dd>` : ''}
       ${reach.uk_total != null ? `<dt>${esc(t('d.reach.uk'))}</dt><dd>${num(reach.uk_total)}</dd>` : ''}</dl>
       ${ad.reach_in_market === false ? `<p class="smallnote">${esc(t('d.reach.elsewhere'))}</p>` : ''}
@@ -522,18 +533,18 @@ function adDrawer(ad, r) {
       ${countries.length > 1 ? `<h3 style="margin-top:16px">${esc(t('d.reach.bycountry'))}</h3><ul class="rows">${countries.map((c) => `<li><span>${esc(region(c.country))}</span><span>${num(c.reach)}</span></li>`).join('')}</ul>` : ''}`;
   }
   const review = ad.needs_review ? `<p class="review" style="margin-top:12px;font-size:1rem">${esc(t(ad.review && ad.review.basis === 'impressions' ? 'd.review.impressions' : 'd.review'))}</p>` : '';
-  const recent = ad.too_recent ? `<p class="review" style="margin-top:12px;font-size:1rem">${esc(t('d.recent', { days: ad.days_running === 1 ? t('d.recent.days.one') : t('d.recent.days.other', { n: ad.days_running }) }))}</p>` : '';
+  const recent = ad.too_recent ? `<p class="review" style="margin-top:12px;font-size:1rem">${esc(t('d.recent', { days: days(ad.days_running) }))}</p>` : '';
   return `<aside class="drawer" role="dialog" aria-modal="true"><header><h2>${esc(ad.advertiser || '')}</h2><button class="x" data-action="close">${esc(t('button.close'))}</button></header><div class="body">
     <section><div class="hero">${ad.thumbnail ? `<img src="${esc(ad.thumbnail)}" alt="">` : ''}<div>
       <p><strong>${esc(ad.status === 'inactive' ? t('d.inactive') : t('d.active', { date: ad.started ? day(ad.started) : '—' }))}</strong></p>
-      <p class="muted">${esc(t('d.days', { days: ad.days_running ?? '—' }))} · ${esc(t(`format.${ad.media_type || 'unknown'}`))}</p>
+      <p class="muted">${esc(days(ad.days_running))} · ${esc(t(`format.${ad.media_type || 'unknown'}`))}</p>
       ${ad.impression_rank ? `<p class="muted">${esc(t('d.rank', { n: ad.impression_rank }))}</p>` : ''}
       <p style="margin-top:10px"><a href="${esc(ad.ad_url)}" target="_blank" rel="noopener">${esc(t('link.meta'))}</a></p></div></div></section>
     <section><h3>${esc(t('d.score', { score: Math.round(ad.score) }))} · ${esc(t(`verdict.${ad.verdict}`))}</h3>
       <div class="scorebar three">${['scale', 'staying', 'creative'].map((part) => `<i style="width:${points[part]}%"></i>`).join('')}</div>
       <dl>
         <dt>${esc(t('d.part.scale'))}</dt><dd>${esc(t('d.score.of', { n: num(Math.round(points.scale)), max: weights.scale }))} <span class="muted">· ${esc(scaleWhy)}</span></dd>
-        <dt>${esc(t('d.part.staying'))}</dt><dd>${esc(t('d.score.of', { n: num(Math.round(points.staying)), max: weights.staying }))} <span class="muted">· ${esc(t('d.staying.days', { days: num(ad.days_running) }))}</span></dd>
+        <dt>${esc(t('d.part.staying'))}</dt><dd>${esc(t('d.score.of', { n: num(Math.round(points.staying)), max: weights.staying }))} <span class="muted">· ${esc(t('d.staying.days', { days: days(ad.days_running) }))}</span></dd>
         <dt>${esc(t('d.part.creative'))}</dt><dd>${esc(t('d.score.of', { n: num(Math.round(points.creative)), max: weights.creative }))} <span class="muted">· ${esc(t('d.creative.n', { n: num(ad.creatives) }))}</span></dd>
       </dl>
       <p class="smallnote">${esc(t(`reliability.${ad.reliability}.x`))}</p>${ageNote ? `<p class="smallnote">${esc(ageNote)}</p>` : ''}${review}${recent}
@@ -551,10 +562,10 @@ function adDrawer(ad, r) {
       <dt>${esc(t('d.platforms'))}</dt><dd>${(ad.platforms || []).map((p) => esc(PLATFORMS[p] || p)).join(', ') || '—'}</dd></dl></section>
     <section><h3>${esc(t('d.reach'))}</h3>${reachHtml}</section>
     ${audience ? `<section><h3>${esc(t('d.audience'))}</h3><dl>
-      <dt>${esc(t('f.audience.age'))}</dt><dd>${audience.age_min}–${audience.age_max}${audience.age_max >= 65 ? '+' : ''}</dd>
+      <dt>${esc(t('f.audience.age'))}</dt><dd>${esc(ageRange(audience.age_min, audience.age_max))}</dd>
       <dt>${esc(t('f.audience.gender'))}</dt><dd>${esc(t(`gender.${audience.gender || 'All'}`))}</dd>
-      <dt>${esc(t('f.places.in'))}</dt><dd>${places(audience.locations_included)}</dd>
-      <dt>${esc(t('f.places.out'))}</dt><dd>${places(audience.locations_excluded)}</dd></dl>
+      <dt>${esc(t('f.places.in'))}</dt><dd>${places(audience.locations_included, 8)}</dd>
+      <dt>${esc(t('f.places.out'))}</dt><dd>${places(audience.locations_excluded, 3)}</dd></dl>
       <p class="smallnote">${esc(t('f.places.note'))}</p></section>` : ''}
     ${(ad.frames || []).length ? `<section><h3>${esc(t('d.frames'))}</h3><div class="frames">${ad.frames.map((src) => `<img src="${esc(src)}" alt="">`).join('')}</div></section>` : ''}
   </div></aside>`;

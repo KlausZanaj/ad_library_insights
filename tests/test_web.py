@@ -420,3 +420,53 @@ def test_page_says_concepts_and_explains_the_ceiling(site, page_of):
             "concepts was left closed: their reach is a floor.") in text
     page = page_of("it", _result(site, deep={**deep, "capped": False}))
     assert "tetto" not in page.inner_text("#results")
+
+
+PLACES = ["France", "Germany", "Spain", "Austria", "Belgium", "Poland", "Portugal", "Greece", "Ireland"]
+
+
+def _with_audience(site, ranges):
+    result = _result(site)
+    audience = result["signals"]["audience"]
+    audience.update(age_ranges=ranges, ads_with_audience=sum(r["ads"] for r in ranges))
+    every = audience["ads_with_audience"]
+    audience.update(locations_excluded=[{"name": name, "type": "countries", "ads": every} for name in PLACES],
+                    locations_excluded_count=len(PLACES))
+    return result
+
+
+def test_page_shows_age_as_a_range_and_sums_up_excluded_places(site, page_of):
+    page = page_of("it", _with_audience(site, [{"age_min": 25, "age_max": 65, "ads": 3}]))
+    facts = page.inner_text("section.facts")
+    assert "25-65+" in facts and "25\n65" not in facts
+    assert "9 luoghi: Francia, Germania, Spagna e altri 6" in facts and "Grecia" not in facts
+    page = page_of("en", _with_audience(site, [{"age_min": 25, "age_max": 65, "ads": 2},
+                                               {"age_min": 20, "age_max": 64, "ads": 1}]))
+    facts = page.inner_text("section.facts")
+    assert "25-65+ 2 of 3, plus 1 other range" in facts and "20-64" not in facts
+    assert "9 locations: France, Germany, Spain and 6 more" in facts
+
+
+def test_page_shows_the_category_of_the_advertiser_page(site, page_of):
+    result = _result(site)
+    assert result["page"]["category"]
+    page = page_of("it", result)
+    assert f"{result['page']['category']} · " in page.inner_text("section.rhead")
+    result["page"]["category"] = None
+    page = page_of("it", result)
+    head = page.inner_text("section.rhead p")
+    assert head.split("\n")[0].endswith("seguaci · Italia") and "—" not in head.split("\n")[0]
+
+
+def test_page_says_one_day_in_the_singular(site, page_of):
+    result = _result(site)
+    ad = result["ads"][0]
+    ad.update(days_running=1, ad_days=1, too_recent=True)
+    for lang, one, wrong in (("it", "1 giorno", "1 giorni"), ("en", "1 day", "1 days")):
+        page = page_of(lang, result)
+        page.evaluate("(id) => { S.overlay = { type: 'ad', id }; renderOverlay(); }", ad["library_id"])
+        drawer = page.inner_text(".drawer")
+        assert one in drawer and wrong not in drawer
+        page.evaluate("(id) => { const ad = findAd(id); ad.days_running = 12; ad.too_recent = false; renderOverlay(); }",
+                      ad["library_id"])
+        assert ("12 giorni" if lang == "it" else "12 days") in page.inner_text(".drawer")
