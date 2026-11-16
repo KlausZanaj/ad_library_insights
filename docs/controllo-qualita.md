@@ -203,3 +203,27 @@ I primi sette sono test sui dati reali in `tests/test_rating.py`; gli ultimi qua
 | Molti annunci per un concetto | Flexora: 5 annunci, 2 letti (201.059 persone in 112 giorni e 184.905 in 58) | 2° su 106, 385.964 persone, 4.983 al giorno, scritto «2 di 5» | Ogni annuncio è diviso per i suoi giorni e poi si somma; leggerne uno solo dava meno della metà | `test_reach_of_a_concept_adds_up_the_ads_that_were_read` |
 | Annuncio spento | Dato costruito: acceso il 17 marzo, spento il 19 | Etichetta «Spento», 2 giorni; un concetto con un annuncio ancora acceso non è spento | Un annuncio finito non si giudica come uno attivo; nel pacchetto è fuori dalla tabella «accesi oggi» | `test_ended_ads_are_labelled_as_such`, `test_ended_and_off_topic_ads_are_marked_in_the_pack` |
 | Pochi annunci letti (meno di 5) | Dato costruito: sei inserzionisti, copertura letta per quattro | Nessuno «Sta scalando» né «Da verificare»; con tutti e sei letti le stesse due etichette compaiono | Quattro letture non bastano a dire dove sta un annuncio rispetto agli altri | `test_hard_case_fewer_than_five_ads_read_get_no_label_that_compares_them` |
+
+## D. Esempi di Analisi e Piano
+
+Gli esempi in `examples/kingshot-it-2026-11-14/` sono scritti dal pacchetto dati di una ricerca reale
+già salvata (nessuna nuova richiesta a Meta), con i quattro specialisti e i modelli delle due skill.
+
+- **Numeri ricondotti al pacchetto:** tutte le cifre dei due testi sono scritte in un file del
+  pacchetto; lo controlla `tests/test_examples.py`, insieme agli id degli annunci, agli importi del
+  piano e all'assenza di percorsi del computer.
+- **Uno specialista corretto e rifatto.** Alla prima lettura lo specialista della copertura aveva
+  scritto che «quasi tutta la copertura viene da un solo annuncio», perché «letto 1 annuncio su 58» era
+  ambiguo. Il suo file ora dice che quel numero è un minimo; rifatto, ha letto giusto.
+- **Revisore indipendente sui testi:** 44 affermazioni ricondotte al pacchetto, 34 giuste, 10 sbagliate
+  o fuorvianti. Tre gravi, tutte corrette: «sei dei sette più recenti portano a Google Play» (erano
+  cinque; sei sono i sette in fondo alla valutazione); «molti lanci, pochi che restano» e «tiene poco»,
+  cioè una sopravvivenza dedotta da una ricerca sola, che il pacchetto dice non misurabile. Corretti
+  anche: il ritmo di 42,2 scritto come creatività invece che annunci; «aprono con» detto di video con
+  una sola immagine; «i concetti nuovi» senza la fascia di età; il pareggio «più basso» senza la sua
+  condizione; due idee del piano che cambiavano più di una cosa; i limiti del passaggio da un gioco
+  gratuito a un prodotto da 39,9, ora scritti tra i rischi.
+- **Regole aggiunte alle skill** perché gli stessi errori non tornino: la tabella per età non prova
+  la sopravvivenza; il ritmo conta annunci; una sola immagine non dice come apre un video; un primo
+  giro piccolo scarta, non sceglie un vincitore.
+- **Non ricontrollato:** le correzioni ai due testi non sono passate da un secondo revisore.
