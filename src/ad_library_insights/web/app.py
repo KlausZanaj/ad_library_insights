@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import threading
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -19,7 +20,7 @@ from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from .. import __version__, briefs, compare, consumption, details, history, media, project, rating, service
+from .. import __version__, briefs, compare, consumption, details, history, link, media, project, rating, service
 from ..client import AdLibraryClient, normalise_country
 from ..storage import DiskCache, Throttle
 
@@ -82,9 +83,13 @@ def open_folder(folder: Path) -> None:
 class Workspace:
     """Holds the client, the jobs and the one-at-a-time rule for page requests."""
 
-    def __init__(self, client: AdLibraryClient | None = None, home: Path | None = None):
+    def __init__(self, client: AdLibraryClient | None = None, home: Path | None = None,
+                 connection: link.Settings | None = None):
         self.client = client or AdLibraryClient(cache=DiskCache(), throttle=Throttle(), sleep=self._sleep)
         self.home = home
+        self.connection = connection or link.Settings()
+        self._used_tokens: set[str] = set()          # a confirmation token works once
+        self._connecting = threading.Lock()
         self.history = history.History(Path(home) / "snapshots" if home else None)
         self.jobs: dict[str, Job] = {}
         self.frame_folders: dict[str, Path] = {}     # key given to the page -> stills folder of a pack
@@ -329,9 +334,58 @@ class Workspace:
         return JSONResponse({"opened": True, "pictures": sum(1 for p in folder.iterdir() if p.is_file())})
 
 
-def create_app(client: AdLibraryClient | None = None, home: Path | None = None) -> Starlette:
-    """The ASGI app. ``client`` and ``home`` are injectable for offline tests."""
-    space = Workspace(client, home)
+    # --- connection to Claude Code ----------------------------------------------------
+
+    async def link_status(self, request: Request) -> Response:
+        """What is already in place; no command is run here."""
+        return JSONResponse(link.status(self.connection))
+
+    async def link_mcp(self, request: Request) -> Response:
+        """The slow check (``claude mcp list``), asked by the page in the background."""
+        return JSONResponse(await asyncio.to_thread(link.mcp_status, self.connection))
+
+    async def link_connect(self, request: Request) -> Response:
+        """Register the server and copy the skills. Only the page itself may ask, once per token."""
+        if not _own_page(request):
+            return JSONResponse({"error": "forbidden_origin"}, status_code=403)
+        if not (request.headers.get("content-type") or "").split(";")[0].strip() == "application/json":
+            return JSONResponse({"error": "bad_request"}, status_code=400)
+        try:
+            body = await request.json()
+        except ValueError:
+            body = None
+        token = request.headers.get("x-link-token", "")
+        if not isinstance(body, dict) or not _TOKEN.match(token) or body.get("token") != token:
+            return JSONResponse({"error": "bad_token"}, status_code=403)
+        if token in self._used_tokens:
+            return JSONResponse({"error": "bad_token"}, status_code=403)
+        self._used_tokens.add(token)
+        if not self._connecting.acquire(blocking=False):
+            return JSONResponse({"error": "busy"}, status_code=409)
+        try:
+            done = await asyncio.to_thread(link.connect, self.connection, bool(body.get("overwrite_skills")))
+        finally:
+            self._connecting.release()
+        return JSONResponse(done, status_code=200 if done.get("ok") else 500)
+
+
+_TOKEN = re.compile(r"^[0-9a-f]{32,128}$")
+
+
+def _own_page(request: Request) -> bool:
+    """True only for a request sent by this app's own page on 127.0.0.1 (Origin and Host both say so)."""
+    origin = request.headers.get("origin")
+    host = request.headers.get("host", "")
+    name, _, port = host.partition(":")
+    if name != "127.0.0.1":
+        return False
+    return origin == "http://127.0.0.1" + (f":{port}" if port else "")
+
+
+def create_app(client: AdLibraryClient | None = None, home: Path | None = None,
+               connection: link.Settings | None = None) -> Starlette:
+    """The ASGI app. ``client``, ``home`` and ``connection`` are injectable for offline tests."""
+    space = Workspace(client, home, connection)
     app = Starlette(routes=[
         Route("/", space.index),
         Route("/media/{name}", space.media_file),
@@ -344,6 +398,9 @@ def create_app(client: AdLibraryClient | None = None, home: Path | None = None) 
         Route("/api/jobs/{job_id}", space.get_job),
         Route("/api/brief", space.brief, methods=["POST"]),
         Route("/api/frames/open", space.open_frames, methods=["POST"]),
+        Route("/api/link/status", space.link_status),
+        Route("/api/link/mcp", space.link_mcp),
+        Route("/api/link/connect", space.link_connect, methods=["POST"]),
         Route("/api/history", space.saved_searches),
         Route("/api/history/changes", space.changes),
         Mount("/static", StaticFiles(directory=STATIC), name="static"),
