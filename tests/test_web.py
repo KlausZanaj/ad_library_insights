@@ -541,3 +541,15 @@ def test_page_age_range_reads_cleanly(site, page_of):
     page = page_of("it", _result(site))
     got = page.evaluate("[[65, null], [65, 65], [30, 30], [null, 30], [25, 44], [18, null], [45, 70], [null, null]].map(([a, b]) => ageRange(a, b))")
     assert got == ["65+", "65+", "30", "18-30", "25-44", "18-65+", "45-65+", "—"]
+
+
+def test_page_table_shows_reach_when_only_a_later_ad_of_the_concept_was_read(site, page_of):
+    result = _result(site)
+    ad = result["ads"][0]
+    ad.update(reach=None, reach_total=123456, reach_per_day=789, cards=3, reach_cards_read=2)
+    page = page_of("en", result)
+    row = page.locator("table.ads tbody tr").filter(has_text=f"{123456:,}").first
+    cells = row.locator("td.r")
+    texts = cells.all_inner_texts()
+    assert "123,456" in texts and "789" in texts
+    assert "2 ads read out of 3" in (cells.filter(has_text="123,456").first.get_attribute("title") or "")

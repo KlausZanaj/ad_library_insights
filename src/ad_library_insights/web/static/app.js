@@ -304,7 +304,16 @@ function factsSection(r) {
     <div class="fact"><h2>${esc(t('f.reused'))}</h2><ul class="rows">${reused || '<li><span class="dim">—</span></li>'}</ul></div>
   </section>`;
 }
+/* "k of m ads read" for a concept whose reach was summed over some of its ads. */
+function cardsNote(ad) {
+  if (ad.reach_total == null || (ad.cards || 1) < 2) return '';
+  return (ad.reach_cards_read || 1) > 1 ? t('d.reach.cards', { k: ad.reach_cards_read, n: ad.cards }) : t('d.reach.cards.one', { n: ad.cards });
+}
 function reachCells(ad) {
+  if (ad.reach_total != null) {
+    const tip = cardsNote(ad) ? ` title="${esc(cardsNote(ad))}"` : '';
+    return `<td class="r"${tip}>${num(ad.reach_total)}</td><td class="r"${tip}>${num(ad.reach_per_day)}</td>`;
+  }
   if (!ad.reach) return '<td class="r dim">—</td><td class="r dim">—</td>';
   if (!ad.reach.available) return `<td class="r dim" colspan="2">${esc(t('t.nopub'))}</td>`;
   if (ad.reach_total == null) return `<td class="r dim" colspan="2">${esc(t('t.elsewhere'))}</td>`;
@@ -509,8 +518,7 @@ function adDrawer(ad, r) {
   const weights = ad.score_weights || { scale: 60, staying: 25, creative: 15 };
   const where = region(r.country);
   const rateDays = ad.reach_days ?? Math.max(ad.ad_days ?? ad.days_running ?? 0, 7);
-  const cardsNote = ad.reach_total == null || (ad.cards || 1) < 2 ? ''
-    : (ad.reach_cards_read || 1) > 1 ? t('d.reach.cards', { k: ad.reach_cards_read, n: ad.cards }) : t('d.reach.cards.one', { n: ad.cards });
+  const cardsNoteText = cardsNote(ad);
   const ageNote = ad.ad_days != null && ad.days_running != null && ad.days_running - ad.ad_days >= 30
     ? t('d.concept.age', { days: days(ad.days_running), ad: days(ad.ad_days) }) : '';
   const scaleWhy = ad.scale_basis === 'reach' ? t('d.scale.reach', { n: num(ad.reach_per_day), country: where, total: num(ad.reach_total) })
@@ -530,7 +538,7 @@ function adDrawer(ad, r) {
       ${reach.uk_total != null ? `<dt>${esc(t('d.reach.uk'))}</dt><dd>${num(reach.uk_total)}</dd>` : ''}</dl>
       ${ad.reach_in_market === false ? `<p class="smallnote">${esc(t('d.reach.elsewhere'))}</p>` : ''}
       ${ad.reach_total === 0 ? `<p class="smallnote">${esc(t('d.reach.zero', { country: where }))}</p>` : ''}
-      ${cardsNote ? `<p class="smallnote">${esc(cardsNote)}</p>` : ''}
+      ${cardsNoteText ? `<p class="smallnote">${esc(cardsNoteText)}</p>` : ''}
       ${ad.reach_total ? `<p class="smallnote">${esc(t('d.reach.unique'))}</p>` : ''}
       ${countries.length > 1 ? `<h3 style="margin-top:16px">${esc(t('d.reach.bycountry'))}</h3><ul class="rows">${countries.map((c) => `<li><span>${esc(region(c.country))}</span><span>${num(c.reach)}</span></li>`).join('')}</ul>` : ''}`;
   }
