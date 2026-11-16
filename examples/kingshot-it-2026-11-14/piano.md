@@ -148,8 +148,9 @@ confronto è pulito. «Tipo» è uno dei tipi di annuncio elencati in `pacchetto
 
 - **Pubblico:** largo, solo Italia, testi in italiano. Kingshot usa lo stesso pubblico in tutti gli
   annunci letti (12 su 12): tutti i generi, età da 20-65 a 25-65, pubblico largo, nessuna esclusione
-  (`pacchetto/reach.md`). Non abbiamo un motivo per restringerlo. Kingshot non ha nessun testo in
-  italiano: che l'italiano ci dia un vantaggio è un'ipotesi, e la misuriamo solo con i nostri annunci.
+  (`pacchetto/reach.md`). Non abbiamo un motivo per restringerlo. Tra i testi di Kingshot con una
+  lingua riconosciuta l'italiano non c'è (di 39 annunci la lingua non è stata riconosciuta): che
+  l'italiano ci dia un vantaggio è un'ipotesi, e la misuriamo solo con i nostri annunci.
 - **Campagne e gruppi di annunci:** due campagne. Una di prova, con un solo gruppo e i 5 annunci
   insieme; una per gli annunci che passano la prova.
 - **Dove girano le prove e dove vanno i vincitori:** ogni annuncio nuovo entra nella campagna di prova.
@@ -196,11 +197,13 @@ massima a pareggio è 777 al giorno (`pacchetto/project.md`).
 
 Il dettaglio è in `analisi.md`. Per questo prodotto contano quattro cose:
 
-- I testi sono una riga sotto molti video diversi (causa 1, forza alta); i video accesi da più tempo
-  mostrano il gioco in azione (causa 2, forza media).
+- I testi sono una riga sotto molti video diversi (causa 1, forza media: descrive come scrive, non
+  perché un annuncio va meglio); i video accesi da più tempo mostrano il gioco in azione (causa 2,
+  forza media).
 - Kingshot lancia molto: 6 concetti su 14 hanno meno di 7 giorni, 3 superano i 90 (causa 3, forza
   media). Quanti ne spegne non è misurabile.
-- Pubblico largo e uguale ovunque, nessun testo in italiano (causa 4, forza media).
+- Pubblico largo e uguale ovunque, nessun testo in italiano tra quelli con lingua riconosciuta
+  (causa 4, forza media).
 - Le scene realistiche e il testo in seconda persona sono su concetti di 8 e 15 giorni: un'ipotesi
   (causa 5).
 

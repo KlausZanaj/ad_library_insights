@@ -105,6 +105,12 @@ analysis.
         set it against a count of concepts.
     -   A video with a single picture shows one moment of unknown position:
         write what it shows, not how the video opens.
+    -   A figure that is the same for every ad (a share of 0% or 100% over
+        all the texts, one audience on every ad) describes the advertiser.
+        It does not tell strong ads from weak ones, so it never makes a
+        cause High: write it as a description and say so.
+    -   "No text in a language" is said among the texts whose language was
+        recognised, with the number of ads `not recognised` next to it.
     -   "Recent" and "old" are named with their age band and its figures; a
         claim about recent ads leaves out the ones too recent to judge.
     -   The launch pace is quoted with what it was counted on. When

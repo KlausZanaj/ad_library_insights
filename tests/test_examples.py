@@ -53,3 +53,23 @@ def test_the_amounts_of_the_plan_are_those_the_program_computed(folder):
     # every amount with a decimal or a thousands part under "Numbers for the test"; "2,5" is a multiplier
     computed = set(re.findall(r"\d+(?:[.,]\d+)+", project.split("##")[2])) - {"2,5"}
     assert len(computed) >= 8 and not [amount for amount in computed if amount not in plan]
+
+
+@pytest.mark.parametrize("folder", FOLDERS, ids=lambda folder: folder.name)
+def test_a_figure_equal_for_every_ad_does_not_make_a_strong_cause(folder):
+    text = (folder / "analisi.md").read_text(encoding="utf-8")
+    causes = re.split(r"\n(?=\d\. \*\*)", text.split("## Le cause")[1].split("\n## ")[0])
+    flat = [cause for cause in causes if re.search(r"allo 0%|al 100%|12 su 12", cause)]
+    assert flat and not [cause[:60] for cause in flat if "Forza: alta" in cause]
+    assert not re.search(r"allo 0%[^\n]*· alta", text)
+
+
+@pytest.mark.parametrize("folder", FOLDERS, ids=lambda folder: folder.name)
+def test_a_missing_language_is_said_among_the_texts_recognised(folder):
+    unknown = re.search(r"not recognised: (\d+) ads", pack_text(folder))
+    for name in ("analisi.md", "piano.md"):
+        text = " ".join((folder / name).read_text(encoding="utf-8").split())
+        if unknown and "italiano non c'è" in text:
+            assert "lingua riconosciuta" in text and f"{unknown.group(1)} annunci" in text
+        assert "nessun testo in italiano:" not in text and "non ha nessun testo in italiano" not in text
+

@@ -24,7 +24,10 @@ letto un annuncio solo, su 28, 15 e 58).
    (id 882123034940286, 56 creatività), «Face the danger and build your own Kingdom»
    (id 1029398823388221, 15 creatività), «New game released!» (id 2007237763249307, 24 creatività).
    In tutti i 14 testi la prova, l'offerta e il prezzo sono allo 0% (`copy.md`). Il 93% dei 212
-   annunci è un video (`creative.md`). Forza: alta. Confermata da: testi + creatività.
+   annunci è un video (`creative.md`). Forza: media. Confermata da: testi + creatività. È una
+   descrizione di come scrive Kingshot: lo 0% vale per tutti i 14 testi, forti e deboli, quindi non
+   spiega perché un concetto va meglio di un altro. Ciò che distingue i tre più longevi è il numero di
+   creatività sotto lo stesso testo.
 2. **Il video mostra il gioco, non persone né spiegazioni.** I due concetti più vecchi mostrano il
    gioco dall'alto: un eroe, un contatore di monete in alto a destra, torri che difendono un passaggio
    (id 882123034940286 e 1029398823388221: hanno gli stessi fotogrammi, quindi è un video solo sotto
@@ -40,7 +43,8 @@ letto un annuncio solo, su 28, 15 e 58).
 4. **Pubblico largo e nessun testo in italiano.** Sui 12 annunci letti il genere è sempre «tutti»,
    l'ampiezza sempre «larga», le età vanno da 20-65 a 25-65 e ogni annuncio punta da 27 a 32 paesi,
    Italia compresa, senza esclusioni. Le lingue dei testi sono inglese 71%, tedesco 15%, giapponese
-   5%, spagnolo 5%, coreano 3%, francese 2%: l'italiano non c'è. L'Italia riceve il 10% delle persone
+   5%, spagnolo 5%, coreano 3%, francese 2%: tra i testi con una lingua riconosciuta l'italiano non
+   c'è, ma di 39 annunci la lingua non è stata riconosciuta. L'Italia riceve il 10% delle persone
    raggiunte dagli annunci letti, dietro Regno Unito 17%, Germania 13% e Francia 13% (`reach.md`).
    Forza: media. Confermata da: copertura + testi (le lingue). Il pubblico è uguale in tutti gli
    annunci, forti e deboli: descrive come lavora Kingshot, non spiega perché un annuncio va meglio di
@@ -80,7 +84,7 @@ recente» (meno di 7 giorni) non poggia nessuna conclusione.
 ## Parte per parte
 
 **Testi**
-- I testi con il giudizio «Regge nel tempo» sono una riga, poi il bottone «Install now» · 3 concetti; prova, offerta e prezzo allo 0% · alta
+- I testi con il giudizio «Regge nel tempo» sono una riga, poi il bottone «Install now» · 3 concetti; prova, offerta e prezzo allo 0% in tutti i 14 testi · media: descrive, non distingue
 - Il testo acceso da più tempo è una confessione in prima persona, non un numero · «8 hours straight», id 882123034940286, 143 giorni · alta
 - I testi con molte creatività sono generici e stanno sotto qualunque video · 56, 24 e 15 creatività contro 2 per «Your Break Just Got Medieval» (id 1998843314137956) · media, è una deduzione
 - L'urgenza quasi non c'è · 14% dei testi · bassa
