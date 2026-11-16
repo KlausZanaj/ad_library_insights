@@ -34,9 +34,9 @@ Ora la valutazione guarda tre cose distinte:
 | 1 | Cappellettoshop Treviso… | Scopri AUTRY: marchio storico di Sneake… | 100 | Forte | 134 | 80 | 18° |
 | 2 | HOKA | Scopri le nostre scarpe da corsa più am… | 96 | Forte | 176 | 8 | 3° |
 | 3 | Flexora | ⚡ Corri DI PIÙ, soffri di MENO! 🏃‍♂️💨Le… | 84 | Forte | 112 | 4 | 2° |
-| 4 | Top4Running | Addocchiato qualche nuovo capo da corsa… | 79 | Forte | 249 | 3 | 49° |
+| 4 | Top4Running | Addocchiato qualche nuovo capo da corsa… | 79 | Forte | 249 | 3 | 42° |
 | 5 | Medical Market | 🏃‍♂️ SEI UN RUNNER? | 79 | Forte | 241 | 3 | 10° |
-| 6 | Gabrieli sport | 🔴 Non corri per paura del dolore? | 72 | Forte | 516 | 2 | 37° |
+| 6 | Gabrieli sport | 🔴 Non corri per paura del dolore? | 72 | Forte | 516 | 2 | 32° |
 | 7 | PUMA | Dalla corsa alla linea del traguardo, i… | 72 | Forte | 149 | 2 | 23° |
 | 8 | Zalando | Vento, stanchezza, traffico: quando hai… | 69 | Buono | 44 | 16 | 1° |
 | 9 | Feellgood | 🦶 DOPO UNA GIORNATA INTERA IN PIEDI, LE… | 65 | Buono | 69 | 3 | 15° |
@@ -61,7 +61,7 @@ Cosa è cambiato:
 
 - **Zalando**, 5.136.974 persone in Italia in 44 giorni (116.749 al giorno): da 8° (Buono, 69 punti) a 1° (Sta scalando, 87).
 - **Cappellettoshop**, 94.660 persone in 134 giorni (706 al giorno): da 1° con 100 punti a 18° con 41 (Nella media). Non è un annuncio catalogo: sono 8 annunci con lo stesso video, ciascuno in più copie identiche. Il vecchio calcolo li contava come 80 riusi del testo; ora valgono 1 creatività.
-- **Gabrieli sport**, acceso da 516 giorni, 47.011 persone in tutto (91 al giorno): da 6° (Forte) a 37°, con l'etichetta Da verificare.
+- **Gabrieli sport**, acceso da 516 giorni, 47.011 persone in tutto (91 al giorno): da 6° (Forte) a 32°, con l'etichetta Da verificare.
 - In questa ricerca tutti gli annunci letti sono stati mostrati solo in Italia: il totale UE coincide con le persone raggiunte in Italia.
 - Distribuzione delle etichette: Sta scalando 2, Regge nel tempo 4, In prova 53, Da verificare 4, Nella media 41, Spento 2.
 

@@ -114,16 +114,76 @@ UE nella ricerca negli Stati Uniti; righe giuste lette da `parse_reach` (Italia 
 Germania 1.461.753, Regno Unito dal totale 1.679.270, Stati Uniti assenti); aritmetica di Zalando
 (5.136.974 / 44 = 116.749); posizioni continue da 1 a n; le quattro traduzioni Kingshot riunite sono giuste.
 
+## B2. Secondo passaggio del revisore: valutazione, pacchetti dati, specialisti
+
+Un secondo revisore indipendente ha ricontrollato la valutazione e, per la prima volta, i pacchetti dati,
+i brief, i quattro specialisti e le due skill. Poi ha fatto un solo ripasso sulle correzioni.
+
+### Problemi gravi, corretti
+
+- **Un annuncio non letto poteva stare sopra lo stesso annuncio letto.** Togliendo la copertura a un
+  annuncio alla volta, il punteggio saliva in 22 casi su 47 (scarpe da corsa) e in 6 su 14 (Kingshot).
+  Ora la stima di un annuncio non letto non supera mai l'annuncio letto più debole. Dopo: 0 su 47 e
+  1 su 14 (è l'annuncio più debole stesso, da 14,6 a 21,3). Nella ricerca delle scarpe 77 concetti su 106
+  hanno cambiato posizione, tutti non letti; nessun concetto letto ha cambiato punteggio o giudizio e i
+  primi 10 sono identici.
+- **L'obiettivo del piano veniva letto male.** «1.500 ordini al mese» diventava 0,05 ordini al giorno.
+  Ora dà 50. Al ripasso il revisore ha provato 63 frasi e 11 davano ancora un numero sbagliato
+  (intervalli come «tra 20 e 30», periodi come «300 ordini in 30 giorni» o «ogni 2 giorni», parole come
+  «weekend»). Corretto: il periodo si legge solo se viene subito dopo, come parola intera e senza cifre
+  in mezzo; in tutti gli altri casi il programma chiede invece di indovinare. 26 frasi sono ora nei test.
+
+### Problemi medi e piccoli, corretti
+
+- Copertura infinita, giorni negativi e più di tre annunci letti per concetto non falsano più il calcolo.
+- Un annuncio letto senza giorni non dà un ritmo; un annuncio di un giorno non sposta più la scala.
+- Nel pacchetto il «migliore» è scritto con il suo concetto (Kingshot: più persone al giorno 8.306,
+  più persone in tutto 835.709, due concetti diversi); la tabella per età conta concetti e non annunci.
+- Oltre 50.000 annunci attivi si scrive «più di 50.000», perché la libreria smette di contare.
+- In una ricerca per parola chiave il ritmo di lancio è la somma di tutti gli inserzionisti: il brief lo
+  dice e chiede di non dimensionare la produzione su quel numero.
+- Dove la copertura nel paese non è pubblicata, il brief non chiede più «perché raggiunge tante persone».
+- I numeri del brief in italiano sono scritti all'italiana (2.862,5).
+- Specialisti e skill citano solo etichette che il codice scrive davvero: lo controlla un test.
+
+### Lasciato com'è, con il motivo
+
+- **«Da verificare» anche su un concetto letto in parte** (Gabrieli sport, 1 annuncio letto su 2). Toglierlo
+  faceva sparire l'etichetta dal caso per cui è nata; accanto è scritto quanti annunci sono stati letti.
+- **«Regge nel tempo» dove la copertura non è pubblicata** (ricerca negli Stati Uniti): vale tra i primi
+  148 annunci di oltre 50.000, accesi da 90 giorni o più, ed è scritto che la scala viene dalla posizione.
+- **HOKA regge nel tempo con un solo annuncio letto di 11 giorni**: il pacchetto scrive le due età.
+- **Giorni scritti come testo o creatività mancanti**: il lettore delle schede dà sempre numeri.
+- **Annunci aperti e concetti non sono la stessa cosa**: chiedendo 20 annunci i concetti letti possono
+  essere meno. È scritto nella skill e nello strumento; se leggere finché i concetti sono 20 è una
+  decisione ancora aperta.
+- **Quattro casi piccoli emersi al ripasso**, nessuno su dati reali salvati: un annuncio letto con 0
+  persone sta sotto il suo gemello non letto (16,7 contro 30,7); nelle scarpe i 59 concetti non letti
+  hanno tutti scala 0 e si ordinano solo per giorni e creatività (prudente, non falso); un annuncio
+  letto senza data scrive «copertura non nota»; se il primo annuncio non si apre e ne vengono letti altri
+  tre, ne contano due. Restano da correggere.
+
+### Verificato senza trovare errori
+
+Somma dei punti, ricalcolo della copertura, ordine delle schede, stabilità della scala per posizione,
+scala logaritmica, condizioni dei giudizi, nessuna copertura UE nella ricerca negli Stati Uniti, numeri
+dei pacchetti e numeri del piano.
+
 ## C. Casi difficili
 
-Ognuno è un test sui dati reali in `tests/test_rating.py`, con la ragione per cui la posizione è giusta.
+I primi sette sono test sui dati reali in `tests/test_rating.py`; gli ultimi quattro sono in
+`tests/test_levels.py` e `tests/test_rating.py`. Per ognuno c'è la ragione per cui la posizione è giusta.
 
 | Caso | Dato reale | Dove finisce | Perché è giusto | Test |
 |---|---|---|---|---|
 | Annuncio di 1 giorno con molta copertura | Kingshot: 91.509 persone in UE il primo giorno, 476 in Italia | 13° su 14, «In prova» | Un giorno non è un ritmo, e in Italia ha raggiunto 476 persone | `test_one_day_with_a_lot_of_reach_does_not_reach_the_top` |
-| Annuncio vecchio con pochi raggiunti | Gabrieli sport: 516 giorni, 47.011 persone, 91 al giorno | 37° su 106, «Da verificare» | La tenuta piena non basta: raggiunge mille volte meno persone del migliore | `test_hard_case_old_ad_with_few_people` |
+| Annuncio vecchio con pochi raggiunti | Gabrieli sport: 516 giorni, 47.011 persone, 91 al giorno | 32° su 106, «Da verificare» | La tenuta piena non basta: raggiunge mille volte meno persone del migliore | `test_hard_case_old_ad_with_few_people` |
 | Annuncio mostrato quasi solo fuori dal paese cercato | Kingshot: 12.402 persone in UE, 966 in Italia in 53 giorni | 12° su 14, «Nella media» | Per chi studia l'Italia è un annuncio da 18 persone al giorno | `test_hard_case_ad_shown_almost_only_outside_the_searched_country` |
 | Ricerca senza copertura | «standing desk», Stati Uniti: 19 annunci con copertura, tutta UE o Regno Unito | Affidabilità media per tutti, nessun «Sta scalando» | La copertura di un altro mercato non dice niente di questo | `test_hard_case_search_without_any_reach_in_the_market` |
 | Annuncio catalogo | HOKA: 8 annunci catalogo, 176 giorni, 10.438 al giorno | 3° su 106, «Regge nel tempo» | Vale 1 creatività: è lì per giorni e persone, non per il numero di prodotti | `test_hard_case_catalogue_ad` |
 | Stesso annuncio in più lingue | Kingshot: tedesco, inglese, francese, spagnolo | Una riga sola, in cima | Sono lo stesso annuncio: contati a parte riempirebbero la classifica di copie | `test_hard_case_one_ad_in_several_languages` |
 | Piccolo negozio contro un marchio grande | Zalando 116.749 al giorno, Cappellettoshop 706, Flexora 4.983 | Zalando 1°, Cappellettoshop 18°, Flexora 2° sopra Decathlon | La scala conta, ma un piccolo che regge da 112 giorni con 5 creatività supera un grande di 15 giorni | `test_hard_case_small_shop_against_a_large_brand` |
+| Concetto vecchio con un annuncio nuovo | HOKA: concetto acceso da 176 giorni, annuncio più mostrato di 11 giorni con 114.820 persone (10.438 al giorno), letto 1 annuncio su 8 | 3° su 106, «Regge nel tempo», non «Da verificare» | La tenuta è del concetto, la copertura è dell'annuncio letto: nel dettaglio e nel pacchetto dati sono scritte le due età | `test_hard_case_catalogue_ad`, `test_a_concept_with_a_fresh_ad_is_not_called_forgotten`, `test_a_concept_shows_its_age_and_the_age_of_its_most_shown_ad` |
+| Molti annunci per un concetto | Flexora: 5 annunci, 2 letti (201.059 persone in 112 giorni e 184.905 in 58) | 2° su 106, 385.964 persone, 4.983 al giorno, scritto «2 di 5» | Ogni annuncio è diviso per i suoi giorni e poi si somma; leggerne uno solo dava meno della metà | `test_reach_of_a_concept_adds_up_the_ads_that_were_read` |
+| Annuncio spento | Dato costruito: acceso il 17 marzo, spento il 19 | Etichetta «Spento», 2 giorni; un concetto con un annuncio ancora acceso non è spento | Un annuncio finito non si giudica come uno attivo; nel pacchetto è fuori dalla tabella «accesi oggi» | `test_ended_ads_are_labelled_as_such`, `test_ended_and_off_topic_ads_are_marked_in_the_pack` |
+| Pochi annunci letti (meno di 5) | Dato costruito: sei inserzionisti, copertura letta per quattro | Nessuno «Sta scalando» né «Da verificare»; con tutti e sei letti le stesse due etichette compaiono | Quattro letture non bastano a dire dove sta un annuncio rispetto agli altri | `test_hard_case_fewer_than_five_ads_read_get_no_label_that_compares_them` |
