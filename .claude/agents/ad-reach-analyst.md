@@ -20,6 +20,11 @@ Then read `reach.md`. The other data files belong to the other specialists.
 - The reach that counts is the one in the country searched (the columns named after
   that country). It is unique people. When a concept runs as several ads, up to
   three are read and added up, and the cell says how many (`ads read`).
+  `1 of 58 ads read` means the program opened one ad of the fifty-eight: the
+  figure is a floor, the concept reached that many people or more. It never
+  means that the reach comes from one ad.
+- `Middle concept` is the median: half of the concepts read are above it. Call
+  it the middle or the median, not the average.
 - Per day is that reach divided by the days on air, seven at the least. Unique
   people grow slower than days, so an ad on air for months shows fewer people per
   day than it had at the start: read the total next to the daily figure.
