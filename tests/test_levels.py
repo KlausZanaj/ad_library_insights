@@ -619,3 +619,31 @@ def test_reach_read_on_an_ad_without_a_start_date_is_written_not_hidden():
     assert "2 of 2 ads read; per day counted on the 1 with a start date" in packs._reached(mixed, "IT")
     whole = {**mixed, "reach_cards_dated": 2}
     assert "start date" not in packs._reached(whole, "IT")
+
+
+@pytest.mark.parametrize("goal", [
+    # third review: each of these was read as a figure of orders a day that the phrase does not mean
+    "1 500 ordini al mese", "1'500 orders a month", "dai 20 ai 30 ordini al giorno",
+    "tra i 20 e i 30 ordini al giorno", "between 20 & 30 orders a day", "20 ~ 30 ordini al giorno",
+    "minimo 20 massimo 30 ordini al giorno", "20 fino a 30 ordini al giorno", "20, max 30 orders a day",
+    "almeno 20, idealmente 30 ordini al giorno", "da 10 ordini al giorno a 30", "go from 5 orders a day to 20",
+    "oggi facciamo 5 ordini al giorno, vogliamo arrivare a 20", "5 ordini al giorno oggi, obiettivo 20 al giorno",
+    "aumentare di 20 ordini al giorno", "+20 orders a day", "altri 20 ordini al giorno",
+    "raddoppiare i 20 ordini al giorno", "double our 20 orders a day", "triple the current 10 sales a day",
+    "20 ordini al giorno lavorativo", "30 ordini al giorno nei giorni feriali", "10 orders a day on weekends",
+    "20 ordini al giorno nel weekend", "5 ordini al giorno per 4 negozi", "20 orders a day per 10 stores",
+    "20 sales a day of 3 products each", "0,500 ordini al giorno", "ridurre a 20 ordini al giorno i resi",
+])
+def test_a_goal_that_is_not_one_plain_total_is_asked(goal):
+    assert briefs.orders_per_day(goal) is None
+
+
+@pytest.mark.parametrize("goal, a_day", [
+    ("20 ordini al gg", 20), ("20 ordini/gg", 20), ("140 ordini la settimana", 20), ("20 ordini il giorno", 20),
+    ("ROAS 3 e 20 ordini al giorno", 20), ("20 ordini al giorno con ROAS 3", 20),
+    ("20 ordini al giorno entro il 2027", 20), ("20 orders a day within 3 months", 20),
+    ("almeno 20 ordini al giorno", 20), ("Arrivare a circa 20 ordini al giorno, senza alzare i prezzi", 20),
+    ("20 ordini al giorno spendendo meno di 500 €", None),
+])
+def test_other_figures_pass_only_when_they_are_plainly_something_else(goal, a_day):
+    assert briefs.orders_per_day(goal) == a_day

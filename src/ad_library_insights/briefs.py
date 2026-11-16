@@ -31,12 +31,25 @@ _ORDERS = re.compile(r"(?<![\d.,])(\d+(?:[.,]\d+)*)\s*(?:ordini|ordine|orders?|v
                      r"purchases?)\b(?=(.{0,24}))", re.I)
 # the period is read only when it comes right after the noun, as a whole word and with no figure in
 # between: "a day", "al mese", "/week", "per month". "in 30 giorni", "ogni 2 giorni", "by Friday" are not read.
-_PERIOD = re.compile(r"^\s*(?:/|al|alla|allo|a|an|per|ogni|each|every)?\s*(?:"
-                     r"(?P<day>giorno|giornalier[ie]|dì|day|daily)|"
+_PERIOD = re.compile(r"^\s*(?:/|al|alla|allo|a|an|per|ogni|each|every|il|la)?\s*(?:"
+                     r"(?P<day>giorno|giornalier[ie]|dì|gg|day|daily)|"
                      r"(?P<week>settimana|settimanal[ie]|week|weekly)|"
                      r"(?P<month>mese|mensil[ie]|month|monthly))(?![\w-])", re.I)
 _SPANS = {"day": 1, "week": 7, "month": 30}
-_RANGE = re.compile(r"\d\s*(?:-|–|—|/|\ba\b|\bto\b|\bo\b|\bor\b|\be\b|\bed\b|\band\b)\s*$", re.I)
+# the goal is read only when the figure of orders is the one figure in it. Others are let through only when
+# they are plainly something else: money, a percentage, a ROAS, a year, a deadline ("entro 3 mesi").
+_FIGURE = re.compile(r"\d+(?:[.,]\d+)*")
+_OTHER_AFTER = re.compile(r"^\s*(?:%|€|\$|euro\b|eur\b|usd\b)", re.I)
+_SPAN_AFTER = re.compile(r"^\s*(?:giorni|settimane|mesi|anni|days|weeks|months|years)\b", re.I)
+_OTHER_BEFORE = re.compile(r"(?:€|\$|\b(?:roas|roi|cpa|aov)\s*(?:di|of|a|at|=|:)?)\s*$", re.I)
+_DEADLINE = re.compile(r"\b(?:in|entro|within|tra|fra)\s+$", re.I)
+# an increase or a multiple is not a total: "+20 orders a day", "altri 20", "raddoppiare i 20 ordini"
+_CHANGE = re.compile(r"\+\s*\d|\b(?:aument\w*|increas\w*|più|piu|more|altri|other|additional|ulteriori|extra|"
+                     r"raddoppi\w*|doubl\w*|tripl\w*|quadrupl\w*|volte|times|ridu\w*|reduc\w*|meno|less|fewer)\b", re.I)
+# after the period the goal ends, or goes on with a comma or a plain connector; "lavorativo", "nel weekend",
+# "per 4 negozi" change what the figure means
+_TAIL = re.compile(r"^\s*(?:$|[.!,;:)]|(?:entro|by|within|con|with|e|ed|and|senza|without|mantenendo|while|"
+                   r"(?:in|tra|fra)\s+\d)\b)", re.I)
 
 _T = {
     "en": {
@@ -359,6 +372,8 @@ def _number(text: str) -> float | None:
     if len(parts) == 1:
         return float(text)
     if all(len(part) == 3 for part in parts[1:]):
+        if parts[0].startswith("0"):
+            return None                               # "0,500": half an order or five hundred? not guessed
         return float("".join(parts))
     if len(parts) == 2:
         return float(".".join(parts))
@@ -369,16 +384,25 @@ def orders_per_day(goal: str) -> float | None:
     """The number of orders a day named in a goal such as "20 ordini al giorno", or None.
 
     None means "ask": the goal names no orders, no period right after them (a day, a week,
-    a month), a range, or more than one figure of orders. A wrong guess here would size
-    the whole budget of the plan, so anything unclear is not guessed.
+    a month), a range or a second figure, an increase or a multiple, or words after the
+    period that change its meaning. A wrong guess here would size the whole budget of the
+    plan, so anything unclear is not guessed.
     """
     goal = goal or ""
     found = list(_ORDERS.finditer(goal))
-    if len(found) != 1:
+    if len(found) != 1 or _CHANGE.search(goal):
         return None
     figure, period = found[0].group(1), _PERIOD.match(found[0].group(2))
-    if _RANGE.search(goal[:found[0].start()]):
-        return None                                   # "20-30 orders a day": which one?
+    for other in _FIGURE.finditer(goal):
+        if other.start() == found[0].start(1):
+            continue
+        before, after = goal[:other.start()], goal[other.end():]
+        year = re.fullmatch(r"20\d\d", other.group()) and not re.match(r"\s*[\d/.,-]", after)
+        deadline = _DEADLINE.search(before) and _SPAN_AFTER.match(after)
+        if not (year or deadline or _OTHER_AFTER.match(after) or _OTHER_BEFORE.search(before)):
+            return None                               # "20-30", "da 10 a 30", "1 500": which figure?
+    if period is None or not _TAIL.match(found[0].group(2)[period.end():]):
+        return None
     orders = _number(figure)
     if not orders or orders <= 0 or period is None:
         return None
