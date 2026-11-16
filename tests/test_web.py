@@ -565,3 +565,9 @@ def test_page_refused_project_card_shows_errors_without_a_failed_request(site, p
     page.wait_for_selector(".field.bad em")
     assert page.locator(".field.bad").count() >= 3
     assert failed == []
+
+
+def test_project_goal_hint_fits_the_half_width_field():
+    strings = json.loads((STATIC / "strings.json").read_text(encoding="utf-8"))
+    for language in ("it", "en"):
+        assert len(strings[language]["proj.goal.hint"]) <= 26      # the field is half the dialog: a longer hint is cut
