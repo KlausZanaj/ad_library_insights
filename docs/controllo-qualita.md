@@ -231,3 +231,88 @@ già salvata (nessuna nuova richiesta a Meta), con i quattro specialisti e i mod
   la sopravvivenza; il ritmo conta annunci; una sola immagine non dice come apre un video; un primo
   giro piccolo scarta, non sceglie un vincitore.
 - **Non ricontrollato:** le correzioni ai due testi non sono passate da un secondo revisore.
+
+## E. Schermata dei livelli 2 e 3, dettagli grafici e nuova regola di lettura
+
+Un revisore indipendente ha provato la regola di lettura sulle tre ricerche salvate (9 combinazioni
+più 7 casi costruiti), ha confrontato la stima con 18 corse reali senza rete e 24 combinazioni
+dell'indirizzo della stima, ha letto 399 testi in italiano e inglese e ha aperto 6 schermate in due
+lingue e due temi. Poi un solo ripasso sulle correzioni.
+
+### Problemi trovati (13, nessuno grave) e corretti
+
+- **Il tetto risultava raggiunto anche quando non aveva fermato niente.** Con 14 concetti in elenco
+  e 20 chiesti, se un annuncio non si apriva lo schermo diceva «Letti 13 concetti su 20: raggiunto il
+  tetto». Ora il tetto si nomina solo se ha lasciato chiusi degli annunci o dei concetti ancora da
+  provare. Dopo: stesso caso, nessun messaggio, 14 concetti letti.
+- **Un concetto il cui primo annuncio non si apriva non veniva recuperato** se il tetto era già
+  pieno di secondi e terzi annunci (10 chiesti, 9 letti). Ora l'ordine è: prima l'annuncio più
+  mostrato di ogni concetto; poi, per chi non si è aperto, il suo secondo annuncio, oppure il concetto
+  successivo dell'elenco se ne ha uno solo; solo alla fine i secondi e terzi annunci. Dopo: 10 su 10,
+  20 annunci aperti con tetto 20, nessuno aperto due volte.
+- **Un concetto letto solo dal suo secondo annuncio aveva la copertura ma non veniva contato** e
+  nella tabella mostrava un trattino. Ora conta come letto e la tabella mostra i suoi numeri.
+- **I fotogrammi si salvavano per tutti i video**, mentre testo e stima dicevano «dei primi dieci
+  concetti»: 29 video invece di 10, e il tempo promesso veniva superato (147 secondi contro 141).
+  Ora al massimo 10; dopo: 252 secondi contro i 321 promessi.
+- **Il pacchetto prendeva i primi N della classifica rifatta dopo la lettura, non gli N concetti
+  letti.** Nella ricerca negli Stati Uniti solo 6 dei 10 concetti nel testo erano stati aperti (12 su
+  20, 31 su 50). Ora il pacchetto mette prima i concetti letti. Dopo: 10 su 10, 20 su 20, 50 su 50.
+- **La stima in token era bassa**: 26.100 («Basso») contro 34.400 reali («Medio»). Il valore per
+  concetto è passato da 260 a 400, misurato sui testi veri. Dopo, senza fotogrammi: scarti da −13% a
+  +18% e la fascia giusta in 6 casi su 6.
+- **L'apertura della cartella dei fotogrammi** dava errore 500 su un corpo non valido e accettava
+  una richiesta da un'altra origine. Ora 400 e 403. Su 12 richieste malevole nessuna cartella aperta.
+- Piccoli: messaggio dedicato se la copia del comando fallisce; con 0 concetti letti la finestra non
+  dice più 10; un concetto ripetuto in elenco non si apre due volte; «1 concetto» al singolare; due
+  testi dicevano «annunci» dove erano concetti; l'età «65-65+» è diventata «65+».
+
+### Emerso al ripasso, poi corretto
+
+- **Si leggevano più concetti di quelli chiesti**: con una sostituzione più i secondi annunci del
+  concetto fallito, 10 chiesti davano 11 letti (13 con tre annunci falliti). Corretto con la regola
+  scritta sopra; un test fissa che i concetti letti non superano mai quelli chiesti.
+- La stima del tempo contava ancora i fotogrammi di tutti i video (29 invece di 10): corretta.
+- Il messaggio per la copia fallita del comando rimandava a un comando incompleto: riscritto.
+
+### Lasciato com'è, con il motivo
+
+- **Con i fotogrammi la stima in token resta più bassa del testo** (Analisi a 10 concetti: 35.100
+  contro 52.600; Piano a 10: «Medio» contro «Alto»). Il confronto è solo indicativo, perché nelle prove
+  senza rete i fotogrammi non sono file veri: va rimisurato su una ricerca vera prima di cambiare il
+  valore per immagine.
+- **Il comando copiato per l'assistente contiene il percorso completo della cartella**, mentre a
+  schermo si vede solo il nome: all'assistente il percorso serve, sullo schermo no.
+- **Le correzioni emerse al ripasso non sono passate da un secondo ripasso**: sono fissate da test.
+- **Lo screenshot `05c-DIMOSTRAZIONE-non-per-il-post-…`** mostra la frase del tetto con numeri messi
+  a mano: senza rete il tetto non scatta sui dati salvati. Non va usato come immagine di dati veri.
+
+### Controllo grafico di ogni schermata
+
+Fatto a 1440 px, senza rete, con i dati salvati: 13 schermate, ognuna in chiaro, in scuro e in
+inglese. Per ogni schermata uno script ha cercato testi tagliati, scorrimento orizzontale, testi
+interni («undefined», nomi di chiavi), percorsi del computer nel testo e negli attributi, separatori
+delle migliaia, singolari, errori in console e risposte di errore. Circa 25 screenshot sono stati
+anche guardati uno per uno; gli altri sono coperti solo dai controlli dello script.
+
+Cinque difetti trovati, tutti corretti con un test:
+
+- salvare una scheda del progetto non valida lasciava un errore nella console del browser;
+- il testo di esempio del campo «Obiettivo» era tagliato;
+- in inglese compariva «1 creatives»;
+- nelle novità compariva «1 ore tra le due ricerche»;
+- il messaggio per la copia fallita del comando (già citato sopra).
+
+Limiti di questo controllo:
+
+- gli stati di errore sono provocati facendo fallire il lettore finto o la chiamata locale: un errore
+  di rete vero non si può riprodurre con i dati salvati;
+- tre gruppi di screenshot sono dimostrazioni e portano «DIMOSTRAZIONE-non-per-il-post» nel nome: la
+  frase del tetto (`05c`) e il confronto con numeri diversi (`10e`, `10f`), dove il secondo lato è una
+  ricerca per parola chiave presentata come azienda;
+- nei dati di prova le miniature degli annunci non ci sono e i loghi sono finti: negli screenshot si
+  vedono le iniziali. Se un logo vero non si carica l'app non ha un ripiego: non corretto;
+- nella prima esecuzione il browser di prova potrebbe aver chiesto a Meta le immagini dei loghi; dalla
+  seconda ogni richiesta fuori dal computer era bloccata e non ne risultano;
+- gli screenshot di sessioni precedenti con i numeri 12, 15, 17, 20, 21, 22 e 24 non sono stati
+  rifatti né ricontrollati.
