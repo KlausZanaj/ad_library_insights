@@ -642,3 +642,29 @@ def test_odd_figures_do_not_break_or_bend_the_rating():
     one[0]["reach"] = figure
     one[0]["card_reach"] = {f"c{n}": figure for n in range(2, 7)}
     assert signals.annotate(one)[0]["reach_total"] == 3_000 and one[0]["reach_cards_read"] == 3
+
+
+def test_an_ad_read_and_found_at_zero_is_not_passed_by_its_unread_twin():
+    # read with nobody reached in the country: before, the same ad left unread got an estimate and scored higher
+    def run(read_small):
+        totals = {key: REACH[key] for key in ("giant", "steady", "shop", "forgotten", "fresh")}
+        if read_small:
+            totals["small"] = 0
+        return by_id(with_reach(rating.group_concepts(market(), AS_OF), totals))["small"]
+    read, unread = run(True), run(False)
+    assert read["reliability"] == "high" and read["score_parts"]["scale"] == 0.0
+    assert unread["reliability"] == "medium" and unread["score"] <= read["score"] + 14.0
+    # with a zero read before it in the list, an unread ad gets no more than that
+    totals = {**{key: REACH[key] for key in ("giant", "steady", "shop", "forgotten")}, "fresh": 0}
+    after_zero = by_id(with_reach(rating.group_concepts(market(), AS_OF), totals))["small"]
+    assert after_zero["reach_per_day_estimate"] == 0 and after_zero["score_parts"]["scale"] == 0.0
+
+
+def test_three_ads_count_even_when_the_most_shown_one_could_not_be_read():
+    one = rating.group_concepts([ad(f"c{n}", body="One text", impression_rank=n, video_url=f"https://v/{n}.mp4")
+                                 for n in range(1, 6)], AS_OF)
+    figure = {"available": True, "country": "IT", "country_reach": 1_000}
+    one[0]["reach"] = {"available": False}
+    one[0]["card_reach"] = {f"c{n}": figure for n in range(2, 6)}
+    rated = signals.annotate(one)[0]
+    assert rated["reach_cards_read"] == 3 and rated["reach_total"] == 3_000 and rated["reach_cards_dated"] == 3

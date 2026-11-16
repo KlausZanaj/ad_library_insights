@@ -282,7 +282,7 @@ def _reach_by_position(ranked: list[dict]):
     proportion to the position. Returns a function, or None when nothing is known.
     """
     known = sorted((rank, total) for ad in ranked for rank, total in ad.get("reach_points") or []
-                   if rank and total > 0)
+                   if rank and total >= 0)
     if not known:
         return None
 
@@ -338,7 +338,8 @@ def evaluate(ranked: list[dict], use_impressions: bool = True, library_total: in
     # an ad of a few days is too recent to judge: it does not set the yardstick for the others
     settled = [_market_reach(ad) for ad in ranked if _market_reach(ad) and not too_recent(ad.get("days_running"))]
     best = max(settled or rates) if reach_scale else 0
-    lowest_read = min(rates) if reach_scale else 0
+    # zero counts: an ad read and found to reach nobody here is the weakest ad that was read
+    lowest_read = min(rate for rate in map(_market_reach, ranked) if rate is not None) if reach_scale else 0
     estimate_reach = _reach_by_position(ranked) if reach_scale and use_impressions else None
     positions = [ad["impression_rank"] for ad in ranked if ad.get("impression_rank")]
     listed = max([library_total or 0, *positions, 1])

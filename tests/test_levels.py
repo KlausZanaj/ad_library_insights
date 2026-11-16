@@ -248,6 +248,9 @@ def test_without_reach_the_analysis_brief_does_not_ask_why_the_reach(company):
         text = briefs.compose("analysis", company, 3, lang=lang)["text"]
         assert asked not in text and table in text and "NO REACH IN IT" in text
         assert "people reached, per day" not in text and "persone raggiunte, al giorno" not in text
+        # the third lens too: nothing is compared by people reached
+        assert "People reached and reach per day" not in text and "Persone raggiunte e copertura al giorno" not in text
+        assert ("no ad is compared by people reached" in text) == (lang == "en")
     assert "gets the reach shown" in briefs.instructions("analysis", "Northwind", "en")
 
 
@@ -604,3 +607,15 @@ def test_a_goal_with_a_range_or_an_odd_period_is_asked_not_guessed(goal):
 ])
 def test_a_plain_goal_is_still_read(goal, a_day):
     assert briefs.orders_per_day(goal) == a_day
+
+
+def test_reach_read_on_an_ad_without_a_start_date_is_written_not_hidden():
+    undated = {"library_id": "1", "reach_total": 100_000, "reach_in_market": True, "reach_cards_read": 1, "cards": 1}
+    line = packs._reached(undated, "IT")
+    assert "100,000 people reached in IT" in line and "per day not known" in line and "not known;" not in line
+    # one ad with a date and one without: the total covers two ads, the rate only one, and the line says so
+    mixed = {"library_id": "2", "reach_total": 901_000, "reach_per_day": 10, "reach_in_market": True,
+             "reach_cards_read": 2, "reach_cards_dated": 1, "cards": 2}
+    assert "2 of 2 ads read; per day counted on the 1 with a start date" in packs._reached(mixed, "IT")
+    whole = {**mixed, "reach_cards_dated": 2}
+    assert "start date" not in packs._reached(whole, "IT")

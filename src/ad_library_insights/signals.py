@@ -148,12 +148,14 @@ def annotate(ranked: list[dict], use_impressions: bool = True, library_total: in
         own_days = ad.get("ad_days") if ad.get("ad_days") is not None else ad.get("days_running")
         readings = [(ad["library_id"], reach, own_days)]
         readings += [(card_id, found, (cards.get(card_id) or {}).get("days"))
-                     for card_id, found in (ad.get("card_reach") or {}).items()][:rating.CARDS_PER_CONCEPT - 1]
+                     for card_id, found in (ad.get("card_reach") or {}).items()]
         for key in ("reach_total", "reach_per_day", "reach_elsewhere_per_day", "reach_in_market",
-                    "reach_cards_read", "reach_points", "reach_days"):
+                    "reach_cards_read", "reach_cards_dated", "reach_points", "reach_days"):
             ad.pop(key, None)
         known = [(card_id, market_total(found), days) for card_id, found, days in readings]
+        # at most three ads count for a concept: the first three whose reach was really read
         known = [(card_id, total, days) for card_id, total, days in known if total is not None]
+        known = known[:rating.CARDS_PER_CONCEPT]
         if known:
             ad["reach_in_market"] = True
             ad["reach_total"] = sum(total for _, total, _ in known)
@@ -161,6 +163,7 @@ def annotate(ranked: list[dict], use_impressions: bool = True, library_total: in
             if dated:                       # without a start date there is no rate: the total stays, unrated
                 ad["reach_per_day"] = round(sum(total / rating.rate_days(days) for total, days in dated))
             ad["reach_cards_read"] = len(known)
+            ad["reach_cards_dated"] = len(dated)
             ad["reach_days"] = rating.rate_days(own_days)
             # what the estimate for unread ads is calibrated on: position and reach of each card read
             ad["reach_points"] = [((cards.get(card_id) or {}).get("impression_rank") or ad.get("impression_rank"), total)

@@ -108,9 +108,16 @@ def _days(ad: dict) -> str:
 
 def _reached(ad: dict, country: str) -> str:
     """What is known about the scale of an ad, in words that never pass an estimate off as data."""
+    read = f"{ad.get('reach_cards_read', 1)} of {ad.get('cards', 1)} ads read"
     if ad.get("reach_per_day") is not None:
+        dated = ad.get("reach_cards_dated")
+        partly = (f"; per day counted on the {dated} with a start date"
+                  if dated is not None and dated < ad.get("reach_cards_read", 1) else "")
         return (f" · {_n(ad.get('reach_total'))} people reached in {country}, {_n(ad.get('reach_per_day'))} per day"
-                f" ({ad.get('reach_cards_read', 1)} of {ad.get('cards', 1)} ads read)")
+                f" ({read}{partly})")
+    if ad.get("reach_total") is not None and ad.get("reach_in_market"):
+        return (f" · {_n(ad.get('reach_total'))} people reached in {country}; per day not known: the ad has no "
+                f"start date ({read})")
     if ad.get("reach_in_market") is False:
         return f" · reach in {country}: not published (the reach read is for the EU or the UK and does not count here)"
     if ad.get("scale_basis") == "impressions":

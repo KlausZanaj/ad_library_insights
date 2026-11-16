@@ -85,6 +85,11 @@ _T = {
             "What this data cannot tell.",
             "Three things to test or verify, in order of priority.",
         ],
+        "lens.noreach": (
+            "Audience and localisation (sections Reach and audience, Languages and countries). Reach in the country "
+            "searched is not published, so no ad is compared by people reached. How broad the audience is (age, "
+            "gender, locations), then languages of the texts against the countries targeted: one ad translated or "
+            "different ads per country."),
         "deliver.analysis.noreach": {
             0: "The answer in two lines: what {name} keeps running and what that suggests, with the limit that "
                "reach is not published.",
@@ -234,6 +239,11 @@ _T = {
             "Cosa questi dati non possono dire.",
             "Tre cose da provare o verificare, in ordine di priorità.",
         ],
+        "lens.noreach": (
+            "Pubblico e localizzazione (sezioni Reach and audience, Languages and countries). La copertura nel paese "
+            "cercato non è pubblicata, quindi nessun annuncio si confronta per persone raggiunte. Ampiezza del "
+            "pubblico (età, genere, luoghi), poi lingue dei testi contro i paesi scelti: un annuncio tradotto o "
+            "annunci diversi per paese."),
         "deliver.analysis.noreach": {
             0: "La risposta in due righe: cosa {name} tiene acceso e cosa suggerisce, con il limite che la "
                "copertura non è pubblicata.",
@@ -467,13 +477,14 @@ def instructions(level: str, name: str, lang: str = "it", reach: bool = True) ->
     words = _T[lang]
     out = [words[f"role.{level}"], ""]
     if level == "analysis":
-        deliver = list(words["deliver.analysis"])
+        deliver, lens = list(words["deliver.analysis"]), list(words["lens"])
         if not reach:
+            lens[2] = words["lens.noreach"]
             for index, line in words["deliver.analysis.noreach"].items():
                 deliver[index] = line
         out += [words["goal.analysis" if reach else "goal.analysis.noreach"].format(name=name), "",
                 f"## {words['method.title']}", words["method.intro"],
-                *[f"{n}. {line}" for n, line in enumerate(words["lens"], start=1)], "",
+                *[f"{n}. {line}" for n, line in enumerate(lens, start=1)], "",
                 f"## {words['deliver.title']}", words["language"],
                 *[f"{n}. {line.format(name=name)}" for n, line in enumerate(deliver, start=1)]]
     else:
