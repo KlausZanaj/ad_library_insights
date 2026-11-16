@@ -15,6 +15,17 @@ const store = {
   set(key, value) { try { localStorage.setItem(key, value); } catch { /* private mode */ } },
 };
 
+const LEVELS_OPEN = 'levelsOpen';
+/* Which level rows are open is remembered; the last level is open the first time. */
+function loadOpen() {
+  const open = { data: false, analysis: false, plan: true };
+  try {
+    const saved = JSON.parse(store.get(LEVELS_OPEN, ''));
+    for (const level of ['data', 'analysis', 'plan']) if (saved && typeof saved[level] === 'boolean') open[level] = saved[level];
+  } catch { /* nothing saved yet */ }
+  return open;
+}
+
 const S = {
   lang: store.get('lang', 'it'), theme: store.get('theme', 'light'),
   mode: 'keyword', level: 'data', deep: 10, frames: false, deepChoices: [10, 20, 50],
@@ -22,6 +33,8 @@ const S = {
   pages: null, busy: null, job: null, result: null, jobId: null, notice: null,
   project: null, overlay: null, estimate: null, pending: null,
   history: null, news: null, sort: 'score',
+  open: loadOpen(),
+  link: { quick: null, mcp: 'checking', running: false, result: null, error: null, test: null, copy: null, hint: false },
 };
 let T = { it: {}, en: {} };
 
@@ -99,7 +112,7 @@ document.addEventListener('error', (event) => {
 const firstLine = (ad) => ((ad.body || '').trim().split('\n')[0] || ad.headline || '');
 
 async function api(path, options = {}) {
-  const init = { method: options.method || 'GET', headers: {} };
+  const init = { method: options.method || 'GET', headers: { ...(options.headers || {}) } };
   if (options.body) { init.body = JSON.stringify(options.body); init.headers['Content-Type'] = 'application/json'; }
   const response = await fetch(path, init);
   const data = await response.json().catch(() => ({}));
@@ -158,14 +171,8 @@ function renderSearch() {
       <select data-bind="country" ${locked ? 'disabled' : ''}>${countryOptions(S.country)}</select></label>
     <button class="btn" data-action="submit" ${locked ? 'disabled' : ''}>${esc(t(company ? 'button.find' : 'button.search'))}</button>
   </div>
-  <p class="levels-title"><span>${esc(t('level.title'))}</span><span>${esc(t('level.note'))}</span></p>
-  <div class="levels" role="radiogroup">${LEVELS.map((level, depth) => `
-    <button class="level" role="radio" data-action="level" data-value="${level}" aria-checked="${level === S.level}" ${locked ? 'disabled' : ''}>
-      <span class="lv-head"><strong>${esc(t(`level.${level}`))}</strong><span class="steps" aria-hidden="true">${[0, 1, 2].map((n) => `<i${n <= depth ? ' class="on"' : ''}></i>`).join('')}</span></span>
-      <span class="lv-q">${esc(t(`level.${level}.q`))}</span>
-      <span class="lv-list">${[1, 2, 3].map((n) => `<span>${esc(t(`level.${level}.${n}`))}</span>`).join('')}</span>
-      <span class="lv-foot"><span>${esc(t('level.who'))}</span><span>${esc(t(`level.${level}.who`))}</span><span>${esc(t('level.cost'))}</span><span>${esc(t(`level.${level}.use`))}</span></span>
-    </button>`).join('')}</div>
+  <div class="levels-head"><h2>${esc(t('lv.title'))}</h2><p>${esc(t('lv.sub'))}</p></div>
+  <div class="levels">${levelRows(locked)}</div>
   <div class="options">
     <span>${esc(t('deep.before'))}</span>
     <div class="switch" role="group">${toggle('deep', S.deepChoices, S.deep, String)}</div>
@@ -175,10 +182,162 @@ function renderSearch() {
     <button class="linklike" data-action="project">${esc(S.project
       ? t('project.saved', { product: S.project.product, price: num(S.project.price) }) : t('project.missing'))}</button>
   </div>`;
+  html += '<section class="way" id="way"></section>';
   if (S.job || S.busy) html += '<div class="progress"><p><span id="ptext"></span><span class="muted num" id="pleft"></span></p><div class="bar" id="pbar"><i></i></div></div>';
   else if (S.notice) html += `<p class="notice${S.notice.err ? ' err' : ''}">${esc(S.notice.text)}</p>`;
   $('#search').innerHTML = `${html}</div>`;
+  renderWay();
   updateProgress();
+}
+function levelRows(locked) {
+  return LEVELS.map((level, index) => {
+    const open = S.open[level], chosen = S.level === level;
+    const pick = chosen
+      ? `<span class="lvl-chosen">${esc(t('lv.chosen'))}</span>`
+      : `<button class="btn quiet small" data-action="level" data-value="${level}" ${locked ? 'disabled' : ''}>${esc(t('lv.choose'))}</button>`;
+    return `<div class="lvl${open ? ' open' : ''}${chosen ? ' chosen' : ''}">
+      <button class="lvl-head" data-action="lv-toggle" data-value="${level}" aria-expanded="${open}" aria-controls="lv-${level}">
+        <span class="lvl-n">${index + 1}</span>
+        <span class="lvl-t"><strong>${esc(t(`lv.${level}.title`))}</strong><span>${esc(t(`lv.${level}.sub`))}</span></span>
+        <span class="lvl-tag">${esc(t(`lv.${level}.tag`))}</span>
+        <span class="lvl-arrow" aria-hidden="true"></span>
+      </button>
+      <div class="lvl-body" id="lv-${level}" ${open ? '' : 'hidden'}>
+        <ol>${[1, 2, 3, 4].map((n) => `<li>${esc(t(`lv.${level}.${n}`))}</li>`).join('')}</ol>
+        <div class="lvl-foot"><p>${esc(t(`lv.${level}.note`))}</p>${pick}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ---------- connection to Claude Code ---------- */
+const INSTALL_URL = 'https://claude.com/product/claude-code';
+function linkStates() {
+  const { quick, mcp } = S.link;
+  const claude = !quick ? 'checking' : quick.claude ? 'ok' : 'todo';
+  let server = 'checking';
+  if (quick && !quick.claude) server = 'todo';
+  else if (quick) server = { connected: 'ok', missing: 'todo', unknown: 'unknown', no_claude: 'todo' }[mcp] || 'checking';
+  const skills = !quick ? 'checking' : quick.skills.installed ? 'ok' : 'todo';
+  return { claude, server, skills, all: claude === 'ok' && server === 'ok' && skills === 'ok' };
+}
+function exampleSentence() {
+  return t('link.example', { keyword: S.query.trim() || t('link.example.keyword'), country: region(S.country) });
+}
+function linkMessages(L, states) {
+  let html = '';
+  if (L.error) {
+    const code = L.error.error;
+    const key = `link.err.${code}`;
+    html += `<p class="way-msg warn">${esc(T[S.lang][key] || T.en[key] ? t(key) : t('link.err.other'))}</p>`;
+    if (code === 'claude_missing') html += `<p class="way-msg"><a href="${INSTALL_URL}" target="_blank" rel="noopener noreferrer">${esc(t('link.install'))}</a></p>`;
+    if (code === 'command_failed' && L.error.detail) html += `<p class="way-detail"><span>${esc(t('link.detail'))}</span> ${esc(L.error.detail)}</p>`;
+  } else if (!S.link.quick || S.link.quick.claude === false) {
+    if (S.link.quick) html += `<p class="way-msg warn">${esc(t('link.err.claude_missing'))}</p><p class="way-msg"><a href="${INSTALL_URL}" target="_blank" rel="noopener noreferrer">${esc(t('link.install'))}</a></p>`;
+  }
+  if (L.result && L.result.ok) {
+    const copied = L.result.skills.copied;
+    html += `<p class="way-msg">${esc(t(L.result.server === 'added' ? 'link.done.added' : 'link.done.already'))}${copied ? ` ${esc(count(copied, 'link.done.skills'))}` : ''}</p>`;
+    if (L.result.skills.kept.length) html += `<p class="way-msg warn">${esc(t('link.kept', { n: num(L.result.skills.kept.length) }))} <button class="linklike" data-action="link-overwrite-open">${esc(t('link.kept.btn'))}</button></p>`;
+  }
+  return html;
+}
+function renderWay() {
+  const el = $('#way');
+  if (!el) return;
+  const L = S.link, states = linkStates();
+  const mark = (name, state) => `<li class="${state}"><span class="mark" aria-hidden="true"></span><span>${esc(t(`link.${name}`))}</span>
+      <span class="state">${esc(t(`link.state.${{ ok: 'ok', todo: 'todo', checking: 'checking', unknown: 'unknown' }[state]}`))}</span></li>`;
+  const busy = L.running || !L.quick || !L.quick.claude || states.all;
+  const connectLabel = L.running ? 'link.btn.running' : states.all ? 'link.btn.done' : 'link.btn';
+  const showTest = states.all || (L.result && L.result.ok);
+  const testNote = L.test ? `<p class="way-msg" role="status">${esc(t(L.test === 'running' ? 'link.test.running' : `link.test.${L.test}`))}</p>` : '';
+  const after = showTest ? `<div class="way-after"><p class="way-label">${esc(t('link.example.label'))}</p>
+      <div class="cmdline"><p class="command">${esc(exampleSentence())}</p><button class="btn quiet small" data-action="link-copy">${esc(t('link.copy'))}</button></div>
+      ${L.copy ? `<p class="way-msg${L.copy === 'failed' ? ' warn' : ''}" role="status">${esc(t(L.copy === 'ok' ? 'link.copied' : 'link.copy.failed'))}</p>` : ''}
+      <p class="way-msg">${esc(t('link.restart'))}</p></div>` : '';
+  el.innerHTML = `<h2 class="way-title">${esc(t('way.title'))}</h2><p class="way-lead">${esc(t('way.lead'))}</p>
+    <div class="ways">
+      <article class="way-card">
+        <p class="way-badge">${esc(t('way.a.badge'))}</p>
+        <h3>${esc(t('way.a.title'))}</h3><p>${esc(t('way.a.text'))}</p>
+        <ul class="checks">${mark('claude', states.claude)}${mark('mcp', states.server)}${mark('skills', states.skills)}</ul>
+        ${linkMessages(L, states)}
+        <div class="way-act"><button class="btn" data-action="link-open" ${busy ? 'disabled' : ''}>${esc(t(connectLabel))}</button>
+          ${showTest ? `<button class="btn quiet" data-action="link-test" ${L.test === 'running' ? 'disabled' : ''}>${esc(t('link.test'))}</button>` : ''}</div>
+        ${testNote}${after}
+      </article>
+      <article class="way-card">
+        <p class="way-badge"></p>
+        <h3>${esc(t('way.b.title'))}</h3><p>${esc(t('way.b.text'))}</p>
+        <div class="way-act"><button class="btn" disabled>${esc(t('way.b.btn'))}</button><span class="muted">${esc(t('way.b.soon'))}</span></div>
+      </article>
+      <article class="way-card">
+        <p class="way-badge"></p>
+        <h3>${esc(t('way.c.title'))}</h3><p>${esc(t('way.c.text'))}</p>
+        <div class="way-act"><button class="btn" data-action="way-copy">${esc(t('way.c.btn'))}</button></div>
+        ${L.hint ? `<p class="way-msg" role="status">${esc(t('way.c.hint'))}</p>` : ''}
+      </article>
+    </div>
+    <p class="way-how"><button class="linklike" data-action="how-open">${esc(t('way.how'))}</button></p>`;
+}
+async function loadLink() {
+  const L = S.link;
+  L.mcp = 'checking';
+  try { L.quick = await api('/api/link/status'); } catch { L.quick = { claude: false, skills: { installed: false, modified: [] }, command: '', skills_folder: '~/.claude/skills' }; }
+  renderWay();
+  if (L.quick.claude) {
+    try { L.mcp = (await api('/api/link/mcp')).state; } catch { L.mcp = 'unknown'; }
+  } else L.mcp = 'no_claude';
+  renderWay();
+}
+function newToken() {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+async function runConnect(overwrite) {
+  const L = S.link;
+  L.running = true; L.error = null; L.result = null; L.test = null; renderWay();
+  const token = newToken();
+  try {
+    L.result = await api('/api/link/connect', { method: 'POST', headers: { 'X-Link-Token': token }, body: { token, overwrite_skills: overwrite } });
+  } catch (error) {
+    L.error = { error: (error.data && error.data.error) || 'other', detail: error.data && error.data.detail };
+  }
+  L.running = false;
+  await loadLink();
+}
+async function testLink() {
+  const L = S.link;
+  L.test = 'running'; renderWay();
+  try {
+    const { state } = await api('/api/link/mcp');
+    L.mcp = state;
+    L.test = state === 'connected' ? 'ok' : state === 'unknown' ? 'unknown' : 'no';
+  } catch { L.test = 'unknown'; }
+  renderWay();
+}
+function linkDialog(overlay) {
+  const q = S.link.quick || {};
+  if (overlay.overwrite) {
+    const kept = S.link.result && S.link.result.skills ? S.link.result.skills.kept : [];
+    const files = kept.length ? kept : ((q.skills && q.skills.modified) || []);
+    return `<div class="dialog" role="dialog" aria-modal="true"><h2>${esc(t('link.overwrite.title'))}</h2><p class="lead">${esc(t('link.overwrite.lead'))}</p>
+      <ul class="files">${files.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
+      <div class="foot"><button class="btn quiet" data-action="close">${esc(t('link.cancel'))}</button><button class="btn" data-action="link-go">${esc(t('link.overwrite.go'))}</button></div></div>`;
+  }
+  return `<div class="dialog wide" role="dialog" aria-modal="true"><h2>${esc(t('link.confirm.title'))}</h2><p class="lead">${esc(t('link.confirm.lead'))}</p>
+    <div class="cmdline"><p class="command">${esc(q.command || '')}</p></div>
+    <p class="smallnote">${esc(t('link.confirm.skills', { folder: q.skills_folder || '' }))}</p>
+    <div class="foot"><button class="btn quiet" data-action="close">${esc(t('link.cancel'))}</button><button class="btn" data-action="link-go">${esc(t('link.confirm.go'))}</button></div></div>`;
+}
+function howDialog(overlay) {
+  const n = overlay.step;
+  return `<div class="dialog" role="dialog" aria-modal="true" aria-label="${esc(t('how.title'))}"><p class="how-step">${esc(t('how.step', { n }))}</p>
+    <h2 class="how-title">${esc(t(`how.${n}.title`))}</h2><p class="lead">${esc(t(`how.${n}.text`))}</p>
+    <div class="foot"><button class="btn quiet" data-action="how-prev" ${n === 1 ? 'disabled' : ''}>${esc(t('how.prev'))}</button>
+      ${n === 3 ? `<button class="btn" data-action="close">${esc(t('button.close'))}</button>` : `<button class="btn" data-action="how-next">${esc(t('how.next'))}</button>`}</div></div>`;
 }
 function updateProgress() {
   const text = $('#ptext');
@@ -684,6 +843,8 @@ function renderOverlay() {
   else if (overlay.type === 'confirm') inner = confirmDialog();
   else if (overlay.type === 'project') inner = projectDialog(overlay);
   else if (overlay.type === 'brief') inner = briefDialog(overlay);
+  else if (overlay.type === 'link-confirm') inner = linkDialog(overlay);
+  else if (overlay.type === 'how') inner = howDialog(overlay);
   el.innerHTML = `<div class="scrim" data-action="close"></div>${inner}`;
 }
 function render() { renderTop(); renderSearch(); renderResults(); renderOverlay(); }
@@ -775,6 +936,20 @@ const ACTIONS = {
   theme(value) { S.theme = value; store.set('theme', value); renderTop(); },
   lang(value) { S.lang = value; store.set('lang', value); render(); },
   level(value) { S.level = value; renderSearch(); refreshEstimate(); },
+  'lv-toggle'(value) { S.open[value] = !S.open[value]; store.set(LEVELS_OPEN, JSON.stringify(S.open)); renderSearch(); },
+  'link-open'() { S.overlay = { type: 'link-confirm', overwrite: false }; renderOverlay(); },
+  'link-overwrite-open'() { S.overlay = { type: 'link-confirm', overwrite: true }; renderOverlay(); },
+  'link-go'() { const overwrite = S.overlay.overwrite; S.overlay = null; renderOverlay(); runConnect(overwrite); },
+  'link-test': testLink,
+  async 'link-copy'() { S.link.copy = (await copyText(exampleSentence())) ? 'ok' : 'failed'; renderWay(); },
+  'way-copy'() {
+    const r = S.result;
+    if (r && S.jobId && S.resultMode !== 'compare' && r.request && r.request.level !== 'data') { S.link.hint = false; renderWay(); return makeBrief(); }
+    S.link.hint = true; renderWay();
+  },
+  'how-open'() { S.overlay = { type: 'how', step: 1 }; renderOverlay(); },
+  'how-next'() { S.overlay.step = Math.min(3, S.overlay.step + 1); renderOverlay(); },
+  'how-prev'() { S.overlay.step = Math.max(1, S.overlay.step - 1); renderOverlay(); },
   deep(value) { S.deep = Number(value); renderSearch(); renderOverlay(); refreshEstimate(); },
   submit, guide() { S.overlay = { type: 'guide' }; renderOverlay(); },
   project() { openProject(false); },
@@ -833,4 +1008,5 @@ document.addEventListener('keydown', (event) => {
   } catch { /* the page still works without the saved card */ }
   render();
   refreshEstimate();
+  loadLink();
 })();

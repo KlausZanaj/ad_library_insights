@@ -306,10 +306,11 @@ def site(tmp_path_factory):
 def page_of(site):
     contexts, errors = [], []
 
-    def open_page(lang="it", result=None):
+    def open_page(lang="it", result=None, link=None, hold=False):
         context = site.browser.new_context(viewport={"width": 1440, "height": 900})
         contexts.append(context)
         page = context.new_page()
+        _serve_link(page, *(link or (NO_CLAUDE, "no_claude")), hold=hold)      # never ask the real Claude Code
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.add_init_script(f"try {{ localStorage.setItem('lang', '{lang}'); }} catch (e) {{}}")
         page.goto(site.base)
@@ -521,8 +522,7 @@ def test_table_note_agrees_with_one_concept_and_texts_say_concepts():
     strings = json.loads((STATIC / "strings.json").read_text(encoding="utf-8"))
     for language in ("it", "en"):
         assert "t.note" in strings[language] and "t.note.one" in strings[language]
-    assert "concetti" in strings["it"]["level.data.2"] and "concepts" in strings["en"]["level.data.2"]
-    assert "annunci" not in strings["it"]["level.data.2"] and "ads" not in strings["en"]["level.data.2"]
+    assert "concetto" in strings["it"]["lv.data.3"] and "concept" in strings["en"]["lv.data.3"]
     assert "concetti" in strings["it"]["d.reach.unread"] and "concepts" in strings["en"]["d.reach.unread"]
     assert "ads" not in strings["en"]["d.reach.unread"] and "annunci" not in strings["it"]["d.reach.unread"]
 
@@ -601,3 +601,143 @@ def test_page_shows_the_initials_when_the_logo_of_a_page_does_not_load(site, pag
     page.wait_for_selector("section.rhead span.avatar.txt")
     assert page.inner_text("section.rhead span.avatar.txt") == "ND"
     assert page.locator("section.rhead img.avatar").count() == 0
+
+
+# --- levels and connection screen ----------------------------------------------------------
+
+READY = {"claude": True, "skills": {"available": True, "total": 4, "missing": 4, "modified": [], "installed": False},
+         "command": "claude mcp add ad-library-insights --scope user -- python -m ad_library_insights",
+         "skills_folder": "~/.claude/skills"}
+DONE = {**READY, "skills": {**READY["skills"], "missing": 0, "installed": True}}
+NO_CLAUDE = {**READY, "claude": False}
+
+
+def _serve_link(page, status, mcp, hold=False):
+    """Answer the three connection requests with canned data. ``page.posted`` collects what the page
+    sent to connect; with ``hold`` the slow check stays pending in ``page.held`` until the test answers."""
+    page.posted, page.held = [], []
+
+    def on_mcp(route):
+        if hold:
+            page.held.append(route)
+        else:
+            route.fulfill(json={"state": mcp})
+
+    def on_connect(route):
+        page.posted.append({"headers": route.request.headers, "body": json.loads(route.request.post_data)})
+        route.fulfill(json={"ok": True, "server": "added", "skills": {"copied": 4, "kept": []}})
+
+    page.route("**/api/link/status", lambda route: route.fulfill(json=status))
+    page.route("**/api/link/mcp", on_mcp)
+    page.route("**/api/link/connect", on_connect)
+
+
+def _open_rows(page):
+    return page.evaluate("[...document.querySelectorAll('.lvl')].map((r) => r.classList.contains('open'))")
+
+
+def _count(page, selector):
+    return page.locator(selector).count()
+
+
+def test_page_level_rows_open_and_close_and_remember_their_state(site, page_of):
+    page = page_of("it")
+    page.wait_for_selector(".lvl")
+    assert _open_rows(page) == [False, False, True]
+    assert "Quali annunci dei tuoi concorrenti fanno davvero soldi?" in page.inner_text(".levels-head")
+    assert _count(page, "#lv-plan li") == 4 and _count(page, "#lv-data li") == 4
+    assert page.is_hidden("#lv-data") and page.is_visible("#lv-plan")
+    page.click(".lvl-head[data-value=data]")
+    page.click(".lvl-head[data-value=plan]")
+    assert page.evaluate("[...document.querySelectorAll('.lvl-head')].map((b) => b.getAttribute('aria-expanded'))") == ["true", "false", "false"]
+    page.reload()
+    page.wait_for_selector(".lvl")
+    assert _open_rows(page) == [True, False, False]
+    # opening a row does not choose the level; the button inside does
+    assert page.evaluate("S.level") == "data"
+    page.click(".lvl-head[data-value=plan]")
+    page.click("#lv-plan [data-action=level]")
+    assert page.evaluate("S.level") == "plan" and "Livello scelto" in page.inner_text("#lv-plan .lvl-foot")
+
+
+def test_page_connection_shows_three_states_and_runs_only_after_the_confirmation(site, page_of):
+    page = page_of("it", link=(READY, "missing"))
+    page.wait_for_function("document.querySelectorAll('.checks li.todo').length === 2")
+    assert _count(page, ".checks li.ok") == 1 and "da fare" in page.inner_text(".checks")
+    page.click("[data-action=link-open]")
+    page.wait_for_selector(".dialog .command")
+    assert page.inner_text(".dialog .command") == READY["command"] and page.posted == []
+    page.click(".dialog [data-action=close]")
+    assert page.posted == []
+    page.click("[data-action=link-open]")
+    _serve_link(page, DONE, "connected")
+    page.click("[data-action=link-go]")
+    page.wait_for_function("document.querySelectorAll('.checks li.ok').length === 3")
+    assert len(page.posted) == 1
+    token = page.posted[0]["body"]["token"]
+    assert page.posted[0]["headers"]["x-link-token"] == token and len(token) == 32
+    assert "Fatto" in page.inner_text(".way-card") and "Copiati 4" in page.inner_text(".way-card")
+    assert page.inner_text("[data-action=link-open]") == "Già collegato" and page.is_disabled("[data-action=link-open]")
+    assert "riaprila" in page.inner_text(".way-after")
+    page.click("[data-action=link-test]")
+    page.wait_for_function("document.querySelector('.way-card').innerText.includes('vede il programma')")
+
+
+def test_page_connection_says_when_the_slow_check_is_running(site, page_of):
+    page = page_of("it", link=(READY, "connected"), hold=True)
+    page.wait_for_function("document.querySelectorAll('.checks li.checking').length === 1")
+    assert "controllo in corso" in page.inner_text(".checks")
+    assert _count(page, ".checks li.ok") == 1                       # Claude Code found: shown without waiting
+    page.held[0].fulfill(json={"state": "connected"})
+    page.wait_for_function("document.querySelectorAll('.checks li.checking').length === 0")
+    assert _count(page, ".checks li.ok") == 2 and _count(page, ".checks li.todo") == 1
+
+
+def test_page_connection_without_claude_code_explains_and_links_to_the_install_page(site, page_of):
+    page = page_of("it", link=(NO_CLAUDE, "no_claude"))
+    page.wait_for_function("document.querySelector('.way-card a')")
+    assert "non è stato trovato" in page.inner_text(".way-card")
+    assert page.get_attribute(".way-card a", "href").startswith("https://") and page.is_disabled("[data-action=link-open]")
+    assert _count(page, ".checks li.ok") == 0 and _count(page, "[data-action=link-test]") == 0
+
+
+def test_page_connection_reports_a_failed_command_and_a_kept_skill_file(site, page_of):
+    page = page_of("it", link=(READY, "missing"))
+    page.wait_for_function("document.querySelectorAll('.checks li.todo').length === 2")
+    page.route("**/api/link/connect", lambda route: route.fulfill(
+        status=500, json={"ok": False, "error": "command_failed", "detail": "boom: could not write"}))
+    page.click("[data-action=link-open]")
+    page.click("[data-action=link-go]")
+    page.wait_for_selector(".way-detail")
+    assert "boom: could not write" in page.inner_text(".way-detail") and "non è riuscito" in page.inner_text(".way-card")
+    page.unroute("**/api/link/connect")
+    page.route("**/api/link/connect", lambda route: route.fulfill(json={
+        "ok": True, "server": "already", "skills": {"copied": 0, "kept": ["alpha/SKILL.md"]}}))
+    page.click("[data-action=link-open]")
+    page.click("[data-action=link-go]")
+    page.wait_for_selector("[data-action=link-overwrite-open]")
+    assert "Era già collegato" in page.inner_text(".way-card")
+    page.click("[data-action=link-overwrite-open]")
+    page.wait_for_selector(".dialog .files")
+    assert "alpha/SKILL.md" in page.inner_text(".dialog .files")
+
+
+def test_page_copy_the_text_card_needs_a_search_with_level_two_or_three(site, page_of):
+    page = page_of("it")
+    page.click("[data-action=way-copy]")
+    assert "Prima fai una ricerca" in page.inner_text(".ways")
+    page = page_of("it", _result(site))
+    page.click("[data-action=way-copy]")
+    page.wait_for_selector(".dialog [data-action=copy-brief]")
+
+
+def test_page_how_it_works_has_three_screens_and_the_plan_button_is_marked_soon(site, page_of):
+    page = page_of("en")
+    assert page.is_disabled(".ways .way-card:nth-child(2) button") and "coming soon" in page.inner_text(".ways")
+    page.click("[data-action=how-open]")
+    assert "Step 1 of 3" in page.inner_text(".dialog") and page.is_disabled("[data-action=how-prev]")
+    page.click("[data-action=how-next]")
+    page.click("[data-action=how-next]")
+    assert "Step 3 of 3" in page.inner_text(".dialog") and "Ask for the plan" in page.inner_text(".dialog")
+    page.click(".dialog [data-action=close]")
+    assert _count(page, ".dialog") == 0
