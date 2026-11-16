@@ -226,7 +226,11 @@ def read_ceiling(concepts: int) -> int:
 
 def _by_list_order(ranked: list[dict]) -> list[dict]:
     """Concepts in the order of the library's own list: by their most shown ad."""
-    keyed = [(ad.get("impression_rank") or 10 ** 9, place, ad) for place, ad in enumerate(ranked)]
+    keyed, seen = [], set()
+    for place, ad in enumerate(ranked):
+        if ad["library_id"] not in seen:             # a concept handed in twice is opened once
+            seen.add(ad["library_id"])
+            keyed.append((ad.get("impression_rank") or 10 ** 9, place, ad))
     return [ad for _, _, ad in sorted(keyed, key=lambda item: item[:2])]
 
 
@@ -248,12 +252,20 @@ def cards_to_read(ranked: list[dict], concepts: int, skip: frozenset | set = fro
     the most ads opened in all (``read_ceiling`` when not given).
     """
     ceiling = read_ceiling(concepts) if ceiling is None else ceiling
-    chosen = [ad for ad in _by_list_order(ranked) if ad["library_id"] not in skip][:max(0, concepts)]
-    leads = [(ad, ad["library_id"]) for ad in chosen][:max(0, ceiling)]
+    chosen = first_concepts(ranked, concepts, skip)[:max(0, ceiling)]
+    return [(ad, ad["library_id"]) for ad in chosen] + more_cards(chosen, ceiling - len(chosen))
+
+
+def first_concepts(ranked: list[dict], concepts: int, skip: frozenset | set = frozenset()) -> list[dict]:
+    """The ``concepts`` most shown concepts of the library's list, leaving out the ones in ``skip``."""
+    return [ad for ad in _by_list_order(ranked) if ad["library_id"] not in skip][:max(0, concepts)]
+
+
+def more_cards(chosen: list[dict], room: int) -> list[tuple[dict, str]]:
+    """Up to ``room`` second and third ads of the concepts in ``chosen``, the most shown first."""
     extras = sorted((card.get("impression_rank") or 10 ** 9, card["library_id"], place)
                     for place, ad in enumerate(chosen) for card in _other_cards(ad))
-    room = max(0, ceiling - len(leads))
-    return leads + [(chosen[place], card_id) for _, card_id, place in extras[:room]]
+    return [(chosen[place], card_id) for _, card_id, place in extras[:max(0, room)]]
 
 
 def cards_left_out(targets: list[tuple[dict, str]]) -> int:

@@ -5,7 +5,7 @@ import asyncio
 from collections import defaultdict
 from datetime import date, datetime, timezone
 
-from . import copy_analysis, details, media, rating, signals
+from . import consumption, copy_analysis, details, media, rating, signals
 from .client import (AdLibraryClient, FetchResult, build_page_url, build_search_url,
                      normalise_country)
 
@@ -172,39 +172,60 @@ async def deepen(client: AdLibraryClient, result: dict, top_n: int = 10, frames:
 
     The concepts are taken in the order of the library's own list (total impressions),
     not by a rating that reach itself is about to change. The most shown ad of each is
-    opened, then the second and third ad of the same concepts while the ceiling of ads
-    opened allows (``rating.read_ceiling``): their reach is added up, so a concept split
-    over many ads is not judged on one of them. When an ad could not be opened and the
-    ceiling leaves room, the next concepts of the list are opened in its place, once, so
-    that ``top_n`` concepts are read where the list holds that many. ``deep`` says how
+    opened first. When one could not be opened, the next concepts of the list are opened
+    in its place, once. Only then, while the ceiling of ads opened allows
+    (``rating.read_ceiling``), come the second and third ad of the same concepts: their
+    reach is added up, so a concept split over many ads is not judged on one of them.
+    A concept counts as read when at least one of its ads was opened. ``deep`` says how
     many concepts were read, how many ads were opened and whether the ceiling stopped
     the reading. Once reach is read the ads are rated again and the list is re-sorted.
     Thumbnails and page logos are saved locally at the same time; with ``frames`` three
-    stills of each video are saved too.
+    stills of each video are saved too, for the first ``consumption.ADS_WITH_FRAMES``
+    concepts of the list.
     """
     ceiling = rating.read_ceiling(top_n) if ceiling is None else ceiling
-    targets = rating.cards_to_read(result["ads"], top_n, ceiling=ceiling)
-    if not targets:
+    planned = len(rating.cards_to_read(result["ads"], top_n, ceiling=ceiling))
+    chosen = rating.first_concepts(result["ads"], top_n)[:max(0, ceiling)]
+    if not chosen:
         return result
+    targets, outcomes, with_stills = [], {}, set()
 
     async def read(batch):
         heads = [ad for ad, card_id in batch if card_id == ad["library_id"]]
-        clips = {ad["library_id"]: ad["video_url"] for ad in heads if ad.get("video_url")} if frames else {}
-        return await client.read_details(result["url"], [card_id for _, card_id in batch],
-                                         result.get("country") or None, clips, on_progress, use_cache)
+        clips = {}
+        for ad in heads:                       # stills only for the first concepts of the list, as the estimate says
+            if frames and ad.get("video_url") and len(with_stills) < consumption.ADS_WITH_FRAMES:
+                with_stills.add(ad["library_id"])
+                clips[ad["library_id"]] = ad["video_url"]
+        already = len(targets)
 
-    outcomes = await read(targets)
-    unread = sum(1 for ad, card_id in targets
-                 if card_id == ad["library_id"] and not (outcomes.get(card_id) or {}).get("ok"))
-    if unread and len(targets) < ceiling:
-        # a concept that could not be opened is replaced by the next one of the list, within the ceiling
-        room = ceiling - len(targets)
-        more = rating.cards_to_read(result["ads"], min(unread, room), skip={ad["library_id"] for ad, _ in targets},
-                                    ceiling=room)
-        if more:
-            outcomes.update(await read(more))
-            targets = targets + more
+        def report(event):                     # one count over the whole reading, not one per batch
+            if on_progress:
+                on_progress({**event, "done": already + event.get("done", 0),
+                             "total": max(planned, already + event.get("total", 0))})
+
+        outcomes.update(await client.read_details(result["url"], [card_id for _, card_id in batch],
+                                                  result.get("country") or None, clips,
+                                                  report if on_progress else None, use_cache))
+        targets.extend(batch)
+
+    def opened(card_id):
+        return bool((outcomes.get(card_id) or {}).get("ok"))
+
+    # 1. the most shown ad of every concept asked for
+    await read([(ad, ad["library_id"]) for ad in chosen])
+    # 2. a concept that could not be opened is replaced by the next one of the list, once
+    missing = sum(1 for ad in chosen if not opened(ad["library_id"]))
+    if missing and len(targets) < ceiling:
+        tried = {ad["library_id"] for ad in chosen}
+        again = rating.first_concepts(result["ads"], min(missing, ceiling - len(targets)), skip=tried)
+        if again:
+            await read([(ad, ad["library_id"]) for ad in again])
+    # 3. only then the second and third ad of those concepts, while the ceiling allows
     leads = [ad for ad, card_id in targets if card_id == ad["library_id"]]
+    extras = rating.more_cards(leads, ceiling - len(targets))
+    if extras:
+        await read(extras)
     failed = []
     for ad, card_id in targets:
         outcome = outcomes.get(card_id) or {"ok": False, "error": "not read"}
@@ -236,10 +257,14 @@ async def deepen(client: AdLibraryClient, result: dict, top_n: int = 10, frames:
     signals.annotate(result["ads"], library_total=result.get("library_total"))
     signals.refresh(result["signals"], result["ads"], result.get("country") or None)
     result["advertisers"] = advertiser_table(result["ads"])           # ratings changed with reach
-    with_reach = sum(1 for ad in leads if (ad.get("reach") or {}).get("available"))
-    concepts_read = sum(1 for ad in leads if ad["library_id"] not in failed)
+    # a concept is read when at least one of its ads was opened; it has reach when one of them carries it
+    with_reach = sum(1 for ad in leads if (ad.get("reach") or {}).get("available")
+                     or any(found.get("available") for found in (ad.get("card_reach") or {}).values()))
+    concepts_read = len({ad["library_id"] for ad, card_id in targets if opened(card_id)})
     left_out = rating.cards_left_out(targets)
-    capped = len(targets) >= ceiling and (left_out > 0 or concepts_read < min(top_n, len(result["ads"])))
+    untried = len(rating.first_concepts(result["ads"], len(result["ads"]), skip={ad["library_id"] for ad in leads}))
+    # the ceiling stopped something only if ads were left closed, or concepts asked for could still be tried
+    capped = len(targets) >= ceiling and (left_out > 0 or (concepts_read < top_n and untried > 0))
     stopped = (f"Stopped at the ceiling of {ceiling} ads opened: {concepts_read} of the {top_n} concepts asked for "
                f"were read; {left_out} more ads of these concepts were left closed, so their reach is a floor."
                ) if capped else None

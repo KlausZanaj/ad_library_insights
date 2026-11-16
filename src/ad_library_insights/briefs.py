@@ -538,7 +538,7 @@ def compose(level: str, result: dict, ads: int = 10, frames: bool = False,
     name = packs.subject_name(result)
     slices, pictures = packs.sections(result, ads, frames)
 
-    reach = any(ad.get("reach_per_day") is not None for ad in result["ads"][:max(1, int(ads))])
+    reach = any(ad.get("reach_per_day") is not None for ad in packs.chosen(result, ads))
     parts = [f"# {name} · {result.get('country') or ''}".rstrip(" ·"), "", instructions(level, name, lang, reach)]
     if level == "plan":
         parts += [project_section(project, lang, result)]

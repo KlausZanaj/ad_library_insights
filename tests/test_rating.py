@@ -678,3 +678,11 @@ def test_three_ads_count_even_when_the_most_shown_one_could_not_be_read():
     one[0]["card_reach"] = {f"c{n}": figure for n in range(2, 6)}
     rated = signals.annotate(one)[0]
     assert rated["reach_cards_read"] == 3 and rated["reach_total"] == 3_000 and rated["reach_cards_dated"] == 3
+
+
+def test_a_concept_handed_in_twice_is_opened_once():
+    cards = [ad(f"z{n}", body="One text", advertiser="Big", impression_rank=n, video_url=f"https://v/{n}.mp4") for n in range(1, 4)]
+    cards += [ad("old", started="2025-01-01", body="Old text", advertiser="Small", impression_rank=6)]
+    ranked = rating.group_concepts(cards, AS_OF)
+    chosen = [card for _, card in rating.cards_to_read(ranked + ranked[:1], 10)]
+    assert sorted(chosen) == ["old", "z1", "z2", "z3"]

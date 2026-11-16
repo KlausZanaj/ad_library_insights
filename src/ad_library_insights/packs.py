@@ -144,6 +144,31 @@ def _head(rank: int, ad: dict) -> str:
             + f"\ntype hint from the format: {type_hint(ad)}")
 
 
+def was_read(ad: dict) -> bool:
+    """At least one ad of the concept was opened to read its reach and audience."""
+    return ad.get("reach") is not None or bool(ad.get("card_reach"))
+
+
+def chosen(result: dict, ads: int) -> list[dict]:
+    """The concepts a pack holds: the ones that were opened first, then the others, each in order of rating.
+
+    After reach is read the list is rated again, and a concept that was never opened can
+    rise above one that was. The pack is about the concepts read, so those come first.
+    """
+    ranked = result["ads"]
+    return ([ad for ad in ranked if was_read(ad)] + [ad for ad in ranked if not was_read(ad)])[:max(1, int(ads))]
+
+
+def _contents(ads: list[dict]) -> str:
+    read = sum(1 for ad in ads if was_read(ad))
+    if not read:
+        return f"the top {len(ads)} concepts by rating; none of them was opened to read reach"
+    if read == len(ads):
+        return (f"the {len(ads)} concepts whose ads were opened (the most shown in Meta's list), in order of rating")
+    return (f"{len(ads)} concepts: the {read} whose ads were opened (the most shown in Meta's list), then "
+            f"{len(ads) - read} that were not opened; each group in order of rating")
+
+
 def overview(result: dict, ads: list[dict]) -> str:
     found = result["signals"]
     page = result.get("page") or {}
@@ -160,7 +185,7 @@ def overview(result: dict, ads: list[dict]) -> str:
     lines += [
         f"- Collected: {result.get('fetched_at') or 'n/a'}; {result.get('ads_parsed')} ads loaded of "
         f"{active_label(found)} active; {result.get('distinct_ads')} concepts after merging",
-        f"- In this pack: the top {len(ads)} concepts by rating",
+        "- In this pack: " + _contents(ads),
         f"- Rating, 0-100, three parts that always weigh the same: scale, up to {weights['scale']} points "
         f"(people reached per day in {country}; where that is not published, the position by impressions); "
         f"staying power, up to {weights['staying']} (days the concept has been running, full at "
@@ -484,10 +509,10 @@ def testing(result: dict, ads: list[dict]) -> str:
 
 def sections(result: dict, ads: int = 10, frames: bool = False) -> tuple[dict[str, str], list[dict]]:
     """The five slices for the top ``ads`` of a result, and the pictures the creative slice names."""
-    chosen = result["ads"][:max(1, int(ads))]
-    creative_text, pictures = creative(result, chosen, frames)
-    return ({"overview": overview(result, chosen), "copy": copy(result, chosen), "creative": creative_text,
-             "reach": reach(result, chosen), "testing": testing(result, chosen)}, pictures)
+    picked = chosen(result, ads)
+    creative_text, pictures = creative(result, picked, frames)
+    return ({"overview": overview(result, picked), "copy": copy(result, picked), "creative": creative_text,
+             "reach": reach(result, picked), "testing": testing(result, picked)}, pictures)
 
 
 def folder_for(result: dict, level: str, directory: Path | None = None, today: date | None = None) -> Path:

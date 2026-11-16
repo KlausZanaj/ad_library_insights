@@ -648,3 +648,24 @@ def test_a_goal_that_is_not_one_plain_total_is_asked(goal):
 ])
 def test_other_figures_pass_only_when_they_are_plainly_something_else(goal, a_day):
     assert briefs.orders_per_day(goal) == a_day
+
+
+def test_the_pack_holds_the_concepts_that_were_read_not_the_ones_that_rose_above_them():
+    # after reach is read the list is rated again: on a saved search 4 of the "top 10" had never been opened
+    def concept(name, score, read):
+        made = {"library_id": name, "score": score}
+        if read:
+            made["reach"] = {"available": True}
+        return made
+    result = {"ads": [concept("unread-high", 90, False), concept("a", 80, True), concept("b", 70, True),
+                      concept("unread-low", 10, False)]}
+    assert [ad["library_id"] for ad in packs.chosen(result, 2)] == ["a", "b"]
+    assert [ad["library_id"] for ad in packs.chosen(result, 3)] == ["a", "b", "unread-high"]
+    assert "the 2 concepts whose ads were opened" in packs._contents(packs.chosen(result, 2))
+    assert "the 2 whose ads were opened" in packs._contents(packs.chosen(result, 3))
+    assert "then 1 that were not opened" in packs._contents(packs.chosen(result, 3))
+    nothing = {"ads": [concept("x", 5, False), concept("y", 4, False)]}
+    assert [ad["library_id"] for ad in packs.chosen(nothing, 1)] == ["x"]
+    assert "none of them was opened" in packs._contents(packs.chosen(nothing, 1))
+    # a concept read only through its second ad counts as read
+    assert packs.was_read({"library_id": "z", "card_reach": {"z2": {"available": True}}})
