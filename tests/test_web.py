@@ -591,3 +591,13 @@ def test_page_one_hour_between_searches_reads_in_the_singular(page_of):
         page = page_of(lang)
         assert page.evaluate("oneOrMore('gap.hours', 1)") == one
         assert page.evaluate("oneOrMore('gap.hours', 3)") == many
+
+
+def test_page_shows_the_initials_when_the_logo_of_a_page_does_not_load(site, page_of):
+    result = _result(site)
+    result["page"]["name"] = "Northwind Desks"
+    result["page"]["logo"] = "/media/no-such-logo.jpg"                   # the picture is not there: the request fails
+    page = page_of("it", result)
+    page.wait_for_selector("section.rhead span.avatar.txt")
+    assert page.inner_text("section.rhead span.avatar.txt") == "ND"
+    assert page.locator("section.rhead img.avatar").count() == 0

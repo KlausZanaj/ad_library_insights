@@ -85,8 +85,17 @@ function dur(seconds) {
 }
 const initials = (name) => (name || '?').split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
 const avatar = (src, name, big) => (src
-  ? `<img class="avatar${big ? ' big' : ''}" src="${esc(src)}" alt="">`
+  ? `<img class="avatar${big ? ' big' : ''}" src="${esc(src)}" alt="" data-initials="${esc(initials(name))}">`
   : `<span class="avatar txt${big ? ' big' : ''}">${esc(initials(name))}</span>`);
+// a logo that does not load gives way to the initials of the page
+document.addEventListener('error', (event) => {
+  const img = event.target;
+  if (!(img instanceof HTMLImageElement) || !img.classList.contains('avatar')) return;
+  const span = document.createElement('span');
+  span.className = `avatar txt${img.classList.contains('big') ? ' big' : ''}`;
+  span.textContent = img.dataset.initials || '?';
+  img.replaceWith(span);
+}, true);
 const firstLine = (ad) => ((ad.body || '').trim().split('\n')[0] || ad.headline || '');
 
 async function api(path, options = {}) {
