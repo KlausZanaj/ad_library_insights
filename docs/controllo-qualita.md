@@ -132,6 +132,14 @@ i brief, i quattro specialisti e le due skill. Poi ha fatto un solo ripasso sull
   (intervalli come «tra 20 e 30», periodi come «300 ordini in 30 giorni» o «ogni 2 giorni», parole come
   «weekend»). Corretto: il periodo si legge solo se viene subito dopo, come parola intera e senza cifre
   in mezzo; in tutti gli altri casi il programma chiede invece di indovinare. 26 frasi sono ora nei test.
+  Un terzo revisore ha poi provato 124 frasi nuove: 51 giuste, 41 con domanda all'utente, 31 ancora
+  sbagliate («1 500 ordini al mese» letto 16,67 al giorno, «da 10 ordini al giorno a 30» letto 10,
+  «+20 ordini al giorno» letto come totale, «20 ordini al giorno lavorativo» letto 20). La regola è
+  stata riscritta: l'obiettivo si legge solo se contiene un solo numero di ordini, nessuna parola di
+  aumento o di multiplo, e dopo il periodo finisce o prosegue con una virgola o un semplice «con»,
+  «entro». Altri numeri passano solo se sono chiaramente altro (euro, percentuale, ROAS, anno,
+  scadenza). Le 29 frasi sbagliate e 11 frasi comuni che devono restare lette sono nei test. Resta
+  ambiguo «2,500 ordini al giorno», letto 2.500: un italiano potrebbe voler dire 2,5.
 
 ### Problemi medi e piccoli, corretti
 
@@ -157,11 +165,19 @@ i brief, i quattro specialisti e le due skill. Poi ha fatto un solo ripasso sull
 - **Annunci aperti e concetti non sono la stessa cosa**: chiedendo 20 annunci i concetti letti possono
   essere meno. È scritto nella skill e nello strumento; se leggere finché i concetti sono 20 è una
   decisione ancora aperta.
-- **Quattro casi piccoli emersi al ripasso**, nessuno su dati reali salvati: un annuncio letto con 0
-  persone sta sotto il suo gemello non letto (16,7 contro 30,7); nelle scarpe i 59 concetti non letti
-  hanno tutti scala 0 e si ordinano solo per giorni e creatività (prudente, non falso); un annuncio
-  letto senza data scrive «copertura non nota»; se il primo annuncio non si apre e ne vengono letti altri
-  tre, ne contano due. Restano da correggere.
+- **Nelle scarpe i 59 concetti non letti hanno tutti scala 0** e si ordinano solo per giorni e
+  creatività: è prudente, non falso.
+
+### Casi piccoli emersi al ripasso, poi corretti
+
+Nessuno toccava i dati reali salvati; la valutazione delle tre ricerche è rimasta identica.
+
+- Un annuncio letto con 0 persone stava sotto il suo gemello non letto (16,7 contro 30,7). Ora lo zero
+  letto conta come l'annuncio più debole: chi viene dopo nell'elenco e non è stato letto ha scala 0.
+- Un annuncio letto senza data scriveva «copertura non nota»: ora scrive le persone lette e che il ritmo
+  al giorno non si conosce. Con un annuncio datato e uno no, la riga dice su quanti è contato il ritmo.
+- Se il primo annuncio non si apriva e ne venivano letti altri tre, ne contavano due: ora tre.
+- Nel brief senza copertura la terza lente non parla più di persone raggiunte.
 
 ### Verificato senza trovare errori
 
