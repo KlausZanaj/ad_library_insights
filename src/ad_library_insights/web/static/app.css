@@ -284,6 +284,7 @@ table.cmp td.num { font-variant-numeric: tabular-nums; }
 .use.tight { margin-top: 18px; }
 .use.tight > div { padding: 9px 0; }
 .dialog h3.sub { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line-soft); font-size: 1rem; font-weight: 600; }
+.use + h3.sub { border-top: 0; padding-top: 0; }
 .cmdline { display: flex; align-items: center; gap: 16px; margin-top: 10px; }
 .command { flex: 1; font-family: Consolas, "Cascadia Mono", ui-monospace, monospace; font-size: .87rem; overflow-wrap: anywhere; }
 .check { display: inline-flex; align-items: center; gap: 8px; }
