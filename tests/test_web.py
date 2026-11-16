@@ -571,3 +571,16 @@ def test_project_goal_hint_fits_the_half_width_field():
     strings = json.loads((STATIC / "strings.json").read_text(encoding="utf-8"))
     for language in ("it", "en"):
         assert len(strings[language]["proj.goal.hint"]) <= 26      # the field is half the dialog: a longer hint is cut
+
+
+def test_page_one_creative_reads_in_the_singular(site, page_of):
+    for lang, expected, wrong in (("it", "1 creativit\u00e0 per questo concetto", "1 creativit\u00e0 diverse"),
+                                  ("en", "1 creative for this concept", "1 creatives")):
+        result = _result(site)
+        result["ads"][0]["creatives"] = 1
+        page = page_of(lang, result)
+        page.evaluate("(id) => { S.overlay = { type: 'ad', id }; renderOverlay(); }", result["ads"][0]["library_id"])
+        page.wait_for_selector(".drawer")
+        shown = page.inner_text(".drawer")
+        assert expected in shown and wrong not in shown
+        assert page.evaluate("t('f.reused.n.one')") in ("1 creativit\u00e0", "1 creative")
