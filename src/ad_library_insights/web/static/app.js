@@ -15,25 +15,24 @@ const store = {
   set(key, value) { try { localStorage.setItem(key, value); } catch { /* private mode */ } },
 };
 
-const LEVELS_OPEN = 'levelsOpen';
-/* Which level rows are open is remembered; the last level is open the first time. */
-function loadOpen() {
-  const open = { data: false, analysis: false, plan: true };
+const LEVELS_STATE = 'levelsState';
+/* The chosen level is the open row. Both are remembered; level 1 is chosen and open the first time. */
+function loadLevel() {
   try {
-    const saved = JSON.parse(store.get(LEVELS_OPEN, ''));
-    for (const level of ['data', 'analysis', 'plan']) if (saved && typeof saved[level] === 'boolean') open[level] = saved[level];
+    const saved = JSON.parse(store.get(LEVELS_STATE, ''));
+    if (saved && ['data', 'analysis', 'plan'].includes(saved.level)) return { level: saved.level, open: saved.open !== false };
   } catch { /* nothing saved yet */ }
-  return open;
+  return { level: 'data', open: true };
 }
+const START = loadLevel();
 
 const S = {
   lang: store.get('lang', 'it'), theme: store.get('theme', 'light'),
-  mode: 'keyword', level: 'data', deep: 10, frames: false, deepChoices: [10, 20, 50],
+  mode: 'keyword', level: START.level, levelOpen: START.open, deep: 10, frames: false, deepChoices: [10, 20, 50],
   country: 'IT', query: '', company: '', companyB: '', cmp: null, resultMode: null,
   pages: null, busy: null, job: null, result: null, jobId: null, notice: null,
   project: null, overlay: null, estimate: null, pending: null,
   history: null, news: null, sort: 'score',
-  open: loadOpen(),
   link: { quick: null, mcp: 'checking', running: false, result: null, error: null, test: null, copy: null, hint: false },
 };
 let T = { it: {}, en: {} };
@@ -191,12 +190,9 @@ function renderSearch() {
 }
 function levelRows(locked) {
   return LEVELS.map((level, index) => {
-    const open = S.open[level], chosen = S.level === level;
-    const pick = chosen
-      ? `<span class="lvl-chosen">${esc(t('lv.chosen'))}</span>`
-      : `<button class="btn quiet small" data-action="level" data-value="${level}" ${locked ? 'disabled' : ''}>${esc(t('lv.choose'))}</button>`;
+    const chosen = S.level === level, open = chosen && S.levelOpen;
     return `<div class="lvl${open ? ' open' : ''}${chosen ? ' chosen' : ''}">
-      <button class="lvl-head" data-action="lv-toggle" data-value="${level}" aria-expanded="${open}" aria-controls="lv-${level}">
+      <button class="lvl-head" data-action="lv-toggle" data-value="${level}" aria-expanded="${open}" aria-current="${chosen}" aria-controls="lv-${level}">
         <span class="lvl-n">${index + 1}</span>
         <span class="lvl-t"><strong>${esc(t(`lv.${level}.title`))}</strong><span>${esc(t(`lv.${level}.sub`))}</span></span>
         <span class="lvl-tag">${esc(t(`lv.${level}.tag`))}</span>
@@ -204,7 +200,7 @@ function levelRows(locked) {
       </button>
       <div class="lvl-body" id="lv-${level}" ${open ? '' : 'hidden'}>
         <ol>${[1, 2, 3, 4].map((n) => `<li>${esc(t(`lv.${level}.${n}`))}</li>`).join('')}</ol>
-        <div class="lvl-foot"><p>${esc(t(`lv.${level}.note`))}</p>${pick}</div>
+        <div class="lvl-foot"><p>${esc(t(`lv.${level}.note`))}</p></div>
       </div>
     </div>`;
   }).join('');
@@ -270,12 +266,12 @@ function renderWay() {
       <article class="way-card">
         <p class="way-badge"></p>
         <h3>${esc(t('way.b.title'))}</h3><p>${esc(t('way.b.text'))}</p>
-        <div class="way-act"><button class="btn" disabled>${esc(t('way.b.btn'))}</button><span class="muted">${esc(t('way.b.soon'))}</span></div>
+        <div class="way-act"><button class="btn quiet" disabled>${esc(t('way.b.btn'))}</button><span class="muted">${esc(t('way.b.soon'))}</span></div>
       </article>
       <article class="way-card">
         <p class="way-badge"></p>
         <h3>${esc(t('way.c.title'))}</h3><p>${esc(t('way.c.text'))}</p>
-        <div class="way-act"><button class="btn" data-action="way-copy">${esc(t('way.c.btn'))}</button></div>
+        <div class="way-act"><button class="btn quiet" data-action="way-copy">${esc(t('way.c.btn'))}</button></div>
         ${L.hint ? `<p class="way-msg" role="status">${esc(t('way.c.hint'))}</p>` : ''}
       </article>
     </div>
@@ -936,7 +932,16 @@ const ACTIONS = {
   theme(value) { S.theme = value; store.set('theme', value); renderTop(); },
   lang(value) { S.lang = value; store.set('lang', value); render(); },
   level(value) { S.level = value; renderSearch(); refreshEstimate(); },
-  'lv-toggle'(value) { S.open[value] = !S.open[value]; store.set(LEVELS_OPEN, JSON.stringify(S.open)); renderSearch(); },
+  /* Opening a row chooses its level; the open row is the chosen one. A row opened again closes. */
+  'lv-toggle'(value) {
+    if ((S.job || S.busy) && S.level !== value) return;
+    const changed = S.level !== value;
+    S.levelOpen = changed ? true : !S.levelOpen;
+    S.level = value;
+    store.set(LEVELS_STATE, JSON.stringify({ level: S.level, open: S.levelOpen }));
+    renderSearch();
+    if (changed) refreshEstimate();
+  },
   'link-open'() { S.overlay = { type: 'link-confirm', overwrite: false }; renderOverlay(); },
   'link-overwrite-open'() { S.overlay = { type: 'link-confirm', overwrite: true }; renderOverlay(); },
   'link-go'() { const overwrite = S.overlay.overwrite; S.overlay = null; renderOverlay(); runConnect(overwrite); },

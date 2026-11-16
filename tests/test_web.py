@@ -1,5 +1,6 @@
 """The local app, offline: API, consumption estimate, project card, brief, page texts."""
 import json
+import re
 import time
 from pathlib import Path
 
@@ -640,24 +641,42 @@ def _count(page, selector):
     return page.locator(selector).count()
 
 
-def test_page_level_rows_open_and_close_and_remember_their_state(site, page_of):
+def test_page_opening_a_level_row_chooses_it_and_the_state_is_remembered(site, page_of):
     page = page_of("it")
     page.wait_for_selector(".lvl")
-    assert _open_rows(page) == [False, False, True]
+    assert _open_rows(page) == [True, False, False] and page.evaluate("S.level") == "data"
     assert "Quali annunci dei tuoi concorrenti fanno davvero soldi?" in page.inner_text(".levels-head")
     assert _count(page, "#lv-plan li") == 4 and _count(page, "#lv-data li") == 4
-    assert page.is_hidden("#lv-data") and page.is_visible("#lv-plan")
-    page.click(".lvl-head[data-value=data]")
-    page.click(".lvl-head[data-value=plan]")
-    assert page.evaluate("[...document.querySelectorAll('.lvl-head')].map((b) => b.getAttribute('aria-expanded'))") == ["true", "false", "false"]
+    assert page.is_visible("#lv-data") and page.is_hidden("#lv-plan")
+    assert _count(page, ".lvl-body .btn") == 0                         # no button to choose: opening chooses
+    page.click(".lvl-head[data-value=plan]")                           # opens level 3 and closes level 1
+    assert _open_rows(page) == [False, False, True] and page.evaluate("S.level") == "plan"
+    assert page.evaluate("[...document.querySelectorAll('.lvl')].map((r) => r.classList.contains('chosen'))") == [False, False, True]
     page.reload()
     page.wait_for_selector(".lvl")
-    assert _open_rows(page) == [True, False, False]
-    # opening a row does not choose the level; the button inside does
-    assert page.evaluate("S.level") == "data"
-    page.click(".lvl-head[data-value=plan]")
-    page.click("#lv-plan [data-action=level]")
-    assert page.evaluate("S.level") == "plan" and "Livello scelto" in page.inner_text("#lv-plan .lvl-foot")
+    assert _open_rows(page) == [False, False, True] and page.evaluate("S.level") == "plan"
+    page.click(".lvl-head[data-value=plan]")                           # the open row closes; the level stays chosen
+    assert _open_rows(page) == [False, False, False] and page.evaluate("S.level") == "plan"
+    page.reload()
+    page.wait_for_selector(".lvl")
+    assert _open_rows(page) == [False, False, False] and page.evaluate("S.level") == "plan"
+
+
+def test_page_one_main_button_in_the_way_section_and_no_level_called_by_its_old_name(site, page_of):
+    for lang, plan_text in (("it", "serve per il livello 3"), ("en", "needed for level 3")):
+        page = page_of(lang)
+        page.wait_for_selector(".ways")
+        mains = page.evaluate("[...document.querySelectorAll('.way .btn')].filter((b) => !b.classList.contains('quiet')).map((b) => b.dataset.action)")
+        assert mains == ["link-open"]
+        assert page.evaluate("document.querySelector('[data-action=way-copy]').classList.contains('quiet')")
+        assert plan_text in page.inner_text(".options")
+    strings = json.loads((STATIC / "strings.json").read_text(encoding="utf-8"))
+    names = {"it": ("Dati", "Analisi", "Piano"), "en": ("Data", "Analysis", "Plan")}
+    for language, words in names.items():
+        for key, value in strings[language].items():
+            if key.startswith(("guide.", "brief.", "d.")):
+                continue
+            assert not any(re.search(rf"\b{word}\b", value) for word in words), (language, key, value)
 
 
 def test_page_connection_shows_three_states_and_runs_only_after_the_confirmation(site, page_of):
