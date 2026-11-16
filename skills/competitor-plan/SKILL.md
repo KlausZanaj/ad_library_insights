@@ -114,6 +114,12 @@ the means of the person who has to carry it out.
     lower and ask for the values.
 -   Meta publishes no spend and no sales for the competitor. Never state what
     the competitor earns or spends.
+-   When what the competitor sells is bought in another way than the user's
+    product (a free install against a paid order, say), write under the risks
+    what does not carry over, and test it instead of assuming it.
+-   Each idea changes one thing against another idea of the same round, and
+    says which. A first round at a few times break-even CPA per ad can drop
+    the worst ads; it cannot name a winner: say so.
 -   Where the pack says `NO REACH IN`, the plan borrows what the competitor
     runs and for how long, and says that its reach in that country is not
     published.

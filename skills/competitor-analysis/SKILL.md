@@ -98,7 +98,15 @@ analysis.
         under `Survival`. If it says `NOT MEASURABLE`, the answer says that
         it cannot be measured and why.
     -   A count from the table `On air now, by age` is a count of concepts,
-        not of ads.
+        not of ads. That table is a photo of today: "few ads last" or
+        "most are cut" is a survival claim and needs the table under
+        `Survival`, however few old concepts are on air.
+    -   The launch pace counts ads, not creatives and not concepts: do not
+        set it against a count of concepts.
+    -   A video with a single picture shows one moment of unknown position:
+        write what it shows, not how the video opens.
+    -   "Recent" and "old" are named with their age band and its figures; a
+        claim about recent ads leaves out the ones too recent to judge.
     -   The launch pace is quoted with what it was counted on. When
         `the list was read in part`, say that the real pace is higher.
     -   Anything you inferred is called a hypothesis, with the way to check it.
