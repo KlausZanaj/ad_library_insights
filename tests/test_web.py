@@ -61,6 +61,14 @@ def test_estimate_endpoint_follows_the_choices(app):
     assert client.get("/api/estimate?level=nope").status_code == 400
 
 
+def test_estimate_counts_concepts_and_the_ceiling_of_ads_opened(app):
+    client, _ = app
+    found = client.get("/api/estimate?level=analysis&ads=20&frames=1").json()
+    assert found["concepts"] == 20 and found["ceiling"] == 40           # two ads opened per concept asked
+    assert found["images"] == 30 and found["tokens"] > 0 and found["band"] in ("low", "medium", "high")
+    assert "percent" not in json.dumps(found)                            # an estimate, no share of a limit
+
+
 # --- project card ---------------------------------------------------------------------
 
 def test_project_card_is_validated_and_kept_on_disk(tmp_path):
@@ -174,6 +182,26 @@ def test_analysis_brief_carries_the_data_and_the_limits(app):
                                             "frames": False, "lang": "it"}).json()
     assert fewer["ads"] == 1 and fewer["images"] == [] and fewer["size"]["tokens"] < made["size"]["tokens"]
     assert client.post("/api/brief", json={"job_id": "missing"}).status_code == 404
+
+
+def test_stills_folder_opens_only_for_packs_the_app_wrote(app):
+    client, _ = app
+    opened = []
+    client.app.state.workspace.opener = opened.append
+    job = run_job(client, mode="company", page_id=PAGE_ID, country="IT", level="analysis", deep=2, frames=True)
+    made = client.post("/api/brief", json={"job_id": job["id"], "level": "analysis", "ads": 2,
+                                           "frames": True, "lang": "it"}).json()
+    assert made["collected"]["ads"] == job["result"]["deep"]["concepts"]      # concepts read, not ads
+    assert made["folder_name"] == Path(made["folder"]).name and made["frames_key"]
+    answer = client.post("/api/frames/open", json={"key": made["frames_key"]})
+    assert answer.status_code == 200 and answer.json()["pictures"] == 6
+    assert opened == [Path(made["folder"]) / "frames"]
+    for body in ({"key": "nope"}, {"key": made["folder"]}, {"path": made["folder"]}, {}):
+        assert client.post("/api/frames/open", json=body).status_code == 404
+    assert len(opened) == 1
+    without = client.post("/api/brief", json={"job_id": job["id"], "level": "analysis", "ads": 2,
+                                              "frames": False, "lang": "it"}).json()
+    assert without["frames_key"] is None                                  # no stills, nothing to open
 
 
 def test_brief_without_project_is_refused():

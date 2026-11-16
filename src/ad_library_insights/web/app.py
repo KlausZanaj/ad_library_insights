@@ -19,7 +19,7 @@ from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from .. import __version__, briefs, compare, consumption, details, history, media, project, service
+from .. import __version__, briefs, compare, consumption, details, history, media, project, rating, service
 from ..client import AdLibraryClient, normalise_country
 from ..storage import DiskCache, Throttle
 
@@ -67,6 +67,18 @@ def present(result: dict, params: dict) -> dict:
     return shown
 
 
+def open_folder(folder: Path) -> None:
+    """Show a folder in the file manager of the user's computer."""
+    import os
+    import subprocess
+    import sys
+
+    if sys.platform.startswith("win"):
+        os.startfile(str(folder))  # noqa: S606 - a folder the app itself wrote
+    else:
+        subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", str(folder)])
+
+
 class Workspace:
     """Holds the client, the jobs and the one-at-a-time rule for page requests."""
 
@@ -75,6 +87,8 @@ class Workspace:
         self.home = home
         self.history = history.History(Path(home) / "snapshots" if home else None)
         self.jobs: dict[str, Job] = {}
+        self.frame_folders: dict[str, Path] = {}     # key given to the page -> stills folder of a pack
+        self.opener = open_folder
         self._lock = asyncio.Lock()
         self._current: Job | None = None
 
@@ -167,14 +181,21 @@ class Workspace:
                              "deep_choices": list(consumption.DEEP_CHOICES)})
 
     async def estimate(self, request: Request) -> Response:
+        """Usage before a search starts. ``ads`` is the number of concepts asked for.
+
+        The ads that will really be opened are known only once the list is loaded, so
+        the time is given for the ceiling: at most two ads opened per concept asked.
+        """
         query = request.query_params
+        frames = query.get("frames") == "1"
         try:
-            ads = int(query.get("ads", 10))
-            found = consumption.estimate(query.get("level", "data"), ads, query.get("frames") == "1")
+            concepts = max(0, int(query.get("ads", 10)))
+            found = consumption.estimate(query.get("level", "data"), concepts, frames)
         except ValueError as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
-        found["seconds"] = details.estimate_seconds(ads, min(ads, consumption.ADS_WITH_FRAMES)
-                                                    if query.get("frames") == "1" else 0)
+        ceiling = rating.read_ceiling(concepts)
+        found.update(concepts=concepts, ceiling=ceiling, seconds=details.estimate_seconds(
+            ceiling, min(concepts, consumption.ADS_WITH_FRAMES) if frames else 0))
         return JSONResponse(found)
 
     async def pages(self, request: Request) -> Response:
@@ -271,9 +292,28 @@ class Workspace:
                                   Path(self.home) / "packs" if self.home else None)
         except (ValueError, TypeError) as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
-        made["collected"] = {"ads": len([ad for ad in job.raw["ads"] if "reach" in ad]) or job.params["deep"],
-                             "frames": bool(job.params.get("frames"))}
+        deep = job.raw.get("deep") or {}
+        made["collected"] = {"ads": deep.get("concepts") or len([ad for ad in job.raw["ads"] if "reach" in ad])
+                             or job.params["deep"], "frames": bool(job.params.get("frames"))}
+        # the page names the pack by its folder only and opens the stills through a key
+        made["folder_name"] = Path(made["folder"]).name
+        made["frames_key"] = None
+        if made.get("frames_folder"):
+            made["frames_key"] = uuid.uuid4().hex
+            self.frame_folders[made["frames_key"]] = Path(made["frames_folder"])
         return JSONResponse(made)
+
+    async def open_frames(self, request: Request) -> Response:
+        """Open the stills folder of a pack this app wrote; nothing else can be opened."""
+        body = await request.json()
+        folder = self.frame_folders.get(str(body.get("key") or ""))
+        if folder is None or not folder.is_dir():
+            return JSONResponse({"error": "not_found"}, status_code=404)
+        try:
+            self.opener(folder)
+        except OSError as exc:
+            return JSONResponse({"error": "open_failed", "detail": type(exc).__name__}, status_code=500)
+        return JSONResponse({"opened": True, "pictures": sum(1 for p in folder.iterdir() if p.is_file())})
 
 
 def create_app(client: AdLibraryClient | None = None, home: Path | None = None) -> Starlette:
@@ -290,6 +330,7 @@ def create_app(client: AdLibraryClient | None = None, home: Path | None = None) 
         Route("/api/jobs", space.create_job, methods=["POST"]),
         Route("/api/jobs/{job_id}", space.get_job),
         Route("/api/brief", space.brief, methods=["POST"]),
+        Route("/api/frames/open", space.open_frames, methods=["POST"]),
         Route("/api/history", space.saved_searches),
         Route("/api/history/changes", space.changes),
         Mount("/static", StaticFiles(directory=STATIC), name="static"),
