@@ -309,13 +309,15 @@ def test_the_first_ad_of_every_concept_is_opened_before_any_second_ad(tmp_path):
     big = next(ad["library_id"] for ad in listed["ads"] if ad.get("cards", 1) > 1)     # the concept of several ads
     calls = failing(studio, lambda batch, ids: [big] if batch == 1 and big in ids else [])
     result = deep_result(studio, top_n=2, ceiling=4, events=events)
-    firsts, replacement, seconds = calls
-    assert len(firsts) == 2 and len(replacement) == 1 and len(seconds) == 1       # never past the ceiling of four
-    assert len(set(firsts + replacement + seconds)) == 4                           # no ad opened twice
+    firsts, second_try, thirds = calls
+    assert len(firsts) == 2 and len(second_try) == 1 and len(thirds) == 1         # never past the ceiling of four
+    assert len(set(firsts + second_try + thirds)) == 4                             # no ad opened twice
     lost = next(ad for ad in result["ads"] if ad["library_id"] == big)
-    assert seconds[0] in lost["card_reach"] and lost["reach_total"] > 0            # read through its second ad
-    # a concept is read when one of its ads was opened: the three concepts are, with three ads opened
-    assert result["deep"]["concepts"] == 3 and result["deep"]["read"] == 3 and result["deep"]["with_reach"] == 3
+    # its first ad did not open: its second ad is tried before anything else, and no other concept takes its place
+    assert second_try[0] in lost["card_reach"] and lost["reach_total"] > 0
+    assert {second_try[0], thirds[0]} == {card["library_id"] for card in lost["members"]} - {big}
+    # a concept is read when one of its ads was opened: the two asked for are, and never more than asked
+    assert result["deep"]["concepts"] == 2 and result["deep"]["read"] == 3 and result["deep"]["with_reach"] == 2
     assert result["deep"]["failed"] == [big]
     assert [event["done"] for event in events] == [1, 2, 3, 4] and {event["total"] for event in events} == {4}
 
@@ -339,3 +341,19 @@ def test_stills_are_saved_for_the_first_concepts_only_as_the_estimate_says(tmp_p
     monkeypatch.setattr(consumption, "ADS_WITH_FRAMES", 1)
     result = deep_result(Studio(tmp_path), top_n=3, frames=True, ceiling=None)
     assert result["deep"]["concepts"] == 3 and sum(1 for ad in result["ads"] if ad.get("frames")) == 1
+
+
+def test_a_concept_of_one_ad_that_cannot_be_opened_is_replaced_by_the_next_and_never_more_than_asked(tmp_path):
+    # verification pass: with a replacement AND the second ads of the failed concept, 11 and 13 concepts were
+    # counted as read where 10 had been asked for
+    studio = Studio(tmp_path)
+    listed = studio.run(service.research_company(studio.client, "IT", page_id=PAGE_ID, as_of=AS_OF))
+    order = sorted(listed["ads"], key=lambda ad: ad["impression_rank"])
+    single = next(ad["library_id"] for ad in order[:2] if ad.get("cards", 1) == 1)   # one ad only, among the two asked
+    calls = failing(studio, lambda batch, ids: [single] if batch == 1 and single in ids else [])
+    result = deep_result(studio, top_n=2, ceiling=4)
+    assert calls[1] == [order[2]["library_id"]]                      # the next concept of the list, and only that
+    assert len(set(sum(calls, []))) == len(sum(calls, [])) <= 4
+    assert result["deep"]["concepts"] == 2 and result["deep"]["failed"] == [single]
+    plan = service.estimate_deep(listed, 3, frames=True)
+    assert plan["videos"] <= 3

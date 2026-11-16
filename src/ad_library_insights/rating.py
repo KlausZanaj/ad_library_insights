@@ -239,6 +239,11 @@ def _other_cards(ad: dict) -> list[dict]:
     return [card for card in ad.get("members") or [] if card["library_id"] != ad["library_id"]][:CARDS_PER_CONCEPT - 1]
 
 
+def other_cards(ad: dict) -> list[dict]:
+    """The second and third most shown ad of a concept."""
+    return _other_cards(ad)
+
+
 def cards_to_read(ranked: list[dict], concepts: int, skip: frozenset | set = frozenset(),
                   ceiling: int | None = None) -> list[tuple[dict, str]]:
     """The ads to open so that the ``concepts`` most shown concepts are read, as (concept, card id).

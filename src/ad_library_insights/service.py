@@ -161,7 +161,8 @@ def estimate_deep(result: dict, top_n: int, frames: bool = False, ceiling: int |
     ceiling = rating.read_ceiling(top_n) if ceiling is None else ceiling
     targets = rating.cards_to_read(result["ads"], top_n, ceiling=ceiling)
     leads = [ad for ad, card_id in targets if card_id == ad["library_id"]]
-    videos = sum(1 for ad in leads if ad.get("video_url")) if frames else 0
+    # stills are saved for the first concepts of the list only, as ``deepen`` does
+    videos = min(sum(1 for ad in leads if ad.get("video_url")), consumption.ADS_WITH_FRAMES) if frames else 0
     return {"ads": len(targets), "concepts": len(leads), "videos": videos, "ceiling": ceiling,
             "seconds": details.estimate_seconds(len(targets), videos)}
 
@@ -172,8 +173,10 @@ async def deepen(client: AdLibraryClient, result: dict, top_n: int = 10, frames:
 
     The concepts are taken in the order of the library's own list (total impressions),
     not by a rating that reach itself is about to change. The most shown ad of each is
-    opened first. When one could not be opened, the next concepts of the list are opened
-    in its place, once. Only then, while the ceiling of ads opened allows
+    opened first. When one could not be opened, the second ad of that concept is tried;
+    a concept of one ad only is replaced by the next concept of the list. Either is done
+    once, so never more than ``top_n`` concepts are read. Only then, while the ceiling of
+    ads opened allows
     (``rating.read_ceiling``), come the second and third ad of the same concepts: their
     reach is added up, so a concept split over many ads is not judged on one of them.
     A concept counts as read when at least one of its ads was opened. ``deep`` says how
@@ -214,16 +217,24 @@ async def deepen(client: AdLibraryClient, result: dict, top_n: int = 10, frames:
 
     # 1. the most shown ad of every concept asked for
     await read([(ad, ad["library_id"]) for ad in chosen])
-    # 2. a concept that could not be opened is replaced by the next one of the list, once
-    missing = sum(1 for ad in chosen if not opened(ad["library_id"]))
-    if missing and len(targets) < ceiling:
-        tried = {ad["library_id"] for ad in chosen}
-        again = rating.first_concepts(result["ads"], min(missing, ceiling - len(targets)), skip=tried)
-        if again:
-            await read([(ad, ad["library_id"]) for ad in again])
+    # 2. a concept whose first ad could not be opened: its second ad is tried; a concept of one ad only is
+    #    replaced by the next one of the list. Once, so the concepts read are never more than the ones asked for.
+    second_try, to_replace = [], 0
+    for ad in chosen:
+        if not opened(ad["library_id"]) and len(targets) + len(second_try) + to_replace < ceiling:
+            others = rating.other_cards(ad)
+            if others:
+                second_try.append((ad, others[0]["library_id"]))
+            else:
+                to_replace += 1
+    replacements = rating.first_concepts(result["ads"], to_replace, skip={ad["library_id"] for ad in chosen})
+    if second_try or replacements:
+        await read(second_try + [(ad, ad["library_id"]) for ad in replacements])
     # 3. only then the second and third ad of those concepts, while the ceiling allows
     leads = [ad for ad, card_id in targets if card_id == ad["library_id"]]
-    extras = rating.more_cards(leads, ceiling - len(targets))
+    taken = {card_id for _, card_id in targets}
+    extras = [(ad, card_id) for ad, card_id in rating.more_cards(leads, len(taken) + ceiling)
+              if card_id not in taken][:max(0, ceiling - len(targets))]
     if extras:
         await read(extras)
     failed = []
