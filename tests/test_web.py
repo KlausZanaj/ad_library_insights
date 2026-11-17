@@ -645,7 +645,7 @@ def test_page_opening_a_level_row_chooses_it_and_the_state_is_remembered(site, p
     page = page_of("it")
     page.wait_for_selector(".lvl")
     assert _open_rows(page) == [True, False, False] and page.evaluate("S.level") == "data"
-    assert "Quali annunci dei tuoi concorrenti fanno davvero soldi?" in page.inner_text(".levels-head")
+    assert "Profondità dell'indagine e livello di elaborazione" in page.inner_text(".levels-head")
     assert _count(page, "#lv-plan li") == 4 and _count(page, "#lv-data li") == 4
     assert page.is_visible("#lv-data") and page.is_hidden("#lv-plan")
     assert _count(page, ".lvl-body .btn") == 0                         # no button to choose: opening chooses

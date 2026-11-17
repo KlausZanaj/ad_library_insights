@@ -127,9 +127,7 @@ function toggle(name, values, current, label) {
 function renderTop() {
   document.documentElement.lang = S.lang;
   document.documentElement.dataset.theme = S.theme;
-  $('#modes').innerHTML = MODES.map((mode) => `<button data-action="mode" data-value="${mode}" aria-pressed="${mode === S.mode}" aria-current="${mode === S.mode}">${esc(t(`mode.${mode}`))}</button>`).join('');
-  const kpi = $('#kpi-btn');
-  if (kpi) kpi.textContent = t('kpi.btn');
+  $('#modes').innerHTML = MODES.map((mode) => `<button data-action="mode" data-value="${mode}" aria-current="${mode === S.mode}">${esc(t(`mode.${mode}`))}</button>`).join('');
   const tut = $('#tut-btn');
   if (tut) tut.textContent = t('tut.btn');
   $('#theme').setAttribute('aria-label', t('theme.label'));
@@ -175,7 +173,6 @@ function renderSearch() {
       <select data-bind="country" ${locked ? 'disabled' : ''}>${countryOptions(S.country)}</select></label>
     <button class="btn" data-action="submit" ${locked ? 'disabled' : ''}>${esc(t(company ? 'button.find' : 'button.search'))}</button>
   </div>
-  ${!S.result && !locked ? `<div class="demo-bar"><span>${esc(t('demo.prompt'))}</span><button class="btn quiet small" data-action="load-demo">${esc(t('demo.btn'))}</button></div>` : ''}
   <div class="levels-head"><h2>${esc(t('lv.title'))}</h2><p>${esc(t('lv.sub'))}</p></div>
   <div class="levels">${levelRows(locked)}</div>
   <div class="options">
@@ -396,8 +393,12 @@ function linkDialog(overlay) {
 }
 function howDialog(overlay) {
   const n = overlay.step;
-  return `<div class="dialog" role="dialog" aria-modal="true" aria-label="${esc(t('how.title'))}"><p class="how-step">${esc(t('how.step', { n }))}</p>
+  const shot = n === 1 ? `<img src="/docs/images/levels.png" alt="">`
+    : n === 2 ? `<img src="/docs/images/brief-dialog.png" alt="">`
+    : `<div class="tut-shot-pair"><img src="/docs/images/results-table.png" alt=""><img src="/docs/images/ad-panel.png" alt=""></div>`;
+  return `<div class="dialog wide" role="dialog" aria-modal="true" aria-label="${esc(t('how.title'))}"><p class="how-step">${esc(t('how.step', { n }))}</p>
     <h2 class="how-title">${esc(t(`how.${n}.title`))}</h2><p class="lead">${esc(t(`how.${n}.text`))}</p>
+    <figure class="tut-shot">${shot}<figcaption>${esc(t(`how.${n}.cap`))}</figcaption></figure>
     <div class="foot"><button class="btn quiet" data-action="how-prev" ${n === 1 ? 'disabled' : ''}>${esc(t('how.prev'))}</button>
       ${n === 3 ? `<button class="btn" data-action="close">${esc(t('button.close'))}</button>` : `<button class="btn" data-action="how-next">${esc(t('how.next'))}</button>`}</div></div>`;
 }
@@ -443,12 +444,11 @@ function headSection(r) {
   const title = company ? esc(page.name || r.query) : esc(t('result.keyword', { query: r.query, country: region(r.country) }));
   const facts = { category: page.category, followers: num(page.followers), country: region(r.country) };
   const sub = company ? `${esc(t(page.category ? 'result.sub.company' : 'result.sub.company.nocat', facts))}<br>${esc(loaded)}` : esc(loaded);
-  const demoBanner = r.demo ? `<section class="changes"><p>${esc(t('demo.banner'))}</p></section>` : '';
   return `<section class="rhead">${company ? avatar(page.logo, page.name, true) : ''}
     <div class="grow"><h1>${title}</h1><p>${sub}</p></div>
     <div class="rlinks"><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(t('link.meta'))}</a>
     <button class="linklike" data-action="kpi-open">${esc(t('kpi.btn'))}</button>
-    <button class="linklike" data-action="guide">${esc(t('link.guide'))}</button></div></section>${demoBanner}`;
+    <button class="linklike" data-action="guide">${esc(t('link.guide'))}</button></div></section>`;
 }
 function changesSection(r) {
   const c = r.changes;
@@ -992,6 +992,14 @@ function tutorialDialog(overlay) {
   const tab = Number(overlay.tab || 1);
   const tabs = [1, 2, 3, 4, 5, 6].map((n) => `<button data-action="tut-tab" data-value="${n}" aria-selected="${n === tab}">${esc(t(`tut.t${n}`))}</button>`).join('');
   const intro = `<div class="tut-intro">${esc(t(`tut.${tab}.intro`))}</div>`;
+  const shotMap = {
+    1: '<img src="/docs/images/results-summary.png" alt="">',
+    2: '<img src="/docs/images/levels.png" alt="">',
+    3: '<img src="/docs/images/usage-estimate.png" alt="">',
+    4: '<div class="tut-shot-pair"><img src="/docs/images/results-table.png" alt=""><img src="/docs/images/ad-panel.png" alt=""></div>',
+    6: '<img src="/docs/images/brief-dialog.png" alt="">',
+  };
+  const shot = shotMap[tab] ? `<figure class="tut-shot">${shotMap[tab]}<figcaption>${esc(t(`tut.${tab}.cap`))}</figcaption></figure>` : '';
   let body = '';
   if (tab === 5) {
     const kpiCard = (k) => `<div class="tut-card"><strong>${esc(t(`kpi.${k}.t`))}</strong><span class="tut-formula">${esc(t(`kpi.${k}.f`))}</span><p>${esc(t(`kpi.${k}.d`))}</p></div>`;
@@ -1000,7 +1008,7 @@ function tutorialDialog(overlay) {
       <h4 class="kpi-group-title">${esc(t('kpi.g2'))}</h4>
       <div class="kpi-grid">${[9, 10, 11, 12].map(kpiCard).join('')}</div>`;
   } else {
-    body = `<div class="tut-cards">${[1, 2, 3, 4].map((c) => `<div class="tut-card">
+    body = `${shot}<div class="tut-cards">${[1, 2, 3, 4].map((c) => `<div class="tut-card">
       <strong>${esc(t(`tut.${tab}.c${c}.t`))}</strong>
       <span class="tut-formula">${esc(t(`tut.${tab}.c${c}.f`))}</span>
       <p>${esc(t(`tut.${tab}.c${c}.d`))}</p>
@@ -1159,16 +1167,6 @@ const ACTIONS = {
       S.cmpCopied = true;
       renderResults();
     }
-  },
-  async 'load-demo'() {
-    try {
-      const job = await api(`/api/demo?level=${S.level}`);
-      if (job && job.result) {
-        S.mode = 'company'; S.company = 'Kingshot'; S.result = job.result; S.resultMode = 'company'; S.jobId = job.id;
-        render();
-        window.scrollTo({ top: $('#results').offsetTop - 12, behavior: 'instant' });
-      }
-    } catch { note('error.title', null, true); }
   },
   deep(value) { S.deep = Number(value); renderSearch(); renderOverlay(); refreshEstimate(); },
   submit, guide() { S.overlay = { type: 'guide' }; renderOverlay(); },

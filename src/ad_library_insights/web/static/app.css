@@ -113,9 +113,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .btn.small { height: 34px; padding: 0 14px; font-size: .9rem; border-radius: 6px; }
 .btn:disabled { opacity: .5; cursor: default; filter: none; }
 
-.options { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px; margin-top: 20px; color: var(--muted); font-size: .93rem; }
+.options { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px; margin-top: 14px; padding: 11px 16px; background: var(--sunken); border: 1px solid var(--line); border-radius: 8px; color: var(--text); font-size: .92rem; }
 .options .gap { flex: 1; }
-.proj-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 7px; background: var(--sunken); border: 1px solid var(--line-soft); }
+.proj-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 7px; background: var(--surface); border: 1px solid var(--line); }
 .proj-pill.active { background: var(--accent-wash); border-color: var(--accent-border); color: var(--text); }
 .linklike { background: none; border: 0; padding: 0; color: var(--accent); font-weight: 580; }
 .linklike:hover { text-decoration: underline; }
@@ -231,10 +231,6 @@ table.cmp td.num { font-variant-numeric: tabular-nums; }
 .leg-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 7px; }
 .leg-list li strong { display: inline-block; margin-right: 4px; color: var(--text); }
 .leg-list li span { color: var(--muted); line-height: 1.4; }
-.top-actions { display: flex; align-items: center; gap: 6px; }
-.demo-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; padding: 9px 14px; background: var(--accent-wash); border: 1px solid var(--accent-border); border-radius: 8px; font-size: .88rem; color: var(--text); flex-wrap: wrap; }
-.demo-bar span { color: var(--muted); }
-.demo-bar strong { color: var(--text); font-weight: 640; }
 .sim-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--line-soft); }
 .sim-field { display: flex; align-items: center; justify-content: space-between; gap: 6px; background: var(--sunken); border: 1px solid var(--line-soft); border-radius: 6px; padding: 5px 8px; font-size: .78rem; color: var(--muted); }
 .sim-field input { width: 68px; height: 24px; padding: 0 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--text); font-size: .84rem; font-weight: 650; text-align: right; font-variant-numeric: tabular-nums; }
@@ -242,6 +238,10 @@ table.cmp td.num { font-variant-numeric: tabular-nums; }
 .tut-tabs button { background: none; border: 0; padding: 8px 8px; border-radius: 6px; font-size: .83rem; font-weight: 560; color: var(--muted); text-align: center; line-height: 1.25; }
 .tut-tabs button[aria-selected="true"] { background: var(--surface); color: var(--accent); font-weight: 650; box-shadow: var(--shadow-sm); }
 .tut-intro { margin-top: 14px; padding: 12px 16px; background: var(--accent-wash); border: 1px solid var(--accent-border); border-radius: 8px; font-size: .9rem; color: var(--text); line-height: 1.48; }
+.tut-shot { margin-top: 12px; padding: 12px; background: var(--sunken); border: 1px solid var(--line); border-radius: 8px; }
+.tut-shot img { display: block; width: 100%; max-height: 290px; object-fit: cover; object-position: top center; border: 1px solid var(--line-soft); border-radius: 6px; background: var(--surface); }
+.tut-shot-pair { display: grid; grid-template-columns: 1.15fr .85fr; gap: 10px; }
+.tut-shot figcaption { margin-top: 8px; font-size: .81rem; color: var(--muted); font-weight: 540; line-height: 1.4; }
 .tut-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
 .tut-card { padding: 14px 16px; background: var(--sunken); border: 1px solid var(--line-soft); border-radius: 8px; display: flex; flex-direction: column; gap: 6px; }
 .tut-card strong { display: block; font-size: .95rem; font-weight: 650; color: var(--text); }
