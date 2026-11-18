@@ -277,3 +277,39 @@ def test_config_fallback_detects_user_and_project_scoped_servers(client, fake):
         "projects": {"C:/repo": {"mcpServers": {"ad-library-insights": {"command": "python"}}}}
     }), encoding="utf-8")
     assert client.get("/api/link/mcp").json() == {"state": "connected"}
+
+
+def test_tutorial_mentions_only_real_mcp_tools_from_server_py():
+    import ast
+    import re
+
+    root = Path(__file__).resolve().parents[1]
+    tree = ast.parse((root / "src" / "ad_library_insights" / "server.py").read_text(encoding="utf-8"))
+
+    def _is_mcp_tool(dec: ast.expr) -> bool:
+        target = dec.func if isinstance(dec, ast.Call) else dec
+        return (isinstance(target, ast.Attribute) and target.attr == "tool"
+                and isinstance(target.value, ast.Name) and target.value.id == "mcp")
+
+    real_tools = {
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and any(_is_mcp_tool(dec) for dec in node.decorator_list)
+    }
+    assert real_tools
+
+    strings = json.loads(
+        (root / "src" / "ad_library_insights" / "web" / "static" / "strings.json").read_text(encoding="utf-8")
+    )
+    ignored = {"ad_library_insights", "mcp_config"}
+    for lang in ("it", "en"):
+        assert ".venv/bin/python" in strings[lang]["tut.6.c2.d"]
+        assert ".venv/bin/python" in strings[lang]["tut.6.c3.d"]
+        assert ".venv\\Scripts\\python.exe" in strings[lang]["tut.6.c2.d"]
+        assert ".venv\\Scripts\\python.exe" in strings[lang]["tut.6.c3.d"]
+        tut_texts = [v for k, v in strings[lang].items() if k.startswith("tut.")]
+        found = [tok for txt in tut_texts for tok in re.findall(r"\b[a-z]+(?:_[a-z]+)+\b", txt) if tok not in ignored]
+        assert len(found) >= 5, (lang, found)
+        unknown = [tok for tok in found if tok not in real_tools]
+        assert not unknown, f"Unknown MCP tool names in {lang} tutorial: {unknown}"
