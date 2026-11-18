@@ -262,3 +262,18 @@ def test_codex_and_antigravity_helpers_build_commands_and_copy_skills(tmp_path):
     (src / "sk" / "SKILL.md").write_text("# skill\n", encoding="utf-8")
     copied = link.install_to_folder(src, dst)
     assert copied == {"copied": 1, "kept": []} and (dst / "sk" / "SKILL.md").is_file()
+
+
+def test_config_fallback_detects_user_and_project_scoped_servers(client, fake):
+    fake.monkeypatch.setenv("FAKE_CLAUDE_MODE", "list_fail")
+    cfg = fake.settings.claude_config
+    assert cfg is not None and not cfg.exists()
+    assert client.get("/api/link/mcp").json() == {"state": "unknown"}
+
+    cfg.write_text(json.dumps({"mcpServers": {"ad-library-insights": {"command": "python"}}}), encoding="utf-8")
+    assert client.get("/api/link/mcp").json() == {"state": "connected"}
+
+    cfg.write_text(json.dumps({
+        "projects": {"C:/repo": {"mcpServers": {"ad-library-insights": {"command": "python"}}}}
+    }), encoding="utf-8")
+    assert client.get("/api/link/mcp").json() == {"state": "connected"}

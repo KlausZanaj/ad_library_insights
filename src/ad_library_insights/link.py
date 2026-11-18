@@ -9,7 +9,6 @@ no shell, and copies local files.
 from __future__ import annotations
 
 import json
-import os
 import shlex
 import shutil
 import subprocess
@@ -44,6 +43,7 @@ class Settings:
     add_timeout: float = ADD_TIMEOUT
     agents_source: Path | None = None
     agents_target: Path | None = None
+    claude_config: Path | None = None
 
     def __post_init__(self) -> None:
         if self.agents_source is None:
@@ -53,6 +53,11 @@ class Settings:
                 self.agents_source = self.skills_source.parent / ".claude" / "agents"
         if self.agents_target is None:
             self.agents_target = self.skills_target.parent / "agents"
+        if self.claude_config is None:
+            if self.skills_source == default_skills_source():
+                self.claude_config = Path.home() / ".claude.json"
+            else:
+                self.claude_config = self.skills_target.parent / ".claude.json"
 
 
 def find_claude() -> str | None:
@@ -91,35 +96,40 @@ def _run(args: list[str], timeout: float) -> subprocess.CompletedProcess:
     return subprocess.CompletedProcess(args, proc.returncode, stdout, stderr)
 
 
-def _config_has_server() -> bool | None:
-    """Fallback check in ``~/.claude.json`` when ``claude mcp list`` times out on other servers."""
-    if "FAKE_CLAUDE_STATE" in os.environ:
-        return None
-    config_path = Path.home() / ".claude.json"
-    if not config_path.is_file():
-        return None
+def _config_has_server(config_path: Path | None = None) -> bool:
+    """Fallback check in ``.claude.json`` (user or project scope) when ``claude mcp list`` is unavailable."""
+    path = config_path if config_path is not None else (Path.home() / ".claude.json")
+    if not path.is_file():
+        return False
     try:
-        data = json.loads(config_path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return None
-    servers = data.get("mcpServers") if isinstance(data, dict) else None
-    if isinstance(servers, dict):
-        return NAME in servers
-    return None
+        return False
+    if not isinstance(data, dict):
+        return False
+    servers = data.get("mcpServers")
+    if isinstance(servers, dict) and NAME in servers:
+        return True
+    projects = data.get("projects")
+    if isinstance(projects, dict):
+        for proj in projects.values():
+            if isinstance(proj, dict):
+                proj_servers = proj.get("mcpServers")
+                if isinstance(proj_servers, dict) and NAME in proj_servers:
+                    return True
+    return False
 
 
-def mcp_state(claude: str, timeout: float = MCP_TIMEOUT) -> str:
+def mcp_state(claude: str, timeout: float = MCP_TIMEOUT, config_path: Path | None = None) -> str:
     """``connected`` (listed), ``missing`` (not listed) or ``unknown`` (the command failed or was slow)."""
     try:
         done = _run([claude, "mcp", "list"], timeout)
     except (OSError, subprocess.SubprocessError):
-        configured = _config_has_server()
-        return "connected" if configured is True else "missing" if configured is False else "unknown"
+        return "connected" if _config_has_server(config_path) else "unknown"
     if done.returncode != 0:
-        configured = _config_has_server()
-        return "connected" if configured is True else "missing" if configured is False else "unknown"
+        return "connected" if _config_has_server(config_path) else "unknown"
     listed = any(line.strip().startswith(f"{NAME}:") for line in done.stdout.splitlines())
-    return "connected" if listed else "missing"
+    return "connected" if (listed or _config_has_server(config_path)) else "missing"
 
 
 # --- skills and specialist sub-agents -------------------------------------------------------
@@ -177,13 +187,15 @@ def status(settings: Settings) -> dict:
     return {"claude": bool(claude),
             "skills": skills_state(settings.skills_source, settings.skills_target,
                                    settings.agents_source, settings.agents_target),
-            "command": shown_command(settings), "skills_folder": SHOWN_SKILLS_FOLDER}
+            "command": shown_command(settings), "skills_folder": SHOWN_SKILLS_FOLDER,
+            "codex_command": codex_shown_command(settings.python),
+            "antigravity_entry": json.dumps(antigravity_mcp_entry(settings.python))}
 
 
 def mcp_status(settings: Settings) -> dict:
     """The slow part: asks Claude Code which servers it knows."""
     claude = find_claude()
-    return {"state": mcp_state(claude, settings.mcp_timeout) if claude else "no_claude"}
+    return {"state": mcp_state(claude, settings.mcp_timeout, settings.claude_config) if claude else "no_claude"}
 
 
 def connect(settings: Settings, overwrite_skills: bool = False) -> dict:
@@ -191,7 +203,7 @@ def connect(settings: Settings, overwrite_skills: bool = False) -> dict:
     claude = find_claude()
     if not claude:
         return {"ok": False, "error": "claude_missing"}
-    if mcp_state(claude, settings.mcp_timeout) == "connected":
+    if mcp_state(claude, settings.mcp_timeout, settings.claude_config) == "connected":
         server = "already"
     else:
         try:

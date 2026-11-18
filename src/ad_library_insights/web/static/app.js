@@ -218,7 +218,7 @@ function levelVisual(level) {
   }
   const { p, c, margin, lowCut, highCut, round1, roas } = simNumbers();
   return `<div class="lvl-vis">
-    <div class="vis-top"><span class="vis-title">${esc(t('lv.v3.badge'))}</span><button class="linklike" data-action="project" style="font-size:.78rem">${esc(t('lv.v3.sim.edit'))}</button></div>
+    <div class="vis-top"><span class="vis-title">${esc(t('lv.v3.badge'))}</span><button class="linklike" data-action="lv-project" style="font-size:.78rem">${esc(t('lv.v3.sim.edit'))}</button></div>
     <div class="sim-inputs">
       <label class="sim-field"><span>${esc(t('lv.v3.sim.price'))}</span><input type="number" min="1" step="1" data-sim="price" value="${esc(p)}"></label>
       <label class="sim-field"><span>${esc(t('lv.v3.sim.cost'))}</span><input type="number" min="0" step="1" data-sim="cost" value="${esc(c)}"></label>
@@ -328,8 +328,8 @@ function renderWay() {
     <details class="lvl-details multi-cli">
       <summary>${esc(t('way.multi.title'))}</summary>
       <div class="multi-grid">
-        <div class="multi-box"><strong>${esc(t('way.multi.ag.t'))}</strong><span>${esc(t('way.multi.ag.d'))}</span><code>"ad-library-insights": { "command": "python", "args": ["-m", "ad_library_insights"] }</code></div>
-        <div class="multi-box"><strong>${esc(t('way.multi.cx.t'))}</strong><span>${esc(t('way.multi.cx.d'))}</span><code>codex mcp add ad-library-insights -- python -m ad_library_insights</code></div>
+        <div class="multi-box"><strong>${esc(t('way.multi.ag.t'))}</strong><span>${esc(t('way.multi.ag.d'))}</span><code>${esc((L.quick && L.quick.antigravity_entry) || '{"ad-library-insights": {"command": "python", "args": ["-m", "ad_library_insights"]}}')}</code></div>
+        <div class="multi-box"><strong>${esc(t('way.multi.cx.t'))}</strong><span>${esc(t('way.multi.cx.d'))}</span><code>${esc((L.quick && L.quick.codex_command) || 'codex mcp add ad-library-insights -- python -m ad_library_insights')}</code></div>
       </div>
     </details>
     <p class="way-how"><button class="linklike" data-action="how-open">${esc(t('way.how'))}</button></p>`;
@@ -1171,6 +1171,7 @@ const ACTIONS = {
   deep(value) { S.deep = Number(value); renderSearch(); renderOverlay(); refreshEstimate(); },
   submit, guide() { S.overlay = { type: 'guide' }; renderOverlay(); },
   project() { openProject(false); },
+  'lv-project'() { openProject(false); },
   'save-project': saveProject, 'confirm-go': launch, brief() { makeBrief(); },
   'brief-ads'(value) { makeBrief({ ads: Number(value) }); },
   'choose-page'(value) { gate({ mode: 'company', page_id: value }); },
