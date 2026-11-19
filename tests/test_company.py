@@ -389,3 +389,58 @@ def test_video_meta_is_saved_and_attached_during_deepen(tmp_path):
     result = deep_result(studio, top_n=2, frames=True)
     assert result["ads"][0]["video_meta"] == {"duration": 15.5, "width": 720, "height": 1280}
     assert "video_meta" not in result["ads"][2]
+
+
+def test_analyze_durata_loads_all_ads_and_computes_cohort_survival(tmp_path):
+    from datetime import timedelta
+
+    studio = Studio(tmp_path)
+    as_of = AS_OF
+    edges = []
+    # Build 12 distinct concepts within a 90-day window (6 active, 6 ended)
+    for i in range(12):
+        start_dt = as_of - timedelta(days=20 + i * 5)
+        start_ts = int(start_dt.strftime("%s")) if hasattr(start_dt, "strftime") and not hasattr(start_dt, "toordinal") else 0
+        from datetime import datetime, timezone
+        start_epoch = int(datetime(start_dt.year, start_dt.month, start_dt.day, tzinfo=timezone.utc).timestamp())
+        ended = i < 6
+        end_dt = start_dt + timedelta(days=4 + i * 3) if ended else None
+        end_epoch = (int(datetime(end_dt.year, end_dt.month, end_dt.day, tzinfo=timezone.utc).timestamp())
+                     if end_dt else None)
+        edges.append({
+            "node": {
+                "collated_results": [{
+                    "ad_archive_id": str(5000 + i),
+                    "is_active": not ended,
+                    "start_date": start_epoch,
+                    "end_date": end_epoch,
+                    "collation_count": 1,
+                    "page_id": PAGE_ID,
+                    "snapshot": {
+                        "page_name": "Kingshot",
+                        "display_format": "image",
+                        "body": {"text": f"Unique concept copy number {i} for test cohort."},
+                        "images": [{"resized_image_url": f"https://img.example/{i}.jpg"}],
+                    },
+                }]
+            }
+        })
+
+    async def render_all(url, wait_seconds, scroll_rounds):
+        studio.renders.append(url)
+        return PageSnapshot(url=url, status_code=403, page_text="12 results", edges=edges, total_count=12)
+
+    studio.client._renderer = render_all
+    all_res = studio.run(
+        service.research_company(studio.client, "IT", page_id=PAGE_ID, active_status="all", as_of=as_of)
+    )
+    assert "active_status=all" in studio.renders[0]
+    assert all_res["durata"]["available"] is True
+    assert all_res["durata"]["concepts_in_window"] == 12
+    assert all_res["durata"]["active_in_window"] == 6 and all_res["durata"]["ended_in_window"] == 6
+
+    report_out = studio.run(
+        service.analyze_durata(studio.client, "IT", page_id=PAGE_ID, window_days=90, as_of=as_of)
+    )
+    assert report_out["ok"] and report_out["durata"]["available"] is True
+    assert report_out["durata"]["median_days"] is not None

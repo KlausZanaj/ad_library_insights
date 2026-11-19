@@ -29,6 +29,11 @@ Then read `testing.md`. The other data files belong to the other specialists.
   when two searches of the same company exist and both lists were read in full, by
   the age the ad had at the earlier search. Otherwise it says `NOT MEASURABLE` and
   why; a keyword search never measures it.
+- `Duration and survival (cohort)` appears when both active and ended ads of a
+  company were loaded in full for a window: it reports `Cohort window`,
+  `Median lifespan (Kaplan-Meier)` per concept, `Concepts still active by age`,
+  `Stop pattern` (Weibull shape when enough concepts stopped) and
+  `Conditional survival` (Lindy when enough concepts remain at risk).
 - Verdicts and their thresholds are explained in the overview. `flagged for review`
   is a question to check, not a negative verdict.
 - Days in the table of top ads are those of the concept. A second age in brackets
@@ -42,9 +47,12 @@ Then read `testing.md`. The other data files belong to the other specialists.
 2. **What is on air.** From the table by age: where the concepts sit, and which
    ages carry the verdicts scaling and holding.
 3. **Survival.** Use the table under `Survival` and compare each age group only
-   with itself. When the file says `NOT MEASURABLE`, write that it cannot be
-   measured yet, the reason given, and what would make it measurable. State a
-   survival or cut rate only from that table.
+   with itself. When the file says `NOT MEASURABLE` and no `Duration and survival (cohort)`
+   data is available, write that it cannot be measured yet, the reason given, and
+   what would make it measurable. State a survival or cut rate only from that table.
+   When `Duration and survival (cohort)` is present without `NOT MEASURABLE`, also cite
+   the cohort median, stop pattern and conditional survival alongside their window,
+   sample counts and loaded share.
 4. **Offer route.** Buttons and destinations: one landing page or several, store
    or site, app install or lead form.
 5. **Changes.** When the file has the line `Since the previous search`, use it: how
@@ -67,6 +75,9 @@ low for an inference with no number behind it.
 
 - An ad no longer listed is not proof of a failed ad, and a long-running one is not
   proof of profit.
+- For each main finding, include one plausible alternative explanation that fits
+  the same numbers (for example, a seasonal campaign end or a fixed test budget
+  rather than poor performance).
 - Never invent a number. If the pack does not contain it, say so.
 - Copy the numbers as they are written. If you compute one, show the calculation.
 - Every finding rests on a figure of this pack.

@@ -449,6 +449,28 @@ def pack_texts(company, tmp_path) -> tuple[dict[str, str], set[str]]:
                          "counts": {"new": 4, "new_texts": 2, "stopped": 3, "changed": 0},
                          "survival": {"measurable": True, "groups": [
                              {"age": "under 7 days", "listed_before": 4, "still_listed": 1, "stopped": 3}]}}
+    marked["durata"] = {
+        "available": True,
+        "unit": "concept",
+        "window_days": 90,
+        "loaded_share": 1.0,
+        "concepts_in_window": 14,
+        "active_in_window": 7,
+        "ended_in_window": 7,
+        "excluded_undated": 0,
+        "excluded_invalid": 0,
+        "outside_window": 0,
+        "max_observed_days": 90,
+        "tau_days": 90,
+        "median_days": 22.0,
+        "median_reached": True,
+        "rmst_days": 34.5,
+        "milestones": {"7": 0.78, "14": 0.64, "30": 0.42, "60": 0.3, "90": 0.2},
+        "weibull": {"shape_k": 0.78, "scale_days": 28.4, "regime": "early_cut"},
+        "lindy": [{"after_days": 30, "horizon_days": 30, "at_risk": 6, "still_active_share": 0.71}],
+        "longest_active": [{"library_id": "101", "days": 85}],
+        "fastest_ended": [{"library_id": "202", "days": 3}],
+    }
     cases.append((marked, True))
     unread = copies.deepcopy(company)                  # reach not read at all, then not published in the country
     for ad in unread["ads"]:

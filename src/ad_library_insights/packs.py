@@ -25,6 +25,7 @@ from datetime import date
 from pathlib import Path
 
 from . import consumption, copy_analysis, history, rating
+from .lab import durata
 from .report import slugify
 from .storage import home_dir
 
@@ -496,6 +497,8 @@ def testing(result: dict, ads: list[dict]) -> str:
              "", "## Survival"]
     changes = result.get("changes") or {}
     lines += _survival(changes, result.get("mode") == "company")
+    if result.get("durata"):
+        lines += ["", "## Duration and survival (cohort)", *durata.format_summary(result["durata"])]
     if changes.get("available"):
         counts = changes["counts"]
         lines.append(f"- Since the previous search ({changes['previous_taken_at']}): {counts['new']} new ads "

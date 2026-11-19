@@ -8,6 +8,7 @@ from datetime import date, datetime, timezone
 from . import consumption, copy_analysis, details, media, rating, signals
 from .client import (AdLibraryClient, FetchResult, build_page_url, build_search_url,
                      normalise_country)
+from .lab import durata
 
 DEEP_CHOICES = (10, 20, 50)      # how many top ads to read reach for
 
@@ -117,6 +118,13 @@ async def find_pages(client: AdLibraryClient, name: str, country: str,
             "suggested_page_id": (exact or pages or [{}])[0].get("page_id")}
 
 
+def _loaded_share(result: dict) -> float | None:
+    found = result.get("signals") or {}
+    listed = sum(ad.get("copies_total", 1) for ad in result.get("ads", []))
+    active = found.get("active_ads")
+    return round(min(listed / active, 1.0), 2) if active else None
+
+
 async def research_company(client: AdLibraryClient, country: str, page_id: str = "",
                            name: str = "", active_status: str = "active",
                            scroll_rounds: int = 40, wait_seconds: float = 8,
@@ -149,7 +157,36 @@ async def research_company(client: AdLibraryClient, country: str, page_id: str =
     page = {**_page_from_ads(fetch.ads, str(page_id)), **{k: v for k, v in (chosen or {}).items() if v}}
     result = assemble(fetch, page.get("name") or name or str(page_id), country, as_of=as_of)
     result.update(mode="company", page=page)
+    if active_status == "all" and result.get("ads"):
+        result["durata"] = durata.analyze(
+            result["ads"],
+            mode="company",
+            active_status="all",
+            loaded_share=_loaded_share(result),
+            as_of=as_of,
+        )
     return result
+
+
+async def analyze_durata(client: AdLibraryClient, country: str, page_id: str,
+                         window_days: int = durata.DEFAULT_WINDOW_DAYS,
+                         scroll_rounds: int = 40, wait_seconds: float = 8,
+                         use_cache: bool = True, as_of: date | None = None) -> dict:
+    """Load active and ended ads of one advertiser page and compute cohort Durata survival."""
+    result = await research_company(client, country, page_id=page_id, active_status="all",
+                                    scroll_rounds=scroll_rounds, wait_seconds=wait_seconds,
+                                    use_cache=use_cache, as_of=as_of)
+    cohort = (result["durata"]
+              if "durata" in result and window_days == durata.DEFAULT_WINDOW_DAYS
+              else durata.analyze(result.get("ads", []), mode="company", active_status="all",
+                                  loaded_share=_loaded_share(result), window_days=window_days,
+                                  as_of=as_of))
+    return {
+        "ok": result.get("ok", False),
+        "page": result.get("page"),
+        "country": result.get("country"),
+        "durata": cohort,
+    }
 
 
 def estimate_deep(result: dict, top_n: int, frames: bool = False, ceiling: int | None = None) -> dict:
