@@ -294,6 +294,55 @@ table.cmp td.num { font-variant-numeric: tabular-nums; }
 .ritmo-chart-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 10px; font-size: .86rem; color: var(--muted); }
 .ritmo-chart svg { width: 100%; height: auto; display: block; overflow: visible; }
 
+/* struttura & out-of-pattern ads sections */
+.struttura-head, .anomalie-head, .pianka-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 18px; }
+.struttura-head-title h2, .anomalie-head-title h2, .pianka-head h2 { display: inline-flex; align-items: center; margin-bottom: 2px; }
+.struttura-head-title p, .anomalie-head-title p { color: var(--muted); font-size: .92rem; }
+.struttura-kpis {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px;
+  margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line-soft);
+}
+.struttura-kpi { padding-left: 16px; border-left: 1px solid var(--line-soft); min-width: 0; }
+.struttura-kpi:first-child { padding-left: 0; border-left: 0; }
+.struttura-kpi-label { display: flex; align-items: center; font-size: .84rem; font-weight: 620; color: var(--muted); }
+.struttura-kpi strong { display: block; margin-top: 6px; font-size: 1.24rem; font-weight: 680; letter-spacing: -.018em; font-variant-numeric: tabular-nums; }
+.struttura-kpi small { display: block; margin-top: 4px; font-size: .85rem; color: var(--muted); line-height: 1.42; overflow-wrap: anywhere; }
+.struttura-families { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line-soft); }
+.struttura-families-head { font-size: .84rem; font-weight: 620; color: var(--muted); margin-bottom: 8px; }
+.fam-chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.fam-chip {
+  text-align: left; padding: 10px 12px; background: var(--sunken); border: 1px solid var(--line-soft);
+  border-radius: 7px; color: var(--text); display: grid; gap: 3px; cursor: pointer;
+  transition: border-color .15s, background-color .15s;
+}
+.fam-chip:hover { border-color: var(--accent); background: var(--accent-wash); }
+.fam-chip strong { font-size: .83rem; font-weight: 640; color: var(--accent); }
+.fam-chip span { font-size: .86rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.anomalie-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+.anom-card {
+  text-align: left; padding: 14px 16px; background: var(--sunken); border: 1px solid var(--line-soft);
+  border-left: 3px solid var(--accent); border-radius: 8px; color: var(--text); display: grid; gap: 4px; cursor: pointer;
+  transition: border-color .15s, background-color .15s;
+}
+.anom-card:hover { border-color: var(--accent); background: var(--accent-wash); }
+.anom-tag { font-size: .78rem; font-weight: 680; text-transform: uppercase; letter-spacing: .03em; color: var(--accent); }
+.anom-open { font-size: .95rem; font-weight: 630; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.anom-detail { font-size: .86rem; color: var(--text); line-height: 1.42; }
+.anom-meta { font-size: .82rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.pianka-bar-row { display: flex; align-items: center; gap: 14px; margin-top: 12px; }
+.pianka-track { flex: 1; height: 9px; border-radius: 5px; background: var(--line-soft); overflow: hidden; }
+.pianka-fill { height: 100%; background: var(--accent); border-radius: 5px; }
+.pianka-pct { font-size: 1.25rem; font-weight: 680; font-variant-numeric: tabular-nums; min-width: 54px; text-align: right; }
+.pianka-sub { margin-top: 6px; font-size: .9rem; color: var(--muted); }
+.pianka-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 14px; font-size: .86rem; }
+.pianka-cols h4 { margin: 0 0 6px; font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.pianka-cols ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; color: var(--text); }
+.js-drift-bar { margin-top: 14px; padding: 12px 16px; background: var(--sunken); border: 1px solid var(--line-soft); border-radius: 8px; }
+.js-drift-bar strong { display: block; font-size: .9rem; color: var(--text); }
+.js-drift-bar small { display: block; margin-top: 3px; font-size: .85rem; color: var(--muted); }
+
 /* summary numbers */
 .metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .metric { padding: 0 18px; border-left: 1px solid var(--line-soft); }
@@ -370,7 +419,7 @@ table.cmp td.num { font-variant-numeric: tabular-nums; }
 .tier-testing { color: var(--muted); }
 .review { display: block; color: var(--warn); font-size: .87rem; }
 .dim { color: var(--muted); font-size: .9rem; }
-.tablenote, .ritmo-note { margin-top: 16px; color: var(--muted); font-size: .9rem; }
+.tablenote, .ritmo-note, .struttura-note, .anomalie-note, .pianka-note { margin-top: 16px; color: var(--muted); font-size: .9rem; }
 
 /* drawer and dialog */
 .scrim { position: fixed; inset: 0; background: rgba(10, 18, 32, .42); backdrop-filter: blur(2px); z-index: 10; }
@@ -549,9 +598,10 @@ table.cmp td.num { font-variant-numeric: tabular-nums; }
 .how-title { margin-top: 4px; }
 
 @media (max-width: 960px) {
-  .lvl-grid, .ways, .leg-grid, .tut-cards, .multi-grid, .durata-kpis, .ritmo-kpis { grid-template-columns: 1fr; }
-  .durata-kpi, .ritmo-kpi { padding-left: 0; border-left: 0; border-top: 1px solid var(--line-soft); padding-top: 12px; }
-  .durata-kpi:first-child, .ritmo-kpi:first-child { border-top: 0; padding-top: 0; }
+  .lvl-grid, .ways, .leg-grid, .tut-cards, .multi-grid, .durata-kpis, .ritmo-kpis, .struttura-kpis, .pianka-cols { grid-template-columns: 1fr; }
+  .durata-kpi, .ritmo-kpi, .struttura-kpi { padding-left: 0; border-left: 0; border-top: 1px solid var(--line-soft); padding-top: 12px; }
+  .durata-kpi:first-child, .ritmo-kpi:first-child, .struttura-kpi:first-child { border-top: 0; padding-top: 0; }
+  .fam-chips, .anomalie-grid { grid-template-columns: 1fr; }
   .tut-tabs { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 720px) {

@@ -147,15 +147,17 @@ class Workspace:
             await asyncio.to_thread(media.save_ad_media, result["ads"][:TABLE_THUMBNAILS], self.client.media)
             # every search is remembered, so the next one can tell what changed
             result["changes"] = history.summary(self.history.record(result))
+            key = history.subject(result)["key"]
+            snaps = self.history.snapshots(key)
             if result.get("mode") == "company":
-                key = history.subject(result)["key"]
                 result["ritmo"] = ritmo.analyze(
                     result["ads"],
                     mode="company",
                     loaded_share=service._loaded_share(result),
-                    snapshots=self.history.snapshots(key),
+                    snapshots=snaps,
                     durata_report=result.get("durata"),
                 )
+            service.refresh_structure(result, snapshots=snaps)
         return result
 
     async def _run(self, job: Job) -> None:

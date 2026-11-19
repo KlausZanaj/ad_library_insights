@@ -215,6 +215,21 @@ def test_ritmo_history_endpoint_and_changes_include_ritmo(app):
     assert changes_payload["ritmo"]["snapshots"] == 2
 
 
+def test_jobs_and_compare_include_struttura_anomalie_and_pianka(app):
+    client, _ = app
+    comp = run_job(client, mode="company", page_id=PAGE_ID, country="IT", level="data", deep=2)["result"]
+    assert "struttura" in comp and comp["struttura"]["sample_scope"] == "company"
+    assert "anomalie" in comp and comp["anomalie"]["sample_scope"] == "company"
+
+    kw = run_job(client, mode="keyword", query="desk", country="DE", level="data", deep=1)["result"]
+    assert "struttura" in kw and kw["struttura"]["sample_scope"] == "keyword_sample"
+    assert "anomalie" in kw and kw["anomalie"]["sample_scope"] == "keyword_sample"
+
+    cmp_res = run_job(client, mode="compare", page_id=PAGE_ID, page_id_b="365604620536", country="IT", level="data", deep=1)["result"]
+    assert "audience_overlap" in cmp_res["comparison"]
+    assert cmp_res["comparison"]["audience_overlap"]["ads_a"] >= 0
+
+
 # --- levels ---------------------------------------------------------------------------
 
 def test_plan_needs_the_project_card_first(app):
@@ -1129,3 +1144,141 @@ def test_page_ritmo_section_and_news_detail_render_svg_and_alerts(site, page_of)
     assert _count(page, ".ritmo-chart svg rect") == 9
     assert _count(page, ".ritmo-alert") == 1
     assert _count(page, ".ritmo-sec [data-action=ritmo-refresh]") == 0
+
+
+def _sample_struttura(lead_id: str) -> dict:
+    return {
+        "available": True,
+        "mode": "company",
+        "sample_scope": "company",
+        "country": "IT",
+        "concepts_total": 10,
+        "reach_concentration": {
+            "measurable": True, "scope": "market", "country": "IT", "concepts_with_reach": 5,
+            "total_read_reach": 100000, "top1_share": 0.60, "top3_share": 0.90, "top20pct_share": 0.60,
+            "hhi": 0.41, "normalized_hhi": 0.26, "effective_n": 2.4, "gini": 0.52, "level": "concentrated",
+            "leaders": [{"library_id": lead_id, "share": 0.60, "reach": 60000, "cards_read": 1, "cards": 1}],
+        },
+        "copy_families": {
+            "measurable": True, "evaluated": 8, "total_with_text": 8, "capped": False, "threshold": 0.62,
+            "families_count": 3, "diversity_ratio": 0.38, "largest_family_share": 0.50, "median_pairwise_ncd": 0.71,
+            "top_families": [{"representative_id": lead_id, "size": 4, "share": 0.50, "opening": "Sample lead family", "member_ids": [lead_id]}],
+        },
+        "shannon": {
+            "formats": {"measurable": True, "items": 8, "categories": 2, "entropy_bits": 0.81, "effective_k": 1.75, "evenness": 0.81, "dominant": "video", "dominant_share": 0.75, "label": "balanced"},
+            "destinations": {"measurable": True, "items": 8, "categories": 2, "entropy_bits": 0.81, "effective_k": 1.75, "evenness": 0.81, "dominant": "example.com", "dominant_share": 0.75, "label": "balanced"},
+        },
+        "audience_drift": {"measurable": False, "reason": "too_few_snapshots_with_audience", "snapshots_with_audience": 1},
+    }
+
+
+def _sample_anomalie(lead_id: str) -> dict:
+    return {
+        "available": True, "mode": "company", "sample_scope": "company", "concepts_checked": 10, "active_checked": 9, "status": "flagged",
+        "baselines": {"median_days": 30.0, "median_reach_per_day": 500.0, "median_body_chars": 150.0, "reach_peers": 6},
+        "items": [{
+            "library_id": lead_id, "kind": "long_live_low_reach", "kinds": ["long_live_low_reach"], "lenses": ["reach", "copy"],
+            "strength": 4.2, "opening": "Quiet evergreen concept",
+            "detail": "90d on air vs 30d median, yet only 80/day vs 500/day median",
+            "metrics": {"days_running": 90, "reach_per_day": 80, "creatives": 2, "body_chars": 140, "impression_rank": 4, "media_type": "video"},
+        }],
+    }
+
+
+SAMPLE_PIANKA = {
+    "measurable": True, "overlap": 0.78, "band": "moderate", "ads_a": 4, "ads_b": 3,
+    "total_reach_a": 50000, "total_reach_b": 40000,
+    "shared_segments": [{"country": "IT", "age_range": "25-34", "gender": "female", "share_a": 0.45, "share_b": 0.40}],
+    "distinct_a": [{"country": "IT", "age_range": "18-24", "gender": "male", "share_a": 0.30, "share_b": 0.10, "gap": 0.20}],
+    "distinct_b": [{"country": "IT", "age_range": "45-54", "gender": "female", "share_a": 0.08, "share_b": 0.35, "gap": 0.27}],
+}
+
+SAMPLE_JS_DRIFT = {
+    "measurable": True, "js_distance": 0.24, "js_divergence": 0.058, "state": "drifting",
+    "top_gainers": [{"country": "IT", "age_range": "35-44", "gender": "female", "before": 0.12, "after": 0.24, "delta": 0.12}],
+    "top_losers": [], "days_between": 14.0, "ads_before": 4, "ads_after": 5, "snapshots_with_audience": 2,
+}
+
+
+def test_page_struttura_anomalie_pianka_and_js_drift(site, page_of):
+    base = _result(site)
+    lead_id = base["ads"][0]["library_id"]
+    comp = _result(site, struttura=_sample_struttura(lead_id), anomalie=_sample_anomalie(lead_id))
+
+    for lang, expected_fam, expected_anom in (("it", "3 famiglie", "Annunci fuori schema"),
+                                              ("en", "3 copy families", "Out-of-pattern ads")):
+        page = page_of(lang, comp)
+        if lang == "en":
+            page.click(".topbar [data-action=theme][data-value=dark]")
+        assert page.locator(".struttura-sec").is_visible()
+        assert page.locator(".anomalie-sec").is_visible()
+        assert expected_fam in page.inner_text(".struttura-sec") or expected_fam in page.inner_text(".tldr")
+        assert expected_anom in page.inner_text(".anomalie-sec")
+
+        # Every ? popover inside .struttura-sec and .anomalie-sec stays in 1440px viewport & closes on Escape
+        for sel in (".struttura-sec [data-action=help-toggle]", ".anomalie-sec [data-action=help-toggle]"):
+            cnt = page.locator(sel).count()
+            assert cnt >= 1
+            for idx in range(cnt):
+                page.locator(sel).nth(idx).click()
+                pop = page.locator(".help-wrap.open .help-pop")
+                assert pop.is_visible()
+                box = pop.bounding_box()
+                assert box and box["x"] >= 0 and box["x"] + box["width"] <= 1440
+                page.keyboard.press("Escape")
+                assert _count(page, ".help-wrap.open") == 0
+
+    # Clicking an anomaly card opens the ad drawer cleanly
+    page = page_of("it", comp)
+    page.locator(".anom-card").first.click()
+    page.wait_for_selector(".drawer")
+    assert _count(page, ".drawer") == 1
+    page.keyboard.press("Escape")
+    assert _count(page, ".drawer") == 0
+
+    # Keyword mode ALSO renders .struttura-sec and .anomalie-sec with sample label
+    kw_str = {**_sample_struttura(lead_id), "mode": "keyword", "sample_scope": "keyword_sample"}
+    kw_anom = {**_sample_anomalie(lead_id), "mode": "keyword", "sample_scope": "keyword_sample"}
+    kw = _result(site, mode="keyword", query="standing desk", page=None, struttura=kw_str, anomalie=kw_anom)
+    page = page_of("it", kw)
+    assert "parola chiave" in page.inner_text(".struttura-sec").casefold()
+    assert "parola chiave" in page.inner_text(".anomalie-sec").casefold()
+
+    # Compare sheet renders Pianka section + updates buildCompareBrief
+    page = page_of("it")
+    cmp_payload = {
+        "mode": "compare", "country": "IT",
+        "sides": [base, {**base, "page": {**base["page"], "name": "Beta Co"}}],
+        "comparison": {
+            "names": {"a": "Kingshot", "b": "Beta Co"},
+            "country": "IT", "rows": [], "highlights": [],
+            "audience_overlap": SAMPLE_PIANKA, "note": "Note",
+        },
+    }
+    page.evaluate("""(r) => { S.mode = 'compare'; S.result = r; S.resultMode = 'compare'; S.cmp = null; render(); }""", cmp_payload)
+    page.wait_for_selector(".pianka-sec")
+    assert "78%" in page.inner_text(".pianka-sec")
+    assert "Pianka" in page.evaluate("buildCompareBrief(S.result)")
+
+    # Novita view renders JS drift bar when /api/history/changes includes audience_drift
+    page = page_of("it")
+    key = f"company:IT:{PAGE_ID}"
+    page.route("**/api/history", lambda route: route.fulfill(json={"subjects": [{
+        "key": key, "mode": "company", "label": "Kingshot", "country": "IT", "page_id": PAGE_ID,
+        "snapshots": 3, "last_taken_at": "2026-11-13T10:00:00+00:00", "active_ads": 194,
+    }]}))
+    page.route("**/api/history/changes*", lambda route: route.fulfill(json={
+        "available": True,
+        "subject": {"key": key, "mode": "company", "label": "Kingshot", "country": "IT", "page_id": PAGE_ID},
+        "previous": {"taken_at": "2026-10-30T10:00:00+00:00", "active_ads": 180, "ads_loaded": 180},
+        "current": {"taken_at": "2026-11-13T10:00:00+00:00", "active_ads": 194, "ads_loaded": 194},
+        "days_between": 14.0, "sample": False,
+        "counts": {"new": 0, "new_texts": 0, "stopped": 0, "changed": 0},
+        "new": [], "stopped": [], "changed": [],
+        "audience_drift": SAMPLE_JS_DRIFT,
+    }))
+    page.click(".topbar [data-action=mode][data-value=news]")
+    page.wait_for_selector("[data-action=news-open]")
+    page.click("[data-action=news-open]")
+    page.wait_for_selector(".js-drift-bar")
+    assert "In spostamento" in page.inner_text(".js-drift-bar")

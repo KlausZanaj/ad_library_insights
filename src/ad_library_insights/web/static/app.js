@@ -736,6 +736,24 @@ function cusumPop() {
 function littlePop(alignRight = true) {
   return helpPopover(t('rit.kpi.little'), 'help.little.title', `<p>${esc(t('help.little.body'))}</p>`, alignRight);
 }
+function strutturaPop() {
+  return helpPopover(t('str.title'), 'help.struttura.title', `<p>${esc(t('help.struttura.body'))}</p>`);
+}
+function concPop() {
+  return helpPopover(t('str.kpi.conc'), 'help.conc.title', `<p>${esc(t('help.conc.body'))}</p>`);
+}
+function ncdPop() {
+  return helpPopover(t('str.kpi.copy'), 'help.ncd.title', `<p>${esc(t('help.ncd.body'))}</p>`);
+}
+function shannonPop(alignRight = true) {
+  return helpPopover(t('str.kpi.shannon'), 'help.shannon.title', `<p>${esc(t('help.shannon.body'))}</p>`, alignRight);
+}
+function anomaliePop() {
+  return helpPopover(t('anom.title'), 'help.anomalie.title', `<p>${esc(t('help.anomalie.body'))}</p>`);
+}
+function piankaPop() {
+  return helpPopover(t('cmp.pianka.title'), 'help.pianka.title', `<p>${esc(t('help.pianka.body'))}</p>`);
+}
 function tldrSection(r) {
   const s = r.signals || {}, v = s.verdicts || {};
   const concepts = count(r.distinct_ads ?? (r.ads || []).length, 'n.concepts');
@@ -769,6 +787,13 @@ function tldrSection(r) {
       const stKey = (m.sta_lta && m.sta_lta.measurable && m.sta_lta.state) ? m.sta_lta.state : 'steady';
       sub += t('tldr.ritmo.steady', { state: t(`rit.state.${stKey}`).toLowerCase() });
     }
+  }
+  if (r.struttura && r.struttura.copy_families && r.struttura.copy_families.measurable) {
+    const cf = r.struttura.copy_families;
+    sub += t('tldr.struttura.families', { k: num(cf.families_count), m: num(cf.evaluated) });
+  }
+  if (r.anomalie && r.anomalie.available && (r.anomalie.items || []).length) {
+    sub += t('tldr.anomalie.flagged', { n: num(r.anomalie.items.length) });
   }
   return `<section class="tldr" aria-label="${esc(t('tldr.label'))}">
     <span class="tldr-label">${esc(t('tldr.label'))}</span>
@@ -1042,6 +1067,107 @@ function ritmoSection(r, inNews = false) {
     ${body}
   </section>`;
 }
+function strutturaSection(r) {
+  if (!r || !r.struttura) return '';
+  const s = r.struttura;
+  const subKey = r.mode === 'company' ? 'str.sub.company' : 'str.sub.keyword';
+  const rc = s.reach_concentration || {};
+  const cf = s.copy_families || {};
+  const sh = s.shannon || {};
+
+  let concHtml;
+  if (rc.measurable) {
+    const lvlKey = `str.conc.level.${rc.level}`;
+    const lvl = hasT(lvlKey) ? t(lvlKey) : (rc.level || '');
+    concHtml = `<strong>${esc(t('str.conc.head', { top1: pct(rc.top1_share), top3: pct(rc.top3_share) }))}</strong>
+      <small>${esc(t('str.conc.meta', { level: lvl, n: num(rc.concepts_with_reach), hhi: num(rc.hhi), eff: num(rc.effective_n), gini: num(rc.gini) }))}</small>
+      ${rc.scope === 'eu_uk' ? `<small>${esc(t('str.conc.scope_eu'))}</small>` : ''}`;
+  } else {
+    concHtml = `<strong>${esc(t('str.conc.none'))}</strong><small>${esc(t('str.conc.none_sub'))}</small>`;
+  }
+
+  let copyHtml;
+  if (cf.measurable) {
+    copyHtml = `<strong>${esc(t('str.copy.head', { k: num(cf.families_count), m: num(cf.evaluated) }))}</strong>
+      <small>${esc(t('str.copy.meta', { ratio: num(cf.diversity_ratio), max: pct(cf.largest_family_share), ncd: num(cf.median_pairwise_ncd) }))}</small>`;
+  } else {
+    copyHtml = `<strong>${esc(t('str.copy.none'))}</strong><small>${esc(t('str.copy.none_sub'))}</small>`;
+  }
+
+  const shLine = (row, strKey, labelFn) => {
+    if (!row || !row.measurable) return '';
+    const lblKey = `str.shannon.label.${row.label}`;
+    const lbl = hasT(lblKey) ? t(lblKey) : (row.label || '');
+    const dom = labelFn ? labelFn(row.dominant) : row.dominant;
+    return `<small>${esc(t(strKey, { label: lbl, eff: num(row.effective_k), k: num(row.categories), dom, share: pct(row.dominant_share) }))}</small>`;
+  };
+  const fmtLine = shLine(sh.formats, 'str.shannon.fmt', (d) => (hasT(`format.${d}`) ? t(`format.${d}`) : d));
+  const destLine = shLine(sh.destinations, 'str.shannon.dest');
+  let shHtml = `<strong>${esc(t('str.kpi.shannon'))}</strong>`;
+  if (fmtLine || destLine) shHtml += `${fmtLine}${destLine}`;
+  else shHtml += `<small>${esc(t('str.shannon.none'))}</small>`;
+
+  let famHtml = '';
+  if (cf.measurable && (cf.top_families || []).length) {
+    const chips = cf.top_families.map((fam) => `<button type="button" class="fam-chip" data-action="open-ad" data-value="${esc(fam.representative_id)}">
+      <strong>${esc(t('str.families.item', { size: num(fam.size), share: pct(fam.share), id: fam.representative_id }))}</strong>
+      <span>${esc(fam.opening || '—')}</span>
+    </button>`).join('');
+    famHtml = `<div class="struttura-families">
+      <div class="struttura-families-head">${esc(t('str.families.title'))}</div>
+      <div class="fam-chips">${chips}</div>
+    </div>`;
+  }
+
+  const noteText = rc.measurable ? t('str.note', { n: num(rc.concepts_with_reach) }) : t('str.note.noreach');
+  return `<section class="struttura-sec">
+    <div class="struttura-head">
+      <div class="struttura-head-title"><h2>${esc(t('str.title'))}${strutturaPop()}</h2><p>${esc(t(subKey))}</p></div>
+    </div>
+    <div class="struttura-kpis">
+      <div class="struttura-kpi"><span class="struttura-kpi-label">${esc(t('str.kpi.conc'))}${concPop()}</span>${concHtml}</div>
+      <div class="struttura-kpi"><span class="struttura-kpi-label">${esc(t('str.kpi.copy'))}${ncdPop()}</span>${copyHtml}</div>
+      <div class="struttura-kpi"><span class="struttura-kpi-label">${esc(t('str.kpi.shannon'))}${shannonPop(true)}</span>${shHtml}</div>
+    </div>
+    ${famHtml}
+    <p class="struttura-note">${esc(noteText)}</p>
+  </section>`;
+}
+function anomalieSection(r) {
+  if (!r || !r.anomalie) return '';
+  const a = r.anomalie;
+  const subKey = r.mode === 'company' ? 'anom.sub.company' : 'anom.sub.keyword';
+  let body = '';
+  if (!a.available) {
+    body = `<p class="notice" style="margin-top:14px">${esc(t('anom.unavail'))}</p>`;
+  } else if (!(a.items || []).length) {
+    body = `<p class="muted" style="margin-top:14px">${esc(t('anom.empty'))}</p>`;
+  } else {
+    const cards = a.items.map((item) => {
+      const m = item.metrics || {};
+      const kindKey = `anom.kind.${item.kind}`;
+      const kindLbl = hasT(kindKey) ? t(kindKey) : item.kind;
+      const rpdTxt = m.reach_per_day != null
+        ? `${num(m.reach_per_day)} ${t('t.perday').toLowerCase()}`
+        : (m.impression_rank != null ? t('anom.norpd', { rank: num(m.impression_rank) }) : '—');
+      const metaTxt = t('anom.meta', { days: num(m.days_running), creatives: num(m.creatives || 1), rpd: rpdTxt });
+      return `<button type="button" class="anom-card" data-action="open-ad" data-value="${esc(item.library_id)}">
+        <span class="anom-tag">${esc(kindLbl)} · id ${esc(item.library_id)}</span>
+        <strong class="anom-open">${esc(item.opening || t('t.notext'))}</strong>
+        <small class="anom-detail">${esc(item.detail || '')}</small>
+        <span class="anom-meta">${esc(metaTxt)}</span>
+      </button>`;
+    }).join('');
+    body = `<div class="anomalie-grid">${cards}</div>`;
+  }
+  return `<section class="anomalie-sec">
+    <div class="anomalie-head">
+      <div class="anomalie-head-title"><h2>${esc(t('anom.title'))}${anomaliePop()}</h2><p>${esc(t(subKey))}</p></div>
+    </div>
+    ${body}
+    <p class="anomalie-note">${esc(t('anom.note'))}</p>
+  </section>`;
+}
 function tableSection(r) {
   const company = r.mode === 'company';
   const rows = tableRowsHtml(r);
@@ -1070,7 +1196,7 @@ function renderResults() {
   if (S.pages) { el.innerHTML = pagesSheet(); return; }
   const r = S.result;
   if (!r || !(r.ads || []).length || S.resultMode !== S.mode) { el.innerHTML = ''; return; }
-  el.innerHTML = `<div class="sheet">${headSection(r)}${tldrSection(r)}${readySection(r)}${cappedSection(r)}${changesSection(r)}${metricsSection(r)}${factsSection(r)}${durataSection(r)}${ritmoSection(r)}${tableSection(r)}</div>`;
+  el.innerHTML = `<div class="sheet">${headSection(r)}${tldrSection(r)}${readySection(r)}${cappedSection(r)}${changesSection(r)}${metricsSection(r)}${factsSection(r)}${durataSection(r)}${ritmoSection(r)}${strutturaSection(r)}${anomalieSection(r)}${tableSection(r)}</div>`;
 }
 
 /* ---------- two companies ---------- */
@@ -1102,6 +1228,38 @@ function cmpValue(row, value) {
     default: return esc(value ?? '—');
   }
 }
+function genderLabel(g) {
+  if (g === 'female' && hasT('gender.Women')) return t('gender.Women');
+  if (g === 'male' && hasT('gender.Men')) return t('gender.Men');
+  if (g === 'all' && hasT('gender.All')) return t('gender.All');
+  return hasT(`gender.${g}`) ? t(`gender.${g}`) : (g || '—');
+}
+function piankaSection(c) {
+  const ov = c.audience_overlap;
+  if (!ov) return '';
+  if (!ov.measurable) {
+    return `<section class="pianka-sec">
+      <div class="pianka-head"><h2>${esc(t('cmp.pianka.title'))}${piankaPop()}</h2></div>
+      <p class="muted" style="margin-top:8px">${esc(t('cmp.pianka.none'))}</p>
+    </section>`;
+  }
+  const pctVal = Math.round((ov.overlap || 0) * 100);
+  const bandKey = `cmp.pianka.band.${ov.band}`;
+  const bandLbl = hasT(bandKey) ? t(bandKey) : (ov.band || '');
+  const segText = (row) => `${region(row.country)} · ${row.age_range} · ${genderLabel(row.gender)} (${pct(row.share_a)} vs ${pct(row.share_b)})`;
+  const listCol = (title, items) => (items && items.length
+    ? `<div><h4>${esc(title)}</h4><ul>${items.map((x) => `<li>${esc(segText(x))}</li>`).join('')}</ul></div>` : '');
+  const cols = `${listCol(t('cmp.pianka.shared'), ov.shared_segments)}${listCol(t('cmp.pianka.only_a', { name: c.names.a }), ov.distinct_a)}${listCol(t('cmp.pianka.only_b', { name: c.names.b }), ov.distinct_b)}`;
+  return `<section class="pianka-sec">
+    <div class="pianka-head"><h2>${esc(t('cmp.pianka.title'))}${piankaPop()}</h2></div>
+    <div class="pianka-bar-row">
+      <div class="pianka-track"><div class="pianka-fill" style="width:${pctVal}%"></div></div>
+      <span class="pianka-pct">${esc(`${pctVal}%`)}</span>
+    </div>
+    <p class="pianka-sub">${esc(t('cmp.pianka.meta', { pct: `${pctVal}%`, band: bandLbl, a: num(ov.ads_a), b: num(ov.ads_b) }))}</p>
+    ${cols ? `<div class="pianka-cols">${cols}</div>` : ''}
+  </section>`;
+}
 function compareSheet(r) {
   const c = r.comparison, [a, b] = r.sides;
   const head = (side) => { const page = side.page || {}; return `<div>${avatar(page.logo, page.name, true)}<div><h1>${esc(page.name || side.query)}</h1>
@@ -1126,10 +1284,11 @@ function compareSheet(r) {
     <section class="ready"><p>${esc(t(S.cmpCopied ? 'cmp.brief.copied' : 'cmp.brief.ready'))}</p>
       <button class="btn quiet small" data-action="copy-cmp-brief">${esc(t('cmp.brief.btn'))}</button></section>
     <section><h2>${esc(t('cmp.highlights'))}</h2>${notes ? `<ul class="notes">${notes}</ul>` : `<p class="muted" style="margin-top:8px">${esc(t('cmp.none'))}</p>`}
-      <p class="tablenote">${esc(t('cmp.note'))}</p></section>
+      <p class="pianka-note">${esc(t('cmp.note'))}</p></section>
+    ${piankaSection(c)}
     <section><table class="cmp"><thead><tr><th></th><th>${esc(c.names.a)}</th><th>${esc(c.names.b)}</th></tr></thead><tbody>${rows}</tbody></table></section>
     <section><h2 style="margin-bottom:14px">${esc(t('cmp.top'))}</h2><div class="tops">${top(a)}${top(b)}</div>
-      <p class="tablenote"><button class="linklike" data-action="guide">${esc(t('link.guide'))}</button></p></section>
+      <p class="pianka-note"><button class="linklike" data-action="guide">${esc(t('link.guide'))}</button></p></section>
   </div>`;
 }
 function buildCompareBrief(r) {
@@ -1138,6 +1297,9 @@ function buildCompareBrief(r) {
   c.rows.forEach((row) => {
     lines.push(`- ${t(`cmp.row.${row.key}`, { country: region(r.country) })}: ${c.names.a} = ${JSON.stringify(row.a)} | ${c.names.b} = ${JSON.stringify(row.b)}`);
   });
+  if (c.audience_overlap && c.audience_overlap.measurable) {
+    lines.push(`- EU+UK audience overlap (Pianka): ${Math.round(c.audience_overlap.overlap * 100)}% (${c.audience_overlap.band})`);
+  }
   lines.push('', `## Top concepts of ${c.names.a}`);
   a.ads.slice(0, 5).forEach((ad, i) => lines.push(`${i + 1}. [Score ${Math.round(ad.score)} · ${ad.days_running}d] ${firstLine(ad)}`));
   lines.push('', `## Top concepts of ${c.names.b}`);
@@ -1203,6 +1365,15 @@ function newsList(title, ads, keyword, extraHead, extraCell) {
     : `<p class="muted">${esc(t('news.none'))}</p>`;
   return `<section><div class="listhead"><h2>${esc(title)}</h2><span>${ads.length}</span></div>${body}</section>`;
 }
+function jsDriftBar(d) {
+  const stKey = `news.drift.state.${d.state}`;
+  const stateLbl = hasT(stKey) ? t(stKey) : (d.state || '');
+  const gains = (d.top_gainers || []).map((g) => `${region(g.country)} ${g.age_range} ${genderLabel(g.gender)} (+${Math.round(g.delta * 100)}pp)`).join(', ');
+  return `<section class="js-drift-bar">
+    <strong>${esc(t('news.drift.title'))}</strong>
+    <small>${esc(t('news.drift.meta', { dist: num(d.js_distance), state: stateLbl, days: num(d.days_between), n: num(d.snapshots_with_audience) }))}${gains ? ` · ${esc(t('news.drift.gainers', { list: gains }))}` : ''}</small>
+  </section>`;
+}
 function newsDetail(c) {
   const keyword = c.subject.mode === 'keyword';
   const title = keyword ? t('result.keyword', { query: c.subject.label, country: region(c.subject.country) }) : `${c.subject.label} · ${region(c.subject.country)}`;
@@ -1219,6 +1390,7 @@ function newsDetail(c) {
     <section class="metrics three">${cells.map(([value, label, why]) => `<div class="metric"><b>${num(value)}</b><span>${esc(label)}</span><small>${esc(why)}</small></div>`).join('')}</section>
     ${c.sample ? `<section><p class="muted">${esc(t('news.sample'))}</p></section>` : ''}
     ${c.subject && c.subject.mode === 'company' && c.ritmo ? ritmoSection({ mode: 'company', ritmo: c.ritmo, page: { page_id: c.subject.page_id }, country: c.subject.country }, true) : ''}
+    ${c.audience_drift && c.audience_drift.measurable ? jsDriftBar(c.audience_drift) : ''}
     ${newsList(t('news.new'), c.new, keyword, '<th></th>', kind)}
     ${newsList(t('news.stopped'), c.stopped, keyword, '', () => '')}
     ${newsList(t('news.changed'), c.changed, keyword, `<th>${esc(t('news.what'))}</th>`, what)}
