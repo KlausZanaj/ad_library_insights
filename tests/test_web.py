@@ -153,6 +153,29 @@ def test_media_route_only_serves_saved_pictures(app):
     assert client.get("/media/..%2Fthrottle.json").status_code == 404
 
 
+def test_durata_endpoint_validates_inputs_and_runs_job(app):
+    client, _ = app
+    assert client.post("/api/durata", content=b"not json").status_code == 400
+    for body in (
+        {"page_id": "kingshot", "country": "IT", "window_days": 90},
+        {"page_id": PAGE_ID, "country": "Italy", "window_days": 90},
+        {"page_id": PAGE_ID, "country": "IT", "window_days": 15},
+    ):
+        assert client.post("/api/durata", json=body).status_code == 400
+
+    res = client.post("/api/durata", json={"page_id": PAGE_ID, "country": "IT", "window_days": 90})
+    assert res.status_code == 202
+    job = res.json()
+    for _ in range(200):
+        job = client.get(f"/api/jobs/{job['id']}").json()
+        if job["status"] != "running":
+            break
+        time.sleep(0.02)
+    assert job["status"] == "done" and job["error"] is None
+    assert job["result"]["durata"]["unit"] == "concept"
+    assert job["result"]["durata"]["window_days"] == 90
+
+
 # --- levels ---------------------------------------------------------------------------
 
 def test_plan_needs_the_project_card_first(app):

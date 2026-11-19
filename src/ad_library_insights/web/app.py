@@ -27,6 +27,7 @@ from ..storage import DiskCache, Throttle
 STATIC = Path(__file__).parent / "static"
 TABLE_THUMBNAILS = 150         # thumbnails kept for the ads listed in the table
 KEYWORD_SCROLLS = 8
+DURATA_WINDOWS = (60, 90, 120, 180)
 _SAFE_NAME = re.compile(r"^[\w.-]+$")
 
 
@@ -159,6 +160,16 @@ class Workspace:
                     job.result = {"mode": "compare", "country": params["country"], "request": params,
                                   "sides": [present(first, params), present(second, params)],
                                   "comparison": compare.compare(first, second) if both else None}
+                elif params["mode"] == "durata":
+                    job.phase, job.detail = "list", {}
+                    found = await service.analyze_durata(
+                        self.client,
+                        params["country"],
+                        params["page_id"],
+                        window_days=params["window_days"],
+                        use_cache=not params.get("fresh"),
+                    )
+                    job.result = found
                 else:
                     result = await self._collect(
                         job, params, params["page_id"] if params["mode"] == "company" else None)
@@ -263,6 +274,25 @@ class Workspace:
             return JSONResponse({"error": "project_required"}, status_code=409)
         if params["level"] == "data":
             params["frames"] = False
+        return JSONResponse(self.start(params).view(), status_code=202)
+
+    async def create_durata_job(self, request: Request) -> Response:
+        try:
+            body = await request.json()
+            if not isinstance(body, dict):
+                raise ValueError("body must be a JSON object")
+            page_id = str(body.get("page_id") or "").strip()
+            if not page_id.isdigit():
+                raise ValueError("page_id must be the numeric id of an advertiser page")
+            country = normalise_country(body.get("country", ""))
+            window_days = int(body.get("window_days", 90))
+            if window_days not in DURATA_WINDOWS:
+                raise ValueError(f"window_days must be one of {DURATA_WINDOWS}")
+            fresh = bool(body.get("fresh"))
+        except (ValueError, TypeError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        params = {"mode": "durata", "page_id": page_id, "country": country,
+                  "window_days": window_days, "fresh": fresh}
         return JSONResponse(self.start(params).view(), status_code=202)
 
     async def get_job(self, request: Request) -> Response:
@@ -395,6 +425,7 @@ def create_app(client: AdLibraryClient | None = None, home: Path | None = None,
         Route("/api/project", space.get_project, methods=["GET"]),
         Route("/api/project", space.put_project, methods=["PUT"]),
         Route("/api/jobs", space.create_job, methods=["POST"]),
+        Route("/api/durata", space.create_durata_job, methods=["POST"]),
         Route("/api/jobs/{job_id}", space.get_job),
         Route("/api/brief", space.brief, methods=["POST"]),
         Route("/api/frames/open", space.open_frames, methods=["POST"]),
