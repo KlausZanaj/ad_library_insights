@@ -313,3 +313,55 @@ def test_tutorial_mentions_only_real_mcp_tools_from_server_py():
         assert len(found) >= 5, (lang, found)
         unknown = [tok for tok in found if tok not in real_tools]
         assert not unknown, f"Unknown MCP tool names in {lang} tutorial: {unknown}"
+
+
+def test_tutorial_mentions_only_real_ui_buttons_and_labels():
+    import re
+
+    root = Path(__file__).resolve().parents[1]
+    strings = json.loads(
+        (root / "src" / "ad_library_insights" / "web" / "static" / "strings.json").read_text(encoding="utf-8")
+    )
+
+    forbidden = (
+        "Prepara l'analisi / il piano",
+        "Prepare brief",
+        "Mostra i fotogrammi",
+        "Show the stills",
+        "Refresh now",
+        "Promettente",
+        "Promising",
+        "<percorso-.venv>",
+    )
+    assert "<percorso-python-.venv>" in strings["it"]["tut.6.c3.f"]
+    assert "<project-.venv-python>" in strings["en"]["tut.6.c3.f"]
+
+    quote_pat = re.compile(r"«([^»]+)»|“([^”]+)”|(?<![A-Za-z])'([^']{3,})'")
+    example_ctx = re.compile(r"\((?:es\.|e\.g\.)\s+[^)]*$")
+    extras = {
+        "it": {"Nuovo", "Alta", "Media", "Bassa"},
+        "en": {"New", "High", "Medium", "Low"},
+    }
+
+    for lang in ("it", "en"):
+        all_tutorial_vals = "\n".join(strings[lang].values())
+        for bad in forbidden:
+            assert bad not in all_tutorial_vals, f"Forbidden stale label {bad!r} found in {lang}"
+
+        real_ui = {
+            v for k, v in strings[lang].items()
+            if not k.startswith(("tut.", "kpi.", "how.", "leg.", "guide."))
+        }
+        multi_title = strings[lang].get("way.multi.title", "")
+        if "?" in multi_title:
+            real_ui.add(multi_title.split("?", 1)[0] + "?")
+        real_ui |= extras[lang]
+
+        for k, txt in strings[lang].items():
+            if not k.startswith(("how.", "tut.", "kpi.")):
+                continue
+            for m in quote_pat.finditer(txt):
+                tok = next(g for g in m.groups() if g)
+                if "[Brand]" in tok or example_ctx.search(txt[:m.start()]):
+                    continue
+                assert tok in real_ui, f"Unknown UI label {tok!r} cited in {lang}.{k}"
