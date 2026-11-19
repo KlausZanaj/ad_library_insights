@@ -196,6 +196,25 @@ def test_durata_endpoint_validates_inputs_and_runs_job(app):
     assert job["result"]["durata"]["window_days"] == 90
 
 
+def test_ritmo_history_endpoint_and_changes_include_ritmo(app):
+    client, studio = app
+    missing = client.get("/api/history/ritmo", params={"key": f"company:IT:{PAGE_ID}"}).json()
+    assert missing["available"] is False and missing["reason"] == "no_snapshots"
+
+    first = run_job(client, mode="company", page_id=PAGE_ID, country="IT", level="data", deep=1)
+    assert "ritmo" in first["result"] and first["result"]["ritmo"]["unit"] == "concept"
+    key = first["result"]["changes"]["key"]
+    hist_one = client.get("/api/history/ritmo", params={"key": key}).json()
+    assert hist_one["snapshots"] == 1 and hist_one["reason"] == "partial_list"
+
+    studio.now += 86_400
+    second = run_job(client, mode="company", page_id=PAGE_ID, country="IT", level="data", deep=1, fresh=True)
+    assert second["result"]["changes"]["available"] is True
+    changes_payload = client.get("/api/history/changes", params={"key": key}).json()
+    assert changes_payload["available"] is True and "ritmo" in changes_payload
+    assert changes_payload["ritmo"]["snapshots"] == 2
+
+
 # --- levels ---------------------------------------------------------------------------
 
 def test_plan_needs_the_project_card_first(app):
@@ -975,3 +994,138 @@ def test_page_level3_prova_prima_di_spendere_updates_live_and_saves_optional_cos
     page.wait_for_selector(".proj-extra[open]")
     assert page.input_value("[data-pf=shipping_cost]") == "5"
     assert page.input_value("[data-pf=return_rate_pct]") == "10"
+
+
+SAMPLE_RITMO = {
+    "available": True,
+    "unit": "concept",
+    "mode": "company",
+    "loaded_share": 1.0,
+    "as_of": "2026-11-13",
+    "snapshots": 3,
+    "source": "snapshots",
+    "survivor_bias": False,
+    "snapshot_span_days": 28,
+    "status": "alert",
+    "trigger_ai": True,
+    "alerts": ["launch_spike", "format_drift"],
+    "sta_lta": {
+        "measurable": True,
+        "state": "spike",
+        "sta_count": 8,
+        "lta_total": 16,
+        "lta_mean": 2.0,
+        "ratio": 4.0,
+        "p_value": 0.0021,
+        "recent_ids": ["901", "902"],
+        "survivor_bias_caveat": True,
+        "trigger_ai": True,
+        "weeks": [
+            {"week_start": "2026-09-12", "week_end": "2026-09-18", "concepts": 2, "is_sta": False},
+            {"week_start": "2026-09-19", "week_end": "2026-09-25", "concepts": 1, "is_sta": False},
+            {"week_start": "2026-09-26", "week_end": "2026-10-02", "concepts": 3, "is_sta": False},
+            {"week_start": "2026-10-03", "week_end": "2026-10-09", "concepts": 2, "is_sta": False},
+            {"week_start": "2026-10-10", "week_end": "2026-10-16", "concepts": 2, "is_sta": False},
+            {"week_start": "2026-10-17", "week_end": "2026-10-23", "concepts": 2, "is_sta": False},
+            {"week_start": "2026-10-24", "week_end": "2026-10-30", "concepts": 2, "is_sta": False},
+            {"week_start": "2026-10-31", "week_end": "2026-11-06", "concepts": 2, "is_sta": False},
+            {"week_start": "2026-11-07", "week_end": "2026-11-13", "concepts": 8, "is_sta": True},
+        ],
+    },
+    "cusum": {
+        "measurable": True,
+        "concepts": 24,
+        "span_days": 45,
+        "split_date": "2026-10-15",
+        "drift_detected": True,
+        "trigger_ai": True,
+        "primary": {
+            "format": "video",
+            "baseline_share": 0.25,
+            "recent_share": 0.75,
+            "delta_share": 0.5,
+            "cusum_peak": 5.2,
+            "threshold": 4.0,
+            "direction": "up",
+            "changepoint_date": "2026-10-20",
+        },
+        "example_ids": ["902", "903"],
+        "formats": [],
+    },
+    "littles_law": {
+        "measurable": True,
+        "active_concepts": 18,
+        "launches_28d": 12,
+        "window_days": 28,
+        "lambda_per_week": 3.0,
+        "implied_mean_days": 42.0,
+        "steady_state_checked": True,
+        "mean_duration_days": 34.5,
+        "expected_active": 14.8,
+        "balance_ratio": 1.22,
+        "balance_state": "balanced",
+    },
+    "snapshot_series": [],
+}
+
+
+def test_page_ritmo_section_and_news_detail_render_svg_and_alerts(site, page_of):
+    # Keyword search must never show Ritmo
+    kw = _result(site, mode="keyword", query="standing desk", page=None, ritmo=SAMPLE_RITMO)
+    page = page_of("it", kw)
+    assert _count(page, ".ritmo-sec") == 0
+
+    # Company mode renders Ritmo in IT/Light and EN/Dark with 9 bars, alert callout, In breve & ? popovers
+    comp = _result(site, ritmo=SAMPLE_RITMO)
+    for lang, expected_alert, expected_little in (("it", "Picco reale", "In equilibrio"),
+                                                  ("en", "Real spike", "Balanced")):
+        page = page_of(lang, comp)
+        if lang == "en":
+            page.click(".topbar [data-action=theme][data-value=dark]")
+        sec = page.locator(".ritmo-sec")
+        assert sec.is_visible()
+        sec_text = sec.inner_text()
+        assert expected_alert in sec_text and expected_little in sec_text and "901" in sec_text
+        assert _count(page, ".ritmo-alert") == 1
+        assert _count(page, ".ritmo-chart svg rect") == 9
+        assert "ritmo" in page.inner_text(".tldr").casefold()
+
+        # Check every ? popover inside .ritmo-sec stays within 1440px viewport and closes on Escape
+        help_count = page.locator(".ritmo-sec [data-action=help-toggle]").count()
+        assert help_count == 4
+        for idx in range(help_count):
+            page.locator(".ritmo-sec [data-action=help-toggle]").nth(idx).click()
+            pop = page.locator(".help-wrap.open .help-pop")
+            assert pop.is_visible()
+            box = pop.bounding_box()
+            assert box and box["x"] >= 0 and box["x"] + box["width"] <= 1440
+            page.keyboard.press("Escape")
+            assert _count(page, ".help-wrap.open") == 0
+
+    # Novita view for company changes containing `ritmo` renders .ritmo-sec without a manual refresh button
+    page = page_of("it")
+    key = f"company:IT:{PAGE_ID}"
+    page.route("**/api/history", lambda route: route.fulfill(json={"subjects": [{
+        "key": key, "mode": "company", "label": "Kingshot", "country": "IT", "page_id": PAGE_ID,
+        "snapshots": 3, "last_taken_at": "2026-11-13T10:00:00+00:00", "active_ads": 194,
+    }]}))
+    page.route("**/api/history/changes*", lambda route: route.fulfill(json={
+        "available": True,
+        "subject": {"key": key, "mode": "company", "label": "Kingshot", "country": "IT", "page_id": PAGE_ID},
+        "previous": {"taken_at": "2026-10-14T10:00:00+00:00", "active_ads": 180, "ads_loaded": 180},
+        "current": {"taken_at": "2026-11-13T10:00:00+00:00", "active_ads": 194, "ads_loaded": 194},
+        "days_between": 30.0,
+        "sample": False,
+        "counts": {"new": 0, "new_texts": 0, "stopped": 0, "changed": 0},
+        "new": [],
+        "stopped": [],
+        "changed": [],
+        "ritmo": SAMPLE_RITMO,
+    }))
+    page.click(".topbar [data-action=mode][data-value=news]")
+    page.wait_for_selector("[data-action=news-open]")
+    page.click("[data-action=news-open]")
+    page.wait_for_selector(".ritmo-sec")
+    assert _count(page, ".ritmo-chart svg rect") == 9
+    assert _count(page, ".ritmo-alert") == 1
+    assert _count(page, ".ritmo-sec [data-action=ritmo-refresh]") == 0

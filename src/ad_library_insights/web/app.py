@@ -22,7 +22,7 @@ from starlette.staticfiles import StaticFiles
 
 from .. import __version__, briefs, compare, consumption, details, history, link, media, project, rating, service
 from ..client import AdLibraryClient, normalise_country
-from ..lab import precheck
+from ..lab import precheck, ritmo
 from ..storage import DiskCache, Throttle
 
 STATIC = Path(__file__).parent / "static"
@@ -147,6 +147,15 @@ class Workspace:
             await asyncio.to_thread(media.save_ad_media, result["ads"][:TABLE_THUMBNAILS], self.client.media)
             # every search is remembered, so the next one can tell what changed
             result["changes"] = history.summary(self.history.record(result))
+            if result.get("mode") == "company":
+                key = history.subject(result)["key"]
+                result["ritmo"] = ritmo.analyze(
+                    result["ads"],
+                    mode="company",
+                    loaded_share=service._loaded_share(result),
+                    snapshots=self.history.snapshots(key),
+                    durata_report=result.get("durata"),
+                )
         return result
 
     async def _run(self, job: Job) -> None:
@@ -339,6 +348,9 @@ class Workspace:
                 ad["thumbnail"] = _media_url(ad.pop("thumbnail_path", None))
         return JSONResponse(found)
 
+    async def ritmo_history(self, request: Request) -> Response:
+        return JSONResponse(self.history.ritmo(request.query_params.get("key", "")))
+
     async def brief(self, request: Request) -> Response:
         body = await request.json()
         job = self.jobs.get(str(body.get("job_id")))
@@ -463,6 +475,7 @@ def create_app(client: AdLibraryClient | None = None, home: Path | None = None,
         Route("/api/link/connect", space.link_connect, methods=["POST"]),
         Route("/api/history", space.saved_searches),
         Route("/api/history/changes", space.changes),
+        Route("/api/history/ritmo", space.ritmo_history),
         Mount("/docs/images", StaticFiles(directory=Path(__file__).resolve().parents[3] / "docs" / "images", check_dir=False), name="docs_images"),
         Mount("/static", StaticFiles(directory=STATIC), name="static"),
     ])

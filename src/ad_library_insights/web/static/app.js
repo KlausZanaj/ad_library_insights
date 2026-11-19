@@ -52,6 +52,7 @@ function t(key, vars) {
   for (const name in vars || {}) text = text.replaceAll(`{${name}}`, vars[name]);
   return text;
 }
+const hasT = (key) => Boolean(T[S.lang][key] ?? T.en[key]);
 const num = (value) => (value == null ? '—' : new Intl.NumberFormat(S.lang, { useGrouping: 'always' }).format(value));
 const pct = (share) => `${Math.round((share || 0) * 100)}%`;
 /* A number with its noun, singular for one: count(1, 'n.days') is "1 giorno" / "1 day". */
@@ -723,6 +724,18 @@ function weibullPop() {
 function lindyPop(alignRight = true) {
   return helpPopover(t('dur.kpi.lindy'), 'help.lindy.title', `<p>${esc(t('help.lindy.body'))}</p>`, alignRight);
 }
+function ritmoPop() {
+  return helpPopover(t('rit.title'), 'help.ritmo.title', `<p>${esc(t('help.ritmo.body'))}</p>`);
+}
+function staLtaPop() {
+  return helpPopover(t('rit.kpi.stalta'), 'help.stalta.title', `<p>${esc(t('help.stalta.body'))}</p>`);
+}
+function cusumPop() {
+  return helpPopover(t('rit.kpi.cusum'), 'help.cusum.title', `<p>${esc(t('help.cusum.body'))}</p>`);
+}
+function littlePop(alignRight = true) {
+  return helpPopover(t('rit.kpi.little'), 'help.little.title', `<p>${esc(t('help.little.body'))}</p>`, alignRight);
+}
 function tldrSection(r) {
   const s = r.signals || {}, v = s.verdicts || {};
   const concepts = count(r.distinct_ads ?? (r.ads || []).length, 'n.concepts');
@@ -738,6 +751,24 @@ function tldrSection(r) {
     sub += r.durata.median_reached
       ? t('tldr.durata.median', { window: num(r.durata.window_days || 90), median: num(r.durata.median_days) })
       : t('tldr.durata.open', { window: num(r.durata.window_days || 90) });
+  }
+  if (r.mode === 'company' && r.ritmo && r.ritmo.available) {
+    const m = r.ritmo;
+    if (m.trigger_ai) {
+      const parts = [];
+      if (m.sta_lta && m.sta_lta.trigger_ai) {
+        parts.push(m.sta_lta.ratio != null ? t('tldr.ritmo.spike_part', { ratio: num(m.sta_lta.ratio) }) : t('tldr.ritmo.burst_part'));
+      }
+      if (m.cusum && m.cusum.trigger_ai && m.cusum.primary) {
+        const p = m.cusum.primary;
+        const fmt = hasT(`format.${p.format}`) ? t(`format.${p.format}`) : p.format;
+        parts.push(t('tldr.ritmo.drift_part', { fmt, from: Math.round(p.baseline_share * 100), to: Math.round(p.recent_share * 100) }));
+      }
+      sub += t('tldr.ritmo.alert', { detail: parts.join(' · ') });
+    } else {
+      const stKey = (m.sta_lta && m.sta_lta.measurable && m.sta_lta.state) ? m.sta_lta.state : 'steady';
+      sub += t('tldr.ritmo.steady', { state: t(`rit.state.${stKey}`).toLowerCase() });
+    }
   }
   return `<section class="tldr" aria-label="${esc(t('tldr.label'))}">
     <span class="tldr-label">${esc(t('tldr.label'))}</span>
@@ -874,6 +905,143 @@ function durataSection(r) {
     ${body}
   </section>`;
 }
+function renderRitmoSvg(m) {
+  const st = m.sta_lta || {};
+  const weeks = st.weeks || [];
+  if (!weeks.length) return '';
+  const W = 640, H = 148, padL = 34, padR = 14, padT = 16, padB = 24;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const maxY = Math.max(1, Number(st.lta_mean || 0), ...weeks.map((w) => Number(w.concepts || 0)));
+  const slot = plotW / weeks.length;
+  const barW = Math.max(18, Math.round(slot * 0.56));
+  const yOf = (val) => +(padT + (1 - Math.max(0, val) / maxY) * plotH).toFixed(1);
+
+  const bars = weeks.map((w, idx) => {
+    const cx = padL + slot * (idx + 0.5);
+    const x = +(cx - barW / 2).toFixed(1);
+    const countVal = Number(w.concepts || 0);
+    const rawH = Math.round((countVal / maxY) * plotH);
+    const bh = Math.max(2, rawH);
+    const y = +(padT + plotH - bh).toFixed(1);
+    const fill = w.is_sta ? (m.trigger_ai ? 'var(--warn)' : 'var(--accent)') : 'var(--line)';
+    const lbl = (w.week_start || '').slice(5);
+    return `<rect x="${x}" y="${y}" width="${barW}" height="${bh}" rx="3" fill="${fill}" fill-opacity="${w.is_sta ? '0.9' : '0.85'}"/>
+      <text x="${cx.toFixed(1)}" y="${Math.max(11, y - 4).toFixed(1)}" text-anchor="middle" fill="var(--muted)" font-size="10">${countVal}</text>
+      <text x="${cx.toFixed(1)}" y="${H - 6}" text-anchor="middle" fill="var(--muted)" font-size="10">${esc(lbl)}</text>`;
+  }).join('');
+
+  const meanVal = Number(st.lta_mean || 0);
+  const meanLine = meanVal > 0
+    ? `<line x1="${padL}" y1="${yOf(meanVal)}" x2="${W - padR}" y2="${yOf(meanVal)}" stroke="var(--accent)" stroke-dasharray="4 4" stroke-width="1.3"/>`
+    : '';
+  const baseLine = `<line x1="${padL}" y1="${padT + plotH}" x2="${W - padR}" y2="${padT + plotH}" stroke="var(--line-soft)" stroke-width="1"/>`;
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(t('rit.chart.title'))}">
+    ${baseLine}${meanLine}${bars}
+  </svg>`;
+}
+function ritmoUnavailableText(m) {
+  const share = m.loaded_share != null ? pct(m.loaded_share) : '—';
+  if (m.reason === 'partial_list') return t('rit.unavail.partial_list', { share });
+  if (m.reason === 'insufficient_history') return t('rit.unavail.insufficient_history');
+  return t('rit.unavail.other', { reason: m.reason || '—' });
+}
+function ritmoSection(r, inNews = false) {
+  if (!r || r.mode !== 'company' || !r.ritmo) return '';
+  const m = r.ritmo;
+  const busy = S.durataBusy || Boolean(S.job || S.busy);
+  const refreshBtn = !inNews && r.page && r.page.page_id
+    ? `<div class="ritmo-controls"><button class="btn small quiet" data-action="ritmo-refresh" ${busy ? 'disabled' : ''}>${esc(t('rit.refresh'))}</button></div>`
+    : '';
+
+  let body = '';
+  if (!m.available) {
+    body = `<p class="notice" style="margin-top:14px">${esc(ritmoUnavailableText(m))}</p>
+      <p class="ritmo-note">${esc(t('rit.note', { snapshots: num(m.snapshots || 0) }))}</p>`;
+  } else {
+    const st = m.sta_lta || {};
+    const cu = m.cusum || {};
+    const lt = m.littles_law || {};
+
+    let stHtml;
+    if (st.measurable) {
+      const head = st.ratio != null ? t('rit.stalta.ratio', { ratio: num(st.ratio) }) : t('rit.stalta.burst');
+      const stateLbl = hasT(`rit.state.${st.state}`) ? t(`rit.state.${st.state}`) : (st.state || '');
+      stHtml = `<strong>${esc(head)}</strong>
+        <small>${esc(stateLbl)} · ${esc(t('rit.stalta.meta', { sta: num(st.sta_count), lta: num(st.lta_mean), p: num(st.p_value) }))}</small>
+        ${st.survivor_bias_caveat ? `<small>${esc(t('rit.stalta.caveat'))}</small>` : ''}`;
+    } else {
+      stHtml = `<strong>${esc(t('rit.state.none'))}</strong>
+        <small>${esc(t('rit.stalta.none_sub', { sta: num(st.sta_count || 0), lta: num(st.lta_total || 0) }))}</small>`;
+    }
+
+    let cuHtml;
+    if (cu.measurable && cu.primary) {
+      const p = cu.primary;
+      const fmtLbl = hasT(`format.${p.format}`) ? t(`format.${p.format}`) : p.format;
+      const head = cu.drift_detected
+        ? t('rit.cusum.shift', { fmt: fmtLbl, from: Math.round(p.baseline_share * 100), to: Math.round(p.recent_share * 100) })
+        : t('rit.cusum.steady');
+      cuHtml = `<strong>${esc(head)}</strong>
+        <small>${esc(t('rit.cusum.meta', { n: num(cu.concepts), days: num(cu.span_days), peak: num(p.cusum_peak), h: num(p.threshold) }))}</small>
+        ${cu.drift_detected && p.changepoint_date ? `<small>${esc(t('rit.cusum.cp', { date: day(p.changepoint_date) }))}</small>` : ''}`;
+    } else {
+      cuHtml = `<strong>${esc(t('rit.state.none'))}</strong><small>${esc(t('rit.cusum.none_sub'))}</small>`;
+    }
+
+    let ltHtml;
+    if (lt.measurable) {
+      const stateKey = `rit.little.${lt.balance_state}`;
+      const head = lt.steady_state_checked && hasT(stateKey)
+        ? t(stateKey)
+        : t('rit.little.implied', { days: num(lt.implied_mean_days) });
+      const meta = lt.steady_state_checked
+        ? t('rit.little.meta_checked', { active: num(lt.active_concepts), rate: num(lt.lambda_per_week), rmst: num(lt.mean_duration_days), exp: num(lt.expected_active), ratio: num(lt.balance_ratio) })
+        : t('rit.little.meta_implied', { active: num(lt.active_concepts), rate: num(lt.lambda_per_week) });
+      ltHtml = `<strong>${esc(head)}</strong><small>${esc(meta)}</small>`;
+    } else {
+      ltHtml = `<strong>${esc(t('rit.state.none'))}</strong><small>${esc(t('rit.little.none_sub'))}</small>`;
+    }
+
+    let alertHtml = '';
+    if (m.trigger_ai) {
+      const parts = [];
+      if (st.trigger_ai) parts.push(st.ratio != null ? t('tldr.ritmo.spike_part', { ratio: num(st.ratio) }) : t('tldr.ritmo.burst_part'));
+      if (cu.trigger_ai && cu.primary) {
+        const p = cu.primary;
+        const fmtLbl = hasT(`format.${p.format}`) ? t(`format.${p.format}`) : p.format;
+        parts.push(t('tldr.ritmo.drift_part', { fmt: fmtLbl, from: Math.round(p.baseline_share * 100), to: Math.round(p.recent_share * 100) }));
+      }
+      const exIds = [...new Set([...(st.trigger_ai ? (st.recent_ids || []) : []), ...(cu.trigger_ai ? (cu.example_ids || []) : [])])].slice(0, 4);
+      alertHtml = `<div class="ritmo-alert">
+        <strong>${esc(t('rit.alert.lead'))} ${esc(parts.join(' · '))}</strong>
+        <small>${esc(t('rit.alert.ids', { ids: exIds.join(', ') || '—' }))}</small>
+      </div>`;
+    }
+
+    const chartHtml = st.weeks && st.weeks.length
+      ? `<div class="ritmo-chart">
+          <div class="ritmo-chart-head"><span>${esc(t('rit.chart.title'))}</span><span>${esc(t('rit.chart.baseline', { n: num(st.lta_mean || 0) }))} · <strong>${esc(t('rit.chart.sta', { n: num(st.sta_count || 0) }))}</strong></span></div>
+          ${renderRitmoSvg(m)}
+        </div>` : '';
+
+    body = `${alertHtml}
+      <div class="ritmo-kpis">
+        <div class="ritmo-kpi"><span class="ritmo-kpi-label">${esc(t('rit.kpi.stalta'))}${staLtaPop()}</span>${stHtml}</div>
+        <div class="ritmo-kpi"><span class="ritmo-kpi-label">${esc(t('rit.kpi.cusum'))}${cusumPop()}</span>${cuHtml}</div>
+        <div class="ritmo-kpi"><span class="ritmo-kpi-label">${esc(t('rit.kpi.little'))}${littlePop(true)}</span>${ltHtml}</div>
+      </div>
+      ${chartHtml}
+      <p class="ritmo-note">${esc(t('rit.note', { snapshots: num(m.snapshots || 0) }))}</p>`;
+  }
+
+  return `<section class="ritmo-sec">
+    <div class="ritmo-head">
+      <div class="ritmo-head-title"><h2>${esc(t('rit.title'))}${ritmoPop()}</h2><p>${esc(t('rit.sub'))}</p></div>
+      ${refreshBtn}
+    </div>
+    ${body}
+  </section>`;
+}
 function tableSection(r) {
   const company = r.mode === 'company';
   const rows = tableRowsHtml(r);
@@ -902,7 +1070,7 @@ function renderResults() {
   if (S.pages) { el.innerHTML = pagesSheet(); return; }
   const r = S.result;
   if (!r || !(r.ads || []).length || S.resultMode !== S.mode) { el.innerHTML = ''; return; }
-  el.innerHTML = `<div class="sheet">${headSection(r)}${tldrSection(r)}${readySection(r)}${cappedSection(r)}${changesSection(r)}${metricsSection(r)}${factsSection(r)}${durataSection(r)}${tableSection(r)}</div>`;
+  el.innerHTML = `<div class="sheet">${headSection(r)}${tldrSection(r)}${readySection(r)}${cappedSection(r)}${changesSection(r)}${metricsSection(r)}${factsSection(r)}${durataSection(r)}${ritmoSection(r)}${tableSection(r)}</div>`;
 }
 
 /* ---------- two companies ---------- */
@@ -1050,6 +1218,7 @@ function newsDetail(c) {
       <div class="rlinks"><button class="linklike" data-action="news-refresh" data-value="${esc(c.subject.key)}">${esc(t('news.refresh'))}</button></div></section>
     <section class="metrics three">${cells.map(([value, label, why]) => `<div class="metric"><b>${num(value)}</b><span>${esc(label)}</span><small>${esc(why)}</small></div>`).join('')}</section>
     ${c.sample ? `<section><p class="muted">${esc(t('news.sample'))}</p></section>` : ''}
+    ${c.subject && c.subject.mode === 'company' && c.ritmo ? ritmoSection({ mode: 'company', ritmo: c.ritmo, page: { page_id: c.subject.page_id }, country: c.subject.country }, true) : ''}
     ${newsList(t('news.new'), c.new, keyword, '<th></th>', kind)}
     ${newsList(t('news.stopped'), c.stopped, keyword, '', () => '')}
     ${newsList(t('news.changed'), c.changed, keyword, `<th>${esc(t('news.what'))}</th>`, what)}
@@ -1381,7 +1550,10 @@ async function runDurata(fresh = false) {
       job = await api(`/api/jobs/${job.id}`);
     }
     if (!job || job.status !== 'done' || !job.result || !job.result.durata) throw new Error('durata_failed');
-    if (S.result === r) S.result.durata = job.result.durata;
+    if (S.result === r) {
+      S.result.durata = job.result.durata;
+      if (job.result.ritmo) S.result.ritmo = job.result.ritmo;
+    }
   } catch {
     if (S.result === r) S.durataError = true;
   } finally {
@@ -1437,6 +1609,12 @@ const ACTIONS = {
   },
   'durata-window'(value) { S.durataWindow = Number(value); S.durataError = false; renderResults(); },
   'durata-run'() { runDurata(false); },
+  'ritmo-refresh'() {
+    const r = S.result;
+    if (r && r.mode === 'company' && r.page && r.page.page_id) {
+      gate({ mode: 'company', page_id: r.page.page_id, fresh: true });
+    }
+  },
   lang(value) { S.lang = value; store.set('lang', value); render(); },
   level(value) { S.level = value; renderSearch(); refreshEstimate(); },
   /* Opening a row chooses its level; the open row is the chosen one. A row opened again closes. */
