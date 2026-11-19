@@ -783,3 +783,125 @@ def test_page_how_it_works_has_three_screens_and_the_plan_button_is_marked_soon(
     assert "Step 3 of 3" in page.inner_text(".dialog") and "Ask for the plan" in page.inner_text(".dialog")
     page.click(".dialog [data-action=close]")
     assert _count(page, ".dialog") == 0
+
+
+SAMPLE_DURATA = {
+    "available": True,
+    "unit": "concept",
+    "mode": "company",
+    "active_status": "all",
+    "loaded_share": 1.0,
+    "window_days": 90,
+    "as_of": "2026-11-13",
+    "concepts_in_window": 14,
+    "active_in_window": 6,
+    "ended_in_window": 8,
+    "excluded_undated": 0,
+    "excluded_invalid": 0,
+    "outside_window": 0,
+    "max_observed_days": 90,
+    "tau_days": 90,
+    "median_days": 22.0,
+    "median_reached": True,
+    "rmst_days": 34.5,
+    "milestones": {"7": 0.79, "14": 0.64, "30": 0.43, "60": 0.29, "90": 0.21},
+    "curve": [
+        {"day": 5, "at_risk": 14, "ended": 3, "survival": 0.7857, "se": 0.1097, "ci_low": 0.4725, "ci_high": 0.9254},
+        {"day": 14, "at_risk": 11, "ended": 2, "survival": 0.6429, "se": 0.1281, "ci_low": 0.3433, "ci_high": 0.8332},
+        {"day": 22, "at_risk": 9, "ended": 2, "survival": 0.5, "se": 0.1336, "ci_low": 0.2287, "ci_high": 0.7224},
+        {"day": 45, "at_risk": 6, "ended": 1, "survival": 0.4167, "se": 0.1337, "ci_low": 0.165, "ci_high": 0.6542},
+    ],
+    "weibull": {"shape_k": 0.78, "scale_days": 28.4, "regime": "early_cut"},
+    "lindy": [{"after_days": 30, "horizon_days": 30, "at_risk": 6, "still_active_share": 0.67}],
+    "longest_active": [{"library_id": "101", "days": 85, "started": "2026-08-20"}],
+    "fastest_ended": [{"library_id": "202", "days": 3, "started": "2026-11-01", "ended": "2026-11-04"}],
+}
+
+
+def test_page_theme_transition_and_sticky_language_switch(site, page_of):
+    page = page_of("it", _result(site))
+    assert _count(page, ".topbar #lang [data-action=lang]") == 2
+    assert _count(page, ".topbar #theme [data-action=theme]") == 2
+    page.click(".topbar [data-action=theme][data-value=dark]")
+    assert page.evaluate("document.documentElement.dataset.theme") == "dark"
+    assert page.evaluate("document.documentElement.classList.contains('theme-transition')") is True
+    page.wait_for_function("!document.documentElement.classList.contains('theme-transition')", timeout=2000)
+
+    assert "in breve" in page.inner_text(".tldr").casefold()
+    page.click(".topbar [data-action=lang][data-value=en]")
+    assert page.evaluate("document.documentElement.lang") == "en"
+    assert "at a glance" in page.inner_text(".tldr").casefold()
+    page.click(".topbar [data-action=mode][data-value=news]")
+    assert _count(page, ".topbar #lang [data-action=lang]") == 2
+    assert "What changed" in page.inner_text("#search h1")
+
+
+def test_page_shows_tldr_and_help_popovers_within_viewport(site, page_of):
+    comp = _result(site, durata=SAMPLE_DURATA)
+    page = page_of("it", comp)
+    tldr = page.inner_text(".tldr")
+    assert "in breve" in tldr.casefold() and "22 giorni" in tldr
+
+    # Check ? help popovers on table headers fit inside 1440px viewport and close cleanly on Escape
+    for idx in range(3):
+        btn = page.locator("table.ads thead [data-action=help-toggle]").nth(idx)
+        btn.click()
+        pop = page.locator(".help-wrap.open .help-pop")
+        assert pop.is_visible()
+        box = pop.bounding_box()
+        assert box and box["x"] >= 0 and box["x"] + box["width"] <= 1440
+        page.keyboard.press("Escape")
+        assert _count(page, ".help-wrap.open") == 0
+
+    # Open ad drawer, toggle its ? popover, press Escape -> closes popover FIRST without closing drawer
+    page.locator("table.ads tbody tr").first.click()
+    page.wait_for_selector(".drawer")
+    page.locator(".drawer [data-action=help-toggle]").first.click()
+    assert _count(page, ".drawer .help-wrap.open") == 1
+    page.keyboard.press("Escape")
+    assert _count(page, ".drawer .help-wrap.open") == 0 and _count(page, ".drawer") == 1
+
+    # Also verify automatic In breve renders cleanly in keyword mode
+    kw = _result(site, mode="keyword", query="standing desk", page=None)
+    page = page_of("en", kw)
+    assert "keyword sample" in page.inner_text(".tldr")
+
+
+def test_page_durata_section_renders_states_svg_and_runs_endpoint(site, page_of):
+    # Keyword mode -> locked bar
+    kw = _result(site, mode="keyword", query="standing desk", page=None)
+    page = page_of("it", kw)
+    assert "Analizza un'azienda" in page.inner_text(".durata-locked")
+
+    # Partial list -> honest explanation
+    partial = _result(site, durata={"available": False, "reason": "partial_list", "loaded_share": 0.55, "window_days": 90})
+    page = page_of("it", partial)
+    assert "55%" in page.inner_text(".durata-sec")
+
+    # Populated Durata in Light & Dark, IT & EN
+    populated = _result(site, durata=SAMPLE_DURATA)
+    for lang, expected_word in (("it", "Taglio rapido iniziale"), ("en", "Early cut")):
+        page = page_of(lang, populated)
+        if lang == "en":
+            page.click(".topbar [data-action=theme][data-value=dark]")
+        sec = page.inner_text(".durata-sec")
+        assert expected_word in sec and "101" in sec and "202" in sec
+        assert _count(page, ".durata-chart svg path") >= 1
+        assert _count(page, ".durata-chart svg polygon") == 1
+
+    # Clicking Run triggers POST /api/durata and updates UI cleanly
+    base_res = _result(site)
+    page = page_of("it", base_res)
+    posted = []
+    page.route("**/api/durata", lambda route: (
+        posted.append(json.loads(route.request.post_data)),
+        route.fulfill(status=202, json={"id": "durjob1", "status": "running", "phase": "list"}),
+    ))
+    page.route("**/api/jobs/durjob1", lambda route: route.fulfill(
+        json={"id": "durjob1", "status": "done", "result": {"ok": True, "durata": SAMPLE_DURATA}},
+    ))
+    page.click("[data-action=durata-window][data-value='120']")
+    page.click("[data-action=durata-run]")
+    page.wait_for_selector(".durata-chart svg")
+    assert posted == [{"page_id": PAGE_ID, "country": "IT", "window_days": 120, "fresh": False}]
+    assert "22 giorni" in page.inner_text(".durata-sec")

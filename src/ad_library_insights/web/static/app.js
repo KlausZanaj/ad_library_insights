@@ -33,10 +33,12 @@ const S = {
   pages: null, busy: null, job: null, result: null, jobId: null, notice: null,
   project: null, overlay: null, estimate: null, pending: null,
   history: null, news: null, sort: 'score', filter: 'all', tableQuery: '',
+  durataWindow: 90, durataBusy: false, durataError: false,
   simPrice: null, simCost: null, cmpCopied: false,
   link: { quick: null, mcp: 'checking', running: false, result: null, error: null, test: null, copy: null, hint: false },
 };
 let T = { it: {}, en: {} };
+let themeTimer = null;
 
 /* ---------- helpers ---------- */
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -130,6 +132,11 @@ function renderTop() {
   $('#modes').innerHTML = MODES.map((mode) => `<button data-action="mode" data-value="${mode}" aria-current="${mode === S.mode}">${esc(t(`mode.${mode}`))}</button>`).join('');
   const tut = $('#tut-btn');
   if (tut) tut.textContent = t('tut.btn');
+  const langEl = $('#lang');
+  if (langEl) {
+    langEl.setAttribute('aria-label', t('lang.label'));
+    langEl.innerHTML = toggle('lang', ['it', 'en'], S.lang, (v) => v.toUpperCase());
+  }
   $('#theme').setAttribute('aria-label', t('theme.label'));
   $('#theme').innerHTML = toggle('theme', ['light', 'dark'], S.theme, (v) => t(`theme.${v}`));
 }
@@ -141,8 +148,7 @@ function countryOptions(selected) {
 }
 function renderSearch() {
   const active = S.mode === 'keyword' || S.mode === 'company';
-  const lang = `<div class="switch" role="group" aria-label="${esc(t('lang.label'))}">${toggle('lang', ['it', 'en'], S.lang, (v) => v.toUpperCase())}</div>`;
-  let html = `<div class="search-in"><div class="search-head"><div><h1>${esc(t(`mode.${S.mode}`))}</h1><p>${esc(t(`${S.mode}.lead`))}</p></div>${lang}</div>`;
+  let html = `<div class="search-in"><div class="search-head"><div><h1>${esc(t(`mode.${S.mode}`))}</h1><p>${esc(t(`${S.mode}.lead`))}</p></div></div>`;
   if (S.mode === 'compare') {
     const off = S.job || S.busy ? 'disabled' : '';
     const name = (bind, label) => `<label class="field"><span>${esc(t(label))}</span>
@@ -616,6 +622,187 @@ function tableRowsHtml(r) {
     <td class="r">${Math.round(ad.score)}</td><td class="r">${num(ad.days_running)}</td><td class="r">${num(ad.creatives)}</td>
     ${company ? '' : `<td class="fmt">${esc(t(`format.${ad.media_type || 'unknown'}`))}</td>`}${reachCells(ad)}</tr>`).join('');
 }
+function helpPopover(topic, titleKey, bodyHtml, alignRight = false) {
+  return `<span class="help-wrap"><button type="button" class="help-btn" data-action="help-toggle" aria-label="${esc(t('help.aria', { topic }))}" aria-expanded="false">?</button><div class="help-pop${alignRight ? ' right' : ''}" role="tooltip"><h4>${esc(t(titleKey))}</h4>${bodyHtml}</div></span>`;
+}
+function tierScalePop() {
+  const rows = [
+    ['verdict.scaling', 'leg.v.scaling'],
+    ['verdict.holding', 'leg.v.holding'],
+    ['verdict.testing', 'leg.v.testing'],
+    ['verdict.review', 'leg.v.review'],
+    ['verdict.average', 'leg.v.other'],
+  ].map(([k, desc]) => `<li><strong>${esc(t(k))}:</strong>${esc(t(desc))}</li>`).join('');
+  return helpPopover(t('t.tier'), 'help.tier.title', `<ul class="help-scale">${rows}</ul>`);
+}
+function scoreScalePop(alignRight = true) {
+  const bands = [1, 2, 3, 4].map((n) => `<li>${esc(t(`help.score.b${n}`))}</li>`).join('');
+  return helpPopover(t('t.score'), 'help.score.title', `<p>${esc(t('help.score.formula'))}</p><ul class="help-scale">${bands}</ul>`, alignRight);
+}
+function perdayPop(alignRight = true) {
+  return helpPopover(t('t.perday'), 'help.perday.title', `<p>${esc(t('help.perday.body'))}</p>`, alignRight);
+}
+function durataPop() {
+  return helpPopover(t('dur.title'), 'help.durata.title', `<p>${esc(t('help.durata.body'))}</p>`);
+}
+function weibullPop() {
+  const rows = [1, 2, 3].map((n) => `<li>${esc(t(`help.weibull.r${n}`))}</li>`).join('');
+  return helpPopover(t('dur.kpi.weibull'), 'help.weibull.title', `<ul class="help-scale">${rows}</ul>`);
+}
+function lindyPop(alignRight = true) {
+  return helpPopover(t('dur.kpi.lindy'), 'help.lindy.title', `<p>${esc(t('help.lindy.body'))}</p>`, alignRight);
+}
+function tldrSection(r) {
+  const s = r.signals || {}, v = s.verdicts || {};
+  const concepts = count(r.distinct_ads ?? (r.ads || []).length, 'n.concepts');
+  let main = r.mode === 'company'
+    ? t('tldr.company', { active: num(s.active_ads), concepts, video: pct(s.video_share), weekly: num(s.new_per_week) })
+    : t('tldr.keyword', { loaded: num(r.ads_parsed), concepts, video: pct(s.video_share) });
+  const reach = s.reach && s.reach.available ? s.reach.median_reach_per_day : null;
+  main += reach != null
+    ? t('tldr.reach', { reach: num(reach), country: region(r.country) })
+    : t('tldr.noreach', { country: region(r.country) });
+  let sub = t('tldr.verdicts', { scaling: num(v.scaling || 0), holding: num(v.holding || 0), review: num(v.review || 0) });
+  if (r.durata && r.durata.available) {
+    sub += r.durata.median_reached
+      ? t('tldr.durata.median', { window: num(r.durata.window_days || 90), median: num(r.durata.median_days) })
+      : t('tldr.durata.open', { window: num(r.durata.window_days || 90) });
+  }
+  return `<section class="tldr" aria-label="${esc(t('tldr.label'))}">
+    <span class="tldr-label">${esc(t('tldr.label'))}</span>
+    <div class="tldr-lines"><strong>${esc(main)}</strong><span>${esc(sub)}</span></div>
+    <div class="tldr-act"><button class="linklike" data-action="guide">${esc(t('tldr.help'))}</button></div>
+  </section>`;
+}
+function renderKmSvg(d) {
+  const W = 640, H = 188, padL = 42, padR = 16, padT = 12, padB = 26;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const maxX = Math.max(Number(d.tau_days || d.max_observed_days || 1), 1);
+  const px = (dayVal) => +(padL + (Math.min(dayVal, maxX) / maxX) * plotW).toFixed(1);
+  const py = (surv) => +(padT + (1 - Math.max(0, Math.min(1, surv))) * plotH).toFixed(1);
+  const steps = d.curve || [];
+
+  const kmPts = [[px(0), py(1)]];
+  const topPts = [[px(0), py(1)]];
+  const botPts = [[px(0), py(1)]];
+  let prevS = 1, prevHi = 1, prevLo = 1;
+  for (const step of steps) {
+    const x = px(step.day);
+    kmPts.push([x, py(prevS)], [x, py(step.survival)]);
+    topPts.push([x, py(prevHi)], [x, py(step.ci_high)]);
+    botPts.push([x, py(prevLo)], [x, py(step.ci_low)]);
+    prevS = step.survival;
+    prevHi = step.ci_high;
+    prevLo = step.ci_low;
+  }
+  const endX = px(maxX);
+  kmPts.push([endX, py(prevS)]);
+  topPts.push([endX, py(prevHi)]);
+  botPts.push([endX, py(prevLo)]);
+
+  const linePath = kmPts.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x},${y}`).join(' ');
+  const bandPts = topPts.concat(botPts.reverse()).map(([x, y]) => `${x},${y}`).join(' ');
+
+  const yTicks = [1.0, 0.5, 0.0].map((val) => {
+    const y = py(val);
+    const dash = val === 0.5 ? ' stroke-dasharray="4 4"' : '';
+    return `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="var(--line-soft)"${dash} stroke-width="1"/>
+      <text x="${padL - 8}" y="${y + 4}" text-anchor="end" fill="var(--muted)" font-size="11">${Math.round(val * 100)}%</text>`;
+  }).join('');
+
+  const xCandidates = [0, 7, 14, 30, 60, 90, 120, 180].filter((v) => v <= maxX);
+  if (xCandidates[xCandidates.length - 1] !== maxX) xCandidates.push(maxX);
+  const xTicks = [];
+  let lastTickX = -999;
+  for (const val of xCandidates) {
+    const x = px(val);
+    if (x - lastTickX < 36 && val !== maxX) continue;
+    lastTickX = x;
+    const lbl = val === 0 ? '0' : t('dur.days.short', { n: val });
+    xTicks.push(`<text x="${x}" y="${H - 6}" text-anchor="middle" fill="var(--muted)" font-size="11">${esc(lbl)}</text>`);
+  }
+
+  let medianMark = '';
+  if (d.median_reached && d.median_days != null && d.median_days <= maxX) {
+    const mx = px(d.median_days), my = py(0.5);
+    medianMark = `<line x1="${mx}" y1="${my}" x2="${mx}" y2="${py(0)}" stroke="var(--warn)" stroke-dasharray="3 3" stroke-width="1.4"/>
+      <circle cx="${mx}" cy="${my}" r="4" fill="var(--warn)" stroke="var(--surface)" stroke-width="1.5"/>`;
+  }
+
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(t('dur.chart.title'))}">
+    ${yTicks}${xTicks.join('')}
+    <polygon points="${bandPts}" fill="var(--accent)" fill-opacity="0.14"/>
+    <path d="${linePath}" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="round"/>
+    ${medianMark}
+  </svg>`;
+}
+function durataUnavailableText(d) {
+  const share = d.loaded_share != null ? pct(d.loaded_share) : '—';
+  if (d.reason === 'partial_list') return t('dur.unavail.partial_list', { share });
+  if (d.reason === 'too_few_concepts') return t('dur.unavail.too_few_concepts', { found: num(d.concepts_in_window), window: num(d.window_days || 90) });
+  if (d.reason === 'too_few_ended') return t('dur.unavail.too_few_ended', { ended: num(d.ended_in_window), found: num(d.concepts_in_window), window: num(d.window_days || 90) });
+  return t('dur.unavail.other', { reason: d.reason || '—' });
+}
+function durataSection(r) {
+  if (r.mode !== 'company') {
+    return `<section class="durata-locked"><p class="muted">${esc(t('dur.locked'))}</p></section>`;
+  }
+  const d = r.durata;
+  const activeWin = Number(S.durataWindow || (d && d.window_days) || 90);
+  const windows = `<div class="switch" role="group" aria-label="${esc(t('dur.window'))}">${toggle('durata-window', [60, 90, 120, 180], activeWin, (v) => t('dur.days.short', { n: v }))}</div>`;
+  const busy = S.durataBusy || Boolean(S.job || S.busy);
+  let body = '';
+  if (S.durataBusy) {
+    body = `<div class="progress" style="margin-top:16px;padding-top:16px"><p><span>${esc(t('dur.loading', { window: activeWin }))}</span></p><div class="bar open"><i></i></div></div>`;
+  } else if (S.durataError) {
+    body = `<p class="notice err" style="margin-top:14px">${esc(t('dur.err'))}</p>`;
+  } else if (d && d.available) {
+    const share = d.loaded_share != null ? pct(d.loaded_share) : '—';
+    const lead = d.median_reached
+      ? t('dur.summary.reached', { total: num(d.concepts_in_window), window: num(d.window_days || activeWin), active: num(d.active_in_window), ended: num(d.ended_in_window), share, median: num(d.median_days) })
+      : t('dur.summary.open', { total: num(d.concepts_in_window), window: num(d.window_days || activeWin), active: num(d.active_in_window), ended: num(d.ended_in_window), share });
+    const w = d.weibull;
+    const weibullHtml = w
+      ? `<strong>${esc(t(`dur.regime.${w.regime}`))}</strong><small>${esc(t('dur.kpi.weibull.meta', { k: num(w.shape_k), scale: num(w.scale_days) }))}</small>`
+      : `<strong>${esc(t('dur.kpi.weibull.none'))}</strong><small>${esc(t('dur.kpi.weibull.none.sub'))}</small>`;
+    const lindyHtml = (d.lindy && d.lindy.length)
+      ? `<ul class="durata-lindy">${d.lindy.map((row) => `<li>${esc(t('dur.kpi.lindy.row', { age: num(row.after_days), share: pct(row.still_active_share), risk: num(row.at_risk) }))}</li>`).join('')}</ul>`
+      : `<strong>${esc(t('dur.kpi.lindy.none'))}</strong><small>${esc(t('dur.kpi.lindy.none.sub'))}</small>`;
+    const milestones = Object.entries(d.milestones || {}).filter(([, val]) => val != null)
+      .map(([age, val]) => `<span><strong>${esc(t('dur.days.short', { n: age }))}</strong>: ${pct(val)}</span>`).join('');
+    const exLong = (d.longest_active || []).slice(0, 2).map((x) => `${x.library_id} (${t('dur.days.short', { n: x.days })})`).join(', ');
+    const exFast = (d.fastest_ended || []).slice(0, 2).map((x) => `${x.library_id} (${t('dur.days.short', { n: x.days })})`).join(', ');
+    body = `<p class="durata-lead">${esc(lead)}</p>
+      <div class="durata-kpis">
+        <div class="durata-kpi"><span class="durata-kpi-label">${esc(t('dur.kpi.median'))}</span>
+          <strong>${esc(d.median_reached ? days(d.median_days) : t('dur.kpi.open'))}</strong>
+          <small>${esc(t('dur.kpi.rmst', { tau: num(d.tau_days || d.max_observed_days), days: num(d.rmst_days) }))}</small></div>
+        <div class="durata-kpi"><span class="durata-kpi-label">${esc(t('dur.kpi.weibull'))}${weibullPop()}</span>${weibullHtml}</div>
+        <div class="durata-kpi"><span class="durata-kpi-label">${esc(t('dur.kpi.lindy'))}${lindyPop(true)}</span>${lindyHtml}</div>
+      </div>
+      <div class="durata-chart">
+        <div class="durata-chart-head"><span>${esc(t('dur.chart.title'))}</span>${d.median_reached ? `<strong>${esc(t('dur.chart.median', { n: num(d.median_days) }))}</strong>` : ''}</div>
+        ${renderKmSvg(d)}
+        ${milestones ? `<div class="durata-milestones"><span>${esc(t('dur.milestones'))}:</span>${milestones}</div>` : ''}
+        ${(exLong || exFast) ? `<div class="durata-examples">${exLong ? `<span>${esc(t('dur.examples.long'))}: ${esc(exLong)}</span>` : ''}${exFast ? `<span>${esc(t('dur.examples.fast'))}: ${esc(exFast)}</span>` : ''}</div>` : ''}
+      </div>
+      <p class="tablenote">${esc(t('dur.note'))}</p>`;
+  } else if (d && !d.available) {
+    body = `<p class="notice" style="margin-top:14px">${esc(durataUnavailableText(d))}</p><p class="tablenote">${esc(t('dur.note'))}</p>`;
+  } else {
+    body = `<p class="muted" style="margin-top:12px">${esc(t('dur.idle'))}</p>`;
+  }
+  return `<section class="durata-sec">
+    <div class="durata-head">
+      <div class="durata-head-title"><h2>${esc(t('dur.title'))}${durataPop()}</h2><p>${esc(t('dur.sub'))}</p></div>
+      <div class="durata-controls">
+        <span>${esc(t('dur.window'))}</span>${windows}
+        <button class="btn small${d ? ' quiet' : ''}" data-action="durata-run" ${busy ? 'disabled' : ''}>${esc(t(d ? 'dur.rerun' : 'dur.run'))}</button>
+      </div>
+    </div>
+    ${body}
+  </section>`;
+}
 function tableSection(r) {
   const company = r.mode === 'company';
   const rows = tableRowsHtml(r);
@@ -629,9 +816,9 @@ function tableSection(r) {
       <button class="btn quiet small" data-action="export-csv">${esc(t('export.csv'))}</button>
     </div>
     ${tableLegend()}
-    <table class="ads${company ? '' : ' mixed'}"><thead><tr><th></th><th>${esc(t('t.ad'))}</th><th>${esc(t('t.tier'))}</th>
-    <th class="r">${esc(t('t.score'))}</th><th class="r">${esc(t('t.days'))}</th><th class="r">${esc(t('t.creatives'))}</th>
-    ${company ? '' : `<th>${esc(t('t.format'))}</th>`}<th class="r">${esc(t('t.reached', { country: region(r.country) }))}</th><th class="r">${esc(t('t.perday'))}</th></tr></thead>
+    <table class="ads${company ? '' : ' mixed'}"><thead><tr><th></th><th>${esc(t('t.ad'))}</th><th>${esc(t('t.tier'))}${tierScalePop()}</th>
+    <th class="r">${esc(t('t.score'))}${scoreScalePop(true)}</th><th class="r">${esc(t('t.days'))}</th><th class="r">${esc(t('t.creatives'))}</th>
+    ${company ? '' : `<th>${esc(t('t.format'))}</th>`}<th class="r">${esc(t('t.reached', { country: region(r.country) }))}</th><th class="r">${esc(t('t.perday'))}${perdayPop(true)}</th></tr></thead>
     <tbody id="ads-tbody">${rows}</tbody></table><p class="tablenote">${esc(t(concepts === 1 ? 't.note.one' : 't.note', { concepts: count(concepts, 'n.concepts'), opened: count(opened, 'n.ads') }))}</p></section>`;
 }
 function renderResults() {
@@ -644,7 +831,7 @@ function renderResults() {
   if (S.pages) { el.innerHTML = pagesSheet(); return; }
   const r = S.result;
   if (!r || !(r.ads || []).length || S.resultMode !== S.mode) { el.innerHTML = ''; return; }
-  el.innerHTML = `<div class="sheet">${headSection(r)}${readySection(r)}${cappedSection(r)}${changesSection(r)}${metricsSection(r)}${factsSection(r)}${tableSection(r)}</div>`;
+  el.innerHTML = `<div class="sheet">${headSection(r)}${tldrSection(r)}${readySection(r)}${cappedSection(r)}${changesSection(r)}${metricsSection(r)}${factsSection(r)}${durataSection(r)}${tableSection(r)}</div>`;
 }
 
 /* ---------- two companies ---------- */
@@ -870,7 +1057,7 @@ function adDrawer(ad, r) {
       <p class="muted">${esc(days(ad.days_running))} · ${esc(t(`format.${ad.media_type || 'unknown'}`))}</p>
       ${ad.impression_rank ? `<p class="muted">${esc(t('d.rank', { n: ad.impression_rank }))}</p>` : ''}
       <p style="margin-top:10px"><a href="${esc(ad.ad_url)}" target="_blank" rel="noopener">${esc(t('link.meta'))}</a></p></div></div></section>
-    <section><h3>${esc(t('d.score', { score: Math.round(ad.score) }))} · ${esc(t(`verdict.${ad.verdict}`))}</h3>
+    <section><h3>${esc(t('d.score', { score: Math.round(ad.score) }))} · ${esc(t(`verdict.${ad.verdict}`))}${scoreScalePop(true)}</h3>
       <div class="scorebar three">${['scale', 'staying', 'creative'].map((part) => `<i style="width:${points[part]}%"></i>`).join('')}</div>
       <dl>
         <dt>${esc(t('d.part.scale'))}</dt><dd>${esc(t('d.score.of', { n: num(Math.round(points.scale)), max: weights.scale }))} <span class="muted">· ${esc(scaleWhy)}</span></dd>
@@ -1076,6 +1263,7 @@ function gate(request) {
 }
 async function launch() {
   S.overlay = null; S.pages = null; S.result = null; S.notice = null;
+  S.durataBusy = false; S.durataError = false;
   try {
     S.job = await api('/api/jobs', { method: 'POST', body: { ...S.pending, level: S.pending.mode === 'compare' ? 'data' : S.level, deep: S.deep, frames: S.frames } });
   } catch (error) {
@@ -1094,6 +1282,28 @@ async function launch() {
   if (!found) return note(`error.${job.result.outcome === 'blocked' ? 'blocked' : 'no_results'}`);
   S.result = job.result; S.resultMode = job.params.mode; S.jobId = job.id; render();
   window.scrollTo({ top: $('#results').offsetTop - 12, behavior: 'instant' });
+}
+async function runDurata(fresh = false) {
+  const r = S.result;
+  if (!r || r.mode !== 'company' || !(r.page && r.page.page_id) || S.durataBusy) return;
+  S.durataBusy = true; S.durataError = false; renderResults();
+  try {
+    let job = await api('/api/durata', {
+      method: 'POST',
+      body: { page_id: r.page.page_id, country: r.country, window_days: S.durataWindow, fresh },
+    });
+    while (job && job.status === 'running') {
+      await sleep(700);
+      job = await api(`/api/jobs/${job.id}`);
+    }
+    if (!job || job.status !== 'done' || !job.result || !job.result.durata) throw new Error('durata_failed');
+    if (S.result === r) S.result.durata = job.result.durata;
+  } catch {
+    if (S.result === r) S.durataError = true;
+  } finally {
+    S.durataBusy = false;
+    renderResults();
+  }
 }
 function openProject(thenSearch) {
   S.overlay = { type: 'project', draft: { ...(S.project || { market: S.country }) }, thenSearch };
@@ -1127,10 +1337,21 @@ async function makeBrief(options = {}) {
 }
 
 const ACTIONS = {
-  mode(value) { S.mode = value; S.pages = null; S.cmp = null; S.notice = null; render(); if (value === 'news') loadHistory(); },
+  mode(value) { S.mode = value; S.pages = null; S.cmp = null; S.notice = null; S.durataBusy = false; S.durataError = false; render(); if (value === 'news') loadHistory(); },
   'news-open': openNews, 'news-refresh': refreshSubject,
   sort(value) { S.sort = value; renderResults(); },
-  theme(value) { S.theme = value; store.set('theme', value); renderTop(); },
+  theme(value) {
+    if (value === S.theme) return;
+    const root = document.documentElement;
+    root.classList.add('theme-transition');
+    clearTimeout(themeTimer);
+    themeTimer = setTimeout(() => root.classList.remove('theme-transition'), 520);
+    S.theme = value;
+    store.set('theme', value);
+    renderTop();
+  },
+  'durata-window'(value) { S.durataWindow = Number(value); S.durataError = false; renderResults(); },
+  'durata-run'() { runDurata(false); },
   lang(value) { S.lang = value; store.set('lang', value); render(); },
   level(value) { S.level = value; renderSearch(); refreshEstimate(); },
   /* Opening a row chooses its level; the open row is the chosen one. A row opened again closes. */
@@ -1198,7 +1419,31 @@ const ACTIONS = {
     } catch { briefStatus(t('brief.frames.failed'), true); }
   },
 };
+function closeHelp() {
+  document.querySelectorAll('.help-wrap.open').forEach((wrap) => {
+    wrap.classList.remove('open');
+    const btn = wrap.querySelector('.help-btn');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  });
+  if (document.activeElement && document.activeElement.closest('.help-wrap')) document.activeElement.blur();
+}
 document.addEventListener('click', (event) => {
+  const helpBtn = event.target.closest('[data-action="help-toggle"]');
+  if (helpBtn) {
+    event.preventDefault();
+    event.stopPropagation();
+    const wrap = helpBtn.closest('.help-wrap');
+    const willOpen = wrap && !wrap.classList.contains('open');
+    closeHelp();
+    if (wrap && willOpen) {
+      wrap.classList.add('open');
+      helpBtn.setAttribute('aria-expanded', 'true');
+    } else {
+      helpBtn.blur();
+    }
+    return;
+  }
+  if (!event.target.closest('.help-wrap')) closeHelp();
   const el = event.target.closest('[data-action]');
   if (!el || el.disabled) return;
   const action = ACTIONS[el.dataset.action];
@@ -1230,7 +1475,10 @@ document.addEventListener('change', (event) => {
   if (el.dataset.bind === 'country') S.country = el.value;
 });
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && S.overlay) ACTIONS.close();
+  if (event.key === 'Escape') {
+    if ($('.help-wrap.open')) { closeHelp(); return; }
+    if (S.overlay) ACTIONS.close();
+  }
   if (event.key === 'Enter' && event.target.dataset && event.target.dataset.bind && !S.job && !S.busy) submit();
 });
 
