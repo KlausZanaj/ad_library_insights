@@ -64,7 +64,12 @@ the means of the person who has to carry it out.
     pattern that holds in the competitor's data, named with the ad id and its
     numbers, and has a type from the list in the overview. They are not
     copies: no sentences, brand names or promises of the competitor. Each idea
-    tests one thing.
+    tests one thing. Then run the **skeptical jury (`Test before spending`)**:
+    have four critical buyer profiles (price skeptic, 2-second fast scroller,
+    trust skeptic, comparison shopper) critique those five ideas side by side
+    against the competitor's top ads. Give zero compliments and zero invented
+    purchase probabilities; state one objection citing a competitor ad id and
+    one concrete fix to apply before spending.
 
 9.  **Propose the campaign structure.** Broad or narrow audience, in line
     with what `reach.md` shows the competitor does (age range, gender,
@@ -73,12 +78,15 @@ the means of the person who has to carry it out.
     missing, say so and propose the simplest structure.
 
 10. **Build the test plan and the creative pace** on the numbers under
-    `Numbers for the test` in `project.md`. Use them as they are: the program
+    `Numbers for the test` and `Test before spending` in `project.md`. Use them as they are: the program
     computed them, and a number you recompute can differ.
 
-    -   Budget per test ad and for the first round, how many ads run
-        together, for how many days, what to look at each day, the cut rule,
-        when to raise the budget, and what to do if nothing holds.
+    -   Budget per test ad and for the first round (with maximum loss cap and
+        reverse-breakeven max CPC at 1%, 2% and 3% CVR beside the EU
+        e-commerce benchmark in `Test before spending`), how many ads run
+        together, for how many days, what to look at each day, the cut rule
+        with settled-ad Poisson zero-sales odds, when to raise the budget, and
+        what to do if nothing holds.
     -   The cut rule is the one of `breakeven-cpa-check`: an ad is cut once
         it has spent 2 to 3 times break-even CPA with no add to cart and no
         sale. If the user has results already, run `check_breakeven_cpa` on

@@ -106,6 +106,30 @@ changes everything specific: words, brand, claims, numbers.
 - **New creatives per week:** {number}. {Competitor} launches {new_per_week} a week among the ads still on air{, list read in part: the real pace is higher}; the test share at the level of the goal carries {capacity}; one person can keep up {number}. {The calculation.}
 ```
 
+## Test before spending
+
+Copy the reverse-breakeven CPC table, Meta ad fee and max loss cap directly
+from `Test before spending` in `project.md`. Run the four skeptical buyer
+profiles against the 5 ad ideas alongside the competitor's top ads with zero
+compliments and zero invented purchase probabilities.
+
+```markdown
+## Test before spending
+
+- **Effective net margin / Ads Manager CPA:** {from `Test before spending` in `project.md`}
+- **Reverse-breakeven max CPC (1% / 2% / 3% CVR):** {cpc_1} / {cpc_2} / {cpc_3} vs EU e-commerce benchmark (median EUR 1.06, central half EUR 0.82-1.28, Sep 2026)
+- **Max first-round loss & stop odds:** {round_spend} Ads Manager ({max_loss_billed} billed); settled-ad Poisson zero-sales risk at 2x / 3x / full round
+
+### Skeptical jury (4 profiles vs competitor top ads)
+
+| Profile | Main objection vs competitor ad {id} | Concrete fix before spending |
+|---|---|---|
+| Price skeptic | {why value feels weaker than price} | {adjustment to offer, framing or proof} |
+| 2-second scroller | {why hook loses attention against competitor frame/line} | {tighter opening frame or line} |
+| Trust skeptic | {what claim lacks credible proof} | {specific guarantee, demo or third-party signal} |
+| Comparison shopper | {why switching from {Competitor} is not clear} | {differentiator to show early} |
+```
+
 ## Appendix
 
 1. **Diagnosis of the project**: what is sold, to whom, price and margin,

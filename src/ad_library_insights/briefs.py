@@ -21,6 +21,7 @@ from datetime import date
 from pathlib import Path
 
 from . import breakeven, consumption, packs
+from .lab import precheck
 
 LEVELS = ("analysis", "plan")
 IDEAS = 5                          # ad ideas in a plan, and ads in the first test round
@@ -145,7 +146,10 @@ _T = {
             "Five ad ideas for my product, inspired by the patterns that hold in the data. Not copies: no "
             "sentences, brand names or promises of the competitor. For each idea: angle; type of ad; the pattern "
             "it borrows (with ad id and its numbers); hook (first line or first three seconds); development in "
-            "three points; proof to show; format; button and landing page; what it tests.",
+            "three points; proof to show; format; button and landing page; what it tests. Then run a skeptical jury "
+            "of four buyer profiles against those ideas alongside {name}'s top ads: (1) price skeptic, (2) 2-second "
+            "fast scroller, (3) trust skeptic, (4) comparison shopper. Give zero compliments and zero invented purchase "
+            "odds; for each profile state one concrete objection citing a competitor ad id and one fix to make before spending.",
             "Campaign structure. Broad or narrow audience, in line with what the data shows {name} does (age "
             "range, gender, locations and breadth in the section Reach and audience). How many campaigns and ad "
             "sets, where tests run and where winners go. Give the reason from the data; if the audience data is "
@@ -168,6 +172,7 @@ _T = {
         "project.title": "My project",
         "project": ["Product", "Selling price", "Product cost", "Market", "Goal", "Main problem"],
         "numbers.title": "Numbers for the test",
+        "precheck.title": "Test before spending",
         "numbers.intro": "Computed by the app from the card, by arithmetic. Use them as they are. Amounts are "
                          "in the currency of the price on the card.",
         "numbers.more": "more than {n}",
@@ -302,7 +307,12 @@ _T = {
             "Cinque idee di annuncio per il mio prodotto, ispirate agli schemi che reggono nei dati. Non "
             "copie: niente frasi, marchi o promesse del concorrente. Per ogni idea: angolo; tipo di annuncio; "
             "schema a cui si ispira (con id dell'annuncio e i suoi numeri); gancio (prima riga o primi tre "
-            "secondi); sviluppo in tre punti; prova da mostrare; formato; bottone e pagina di arrivo; cosa mette alla prova.",
+            "secondi); sviluppo in tre punti; prova da mostrare; formato; bottone e pagina di arrivo; cosa mette alla prova. "
+            "Poi sottoponi queste idee, fianco a fianco con i migliori annunci di {name}, a una giuria scettica di "
+            "quattro profili: (1) chi guarda subito il prezzo, (2) chi scorre in 2 secondi, (3) chi diffida delle "
+            "promesse, (4) chi confronta con alternative note. Nessun complimento e nessuna probabilità di acquisto "
+            "inventata: per ogni profilo scrivi un'obiezione concreta citando l'id dell'annuncio concorrente e una "
+            "correzione pratica da fare prima di spendere.",
             "Struttura della campagna. Pubblico ampio o ristretto, in linea con ciò che i dati mostrano di {name} "
             "(età, genere, luoghi e ampiezza nella sezione Reach and audience). Quante campagne e quanti gruppi di "
             "inserzioni, dove girano i test e dove vanno i vincitori. Dai la ragione presa dai dati; se i dati sul "
@@ -326,6 +336,7 @@ _T = {
         "project.title": "Il mio progetto",
         "project": ["Prodotto", "Prezzo di vendita", "Costo del prodotto", "Mercato", "Obiettivo", "Problema principale"],
         "numbers.title": "Numeri per il test",
+        "precheck.title": "Prova prima di spendere",
         "numbers.intro": "Calcolati dall'app a partire dalla scheda, con semplice aritmetica. Usali così come "
                          "sono. Gli importi sono nella valuta del prezzo scritto nella scheda.",
         "numbers.more": "più di {n}",
@@ -445,6 +456,24 @@ def test_numbers(project: dict, ideas: int = IDEAS, multiplier: float = TEST_MUL
     return numbers
 
 
+def precheck_numbers(project: dict, ideas: int = IDEAS, multiplier: float = TEST_MULTIPLIER) -> dict:
+    """Reverse-breakeven CPC scenarios, max loss and settled Poisson stop odds from ``project``."""
+    return precheck.analyze(
+        price=project["price"],
+        product_cost=project["product_cost"],
+        market=project.get("market") or "",
+        vat_pct=project.get("vat_pct", 0.0),
+        shipping_cost=project.get("shipping_cost", 0.0),
+        payment_fee_pct=project.get("payment_fee_pct", 0.0),
+        payment_fee_fixed=project.get("payment_fee_fixed", 0.0),
+        return_rate_pct=project.get("return_rate_pct", 0.0),
+        other_costs=project.get("other_costs", 0.0),
+        ad_fee_pct=project.get("ad_fee_pct"),
+        ideas=ideas,
+        multiplier=multiplier,
+    )
+
+
 def _demote(text: str, levels: int = 2) -> str:
     """Push the headings of a data slice below the headings of the brief."""
     return "\n".join("#" * levels + line if line.startswith("#") else line for line in text.splitlines()) + "\n"
@@ -488,6 +517,7 @@ def project_section(project: dict, lang: str, result: dict | None = None) -> str
             lines.append("- " + words["numbers.pace.part"].format(
                 name=packs.subject_name(result), loaded=_money(found["ads_loaded"], lang), active=active))
     lines.append(f"- {words['numbers.costs']}")
+    lines += ["", f"## {words['precheck.title']}", *precheck.format_markdown(precheck_numbers(project), lang)]
     return "\n".join(lines) + "\n"
 
 
