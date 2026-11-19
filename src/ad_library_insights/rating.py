@@ -180,9 +180,12 @@ def group_concepts(ads: list[dict], as_of: date | None = None) -> list[dict]:
         starts = [m["started"] for m in members if m.get("started")]
         first_started = min(starts) if starts else None
         # a concept is over only when every one of its ads is; then it ended with the last of them
-        running = [m for m in members if not m.get("ended")]
-        ended = None if running else max(m["ended"] for m in members)
-        days = scoring.days_running({"started": first_started, "ended": ended}, as_of) if first_started else None
+        running = [m for m in members if m.get("status") != "inactive" and not m.get("ended")]
+        end_dates = [m["ended"] for m in members if m.get("ended")]
+        ended = None if running else (max(end_dates) if end_dates else None)
+        days = (None if (not running and ended is None)
+                else scoring.days_running({"started": first_started, "ended": ended}, as_of)
+                if first_started else None)
         cards = sorted(({"library_id": m["library_id"], "impression_rank": m.get("impression_rank"),
                          "started": m.get("started"), "days": scoring.days_running(m, as_of)} for m in members),
                        key=lambda m: (m["impression_rank"] or 10 ** 9, m["library_id"]))
@@ -195,7 +198,7 @@ def group_concepts(ads: list[dict], as_of: date | None = None) -> list[dict]:
             lead,
             started=first_started or lead.get("started"),
             ended=ended,
-            status="inactive" if ended else lead.get("status"),
+            status="inactive" if not running else lead.get("status"),
             ad_started=lead.get("started"),
             days_running=days,
             ad_days=scoring.days_running(lead, as_of),

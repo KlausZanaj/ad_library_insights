@@ -181,3 +181,21 @@ def test_time_estimate_grows_with_ads_and_frames():
     assert details.estimate_seconds(0) == 0
     assert details.estimate_seconds(10) < details.estimate_seconds(20) < details.estimate_seconds(50)
     assert details.estimate_seconds(10, videos_with_frames=10) > details.estimate_seconds(10)
+
+
+def test_breakdown_3d_keeps_country_age_gender_cells():
+    found = details.parse_details(payload("eu_many_countries"), "IT")
+    reach = found["reach"]
+    cells = reach["breakdown_3d"]
+    assert cells
+    assert sum(c["reach"] for c in cells) == sum(reach["by_gender"].values())
+    assert sum(c["reach"] for c in cells) == sum(row["reach"] for row in reach["by_age"])
+    it_cells = [c for c in cells if c["country"] == "IT"]
+    assert it_cells and sum(c["reach"] for c in it_cells) == reach["country_reach"]
+    assert all(c["male"] + c["female"] + c["unknown"] == c["reach"] > 0 for c in it_cells)
+
+    bare = copy.deepcopy(payload("no_eu_reach"))
+    block = bare["data"]["ad_library_main"]["ad_details"]["transparency_by_location"]
+    for key in block:
+        block[key] = None
+    assert details.parse_details(bare, "BR")["reach"]["breakdown_3d"] == []

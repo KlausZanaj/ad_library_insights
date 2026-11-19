@@ -48,22 +48,35 @@ def _total(block: dict) -> int | None:
     return None
 
 
-def _breakdown(block: dict) -> tuple[list[dict], dict[str, int], dict[str, int]]:
-    """Per-country totals, per-age totals and per-gender totals of one section."""
+def _breakdown(block: dict) -> tuple[list[dict], dict[str, int], dict[str, int], list[dict]]:
+    """Per-country totals, per-age totals, per-gender totals and 3D cells of one section."""
     countries, ages, genders = [], {}, {"male": 0, "female": 0, "unknown": 0}
+    cells: dict[tuple[str | None, str], dict] = {}
     for row in block.get("age_country_gender_reach_breakdown") or []:
+        country_code = row.get("country")
         country_total = 0
         for cell in row.get("age_gender_breakdowns") or []:
+            age_range = cell.get("age_range") or "?"
             people = 0
+            counts = {}
             for gender in genders:
                 value = int(cell.get(gender) or 0)
                 genders[gender] += value
+                counts[gender] = value
                 people += value
-            ages[cell.get("age_range") or "?"] = ages.get(cell.get("age_range") or "?", 0) + people
+            ages[age_range] = ages.get(age_range, 0) + people
             country_total += people
-        countries.append({"country": row.get("country"), "reach": country_total})
+            if people > 0:
+                key = (country_code, age_range)
+                bucket = cells.setdefault(
+                    key, {"country": country_code, "age_range": age_range,
+                          "male": 0, "female": 0, "unknown": 0, "reach": 0})
+                for gender in genders:
+                    bucket[gender] += counts[gender]
+                bucket["reach"] += people
+        countries.append({"country": country_code, "reach": country_total})
     countries.sort(key=lambda c: (-c["reach"], c["country"] or ""))
-    return countries, ages, genders
+    return countries, ages, genders, list(cells.values())
 
 
 def parse_reach(transparency: dict | None, country: str | None = None) -> dict:
@@ -73,11 +86,12 @@ def parse_reach(transparency: dict | None, country: str | None = None) -> dict:
     per-country breakdown of whichever section lists it.
     """
     regions, by_age, by_gender = [], {}, {"male": 0, "female": 0, "unknown": 0}
+    cells_3d: dict[tuple[str | None, str], dict] = {}
     for key, block in (transparency or {}).items():
         if not isinstance(block, dict):
             continue
         total = _total(block)
-        countries, ages, genders = _breakdown(block)
+        countries, ages, genders, cells = _breakdown(block)
         if total is None and not countries:
             continue
         if total is not None and len(countries) == 1:
@@ -89,10 +103,17 @@ def parse_reach(transparency: dict | None, country: str | None = None) -> dict:
             by_age[age] = by_age.get(age, 0) + people
         for gender, people in genders.items():
             by_gender[gender] += people
+        for cell in cells:
+            cell_key = (cell["country"], cell["age_range"])
+            bucket = cells_3d.setdefault(
+                cell_key, {"country": cell["country"], "age_range": cell["age_range"],
+                           "male": 0, "female": 0, "unknown": 0, "reach": 0})
+            for field in ("male", "female", "unknown", "reach"):
+                bucket[field] += cell[field]
 
     if not regions:
         return {"available": False, "note": NO_REACH_NOTE, "regions": [], "country": country,
-                "country_reach": None, "eu_total": None, "uk_total": None}
+                "country_reach": None, "eu_total": None, "uk_total": None, "breakdown_3d": []}
 
     totals = {r["region"]: r["total"] for r in regions}
     wanted = (country or "").upper()
@@ -112,6 +133,7 @@ def parse_reach(transparency: dict | None, country: str | None = None) -> dict:
                 country_reach = 0              # the section lists its countries and this one is not there
                 break
     basis = "EU" if "EU" in totals else regions[0]["region"]
+    breakdown_3d = sorted(cells_3d.values(), key=lambda c: (-c["reach"], c["country"] or "", c["age_range"]))
     return {
         "available": True,
         "regions": regions,
@@ -125,6 +147,7 @@ def parse_reach(transparency: dict | None, country: str | None = None) -> dict:
         "by_age": [{"age_range": age, "reach": people}
                    for age, people in sorted(by_age.items())],
         "by_gender": by_gender,
+        "breakdown_3d": breakdown_3d,
     }
 
 

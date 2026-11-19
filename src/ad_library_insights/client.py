@@ -263,6 +263,7 @@ class AdLibraryClient:
                            for i in ids}
         for library_id, outcome in results.items():
             outcome["frames"] = self.media.frames(library_id) if library_id in videos else []
+            outcome["video_meta"] = self.media.video_meta(library_id) if library_id in videos else None
         return results
 
 

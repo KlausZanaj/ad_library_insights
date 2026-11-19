@@ -6,6 +6,8 @@ downloaded once, while the search is fresh, into the tool's home folder.
 """
 from __future__ import annotations
 
+import json
+import math
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -59,6 +61,41 @@ class MediaStore:
 
     def frames(self, library_id: str) -> list[str]:
         return [str(p) for p in sorted(self.directory.glob(f"ad_{library_id}_frame_*.jpg"))]
+
+    def video_meta_path(self, library_id: str) -> Path:
+        return Path(f"{self.frame_stem(library_id)}_meta.json")
+
+    def save_video_meta(self, library_id: str, meta: dict) -> str | None:
+        """Validate and store video duration/dimensions next to its frames."""
+        if not isinstance(meta, dict):
+            return None
+        try:
+            duration = float(meta.get("duration") or 0)
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(duration) or duration <= 0:
+            return None
+        width, height = meta.get("width"), meta.get("height")
+        clean_width = (int(width) if isinstance(width, (int, float))
+                       and not isinstance(width, bool) and width > 0 else None)
+        clean_height = (int(height) if isinstance(height, (int, float))
+                        and not isinstance(height, bool) and height > 0 else None)
+        payload = {"duration": round(duration, 2), "width": clean_width, "height": clean_height}
+        path = self.video_meta_path(library_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        return str(path)
+
+    def video_meta(self, library_id: str) -> dict | None:
+        """Read stored video metadata for ``library_id``, or None when absent/invalid."""
+        path = self.video_meta_path(library_id)
+        if not path.is_file():
+            return None
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        return data if isinstance(data, dict) else None
 
 
 def save_ad_media(ads: list[dict], store: MediaStore, workers: int = 6) -> int:

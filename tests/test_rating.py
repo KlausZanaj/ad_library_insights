@@ -686,3 +686,21 @@ def test_a_concept_handed_in_twice_is_opened_once():
     ranked = rating.group_concepts(cards, AS_OF)
     chosen = [card for _, card in rating.cards_to_read(ranked + ranked[:1], 10)]
     assert sorted(chosen) == ["old", "z1", "z2", "z3"]
+
+
+def test_group_concepts_handles_inactive_members_with_or_without_end_date():
+    partial_end = [
+        ad("e1", started="2026-06-01", ended="2026-06-15", status="inactive", impression_rank=1),
+        ad("e2", started="2026-06-02", ended=None, status="inactive", impression_rank=2),
+    ]
+    c1 = rating.group_concepts(partial_end, AS_OF)[0]
+    assert c1["status"] == "inactive" and c1["ended"] == "2026-06-15"
+    assert c1["days_running"] == 14 and c1["verdict"] == "ended"
+
+    no_end_dates = [
+        ad("u1", started="2026-06-01", ended=None, status="inactive", impression_rank=1),
+        ad("u2", started="2026-06-05", ended=None, status="inactive", impression_rank=2),
+    ]
+    c2 = rating.group_concepts(no_end_dates, AS_OF)[0]
+    assert c2["status"] == "inactive" and c2["ended"] is None
+    assert c2["days_running"] is None and c2["verdict"] == "ended"

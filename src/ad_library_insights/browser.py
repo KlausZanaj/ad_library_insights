@@ -18,6 +18,7 @@ regardless of the machine or of the country being researched.
 from __future__ import annotations
 
 import json
+import math
 import re
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -384,8 +385,19 @@ class DetailSession:
             await side.set_content(_VIDEO_PAGE)
             meta = await side.evaluate(_LOAD_VIDEO_JS, video_url)
             duration = float(meta.get("duration") or 0)
-            if not duration or duration != duration:      # 0 or NaN: nothing to seek
+            if not math.isfinite(duration) or duration <= 0:      # 0, NaN or inf: nothing to seek
                 return saved
+            meta_path = Path(f"{stem}_meta.json")
+            meta_path.parent.mkdir(parents=True, exist_ok=True)
+            raw_w, raw_h = meta.get("width") or 0, meta.get("height") or 0
+            meta_path.write_text(
+                json.dumps({
+                    "duration": round(duration, 2),
+                    "width": int(raw_w) if raw_w > 0 else None,
+                    "height": int(raw_h) if raw_h > 0 else None,
+                }),
+                encoding="utf-8",
+            )
             video = side.locator("#v")
             for index, fraction in enumerate(fractions, start=1):
                 await side.evaluate(_SEEK_JS, duration * fraction)

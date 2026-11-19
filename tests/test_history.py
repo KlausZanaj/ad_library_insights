@@ -220,3 +220,34 @@ def test_what_changed_tool(tmp_path, monkeypatch):
     assert again["changes"]["available"]
     assert second["available"] and second["counts"]["stopped"] >= 1
     assert listed["searches"][0]["key"] == f"company:IT:{PAGE_ID}"
+
+
+def test_snapshot_keeps_additive_reach_status_and_audience_distribution():
+    rich = ad(
+        "9",
+        "Desk copy",
+        status="inactive",
+        ended="2026-06-10",
+        impression_rank=2,
+        reach_total=500,
+        reach_per_day=50,
+        reach_cards_read=1,
+        reach={
+            "eu_total": 1200,
+            "uk_total": 300,
+            "breakdown_3d": [
+                {"country": "IT", "age_range": "25-34", "male": 300, "female": 150, "unknown": 50, "reach": 500},
+                {"country": "DE", "age_range": "35-44", "male": 500, "female": 0, "unknown": 0, "reach": 500},
+            ],
+        },
+    )
+    snap = history.snapshot_of(result(MONDAY, [rich]))
+    stored = snap["ads"][0]
+    assert stored["status"] == "inactive" and stored["ended"] == "2026-06-10"
+    assert stored["impression_rank"] == 2 and stored["reach_total"] == 500
+    assert stored["reach_per_day"] == 50 and stored["reach_cards_read"] == 1
+    assert stored["eu_total"] == 1200 and stored["uk_total"] == 300
+    dist = snap["audience_distribution"]
+    assert dist["ads_with_breakdown"] == 1 and dist["total_cell_reach"] == 1000
+    assert pytest.approx(sum(c["share"] for c in dist["cells"]), abs=1e-5) == 1.0
+    assert history.snapshot_of(result(MONDAY, [ad("1", "Plain")]))["audience_distribution"] is None

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -40,6 +41,7 @@ def subject(result: dict) -> dict:
 def _lite(ad: dict) -> dict:
     """The few fields of an ad needed to compare it later and to show it in a list."""
     body = ad.get("body") or ""
+    reach = ad.get("reach") or {}
     return {
         "library_id": ad["library_id"],
         "ids": sorted({ad["library_id"], *ad.get("variant_ids", []), *ad.get("collation_ids", [])}),
@@ -53,12 +55,54 @@ def _lite(ad: dict) -> dict:
         "media_type": ad.get("media_type"),
         # dynamic and catalogue ads show a different variation at every load
         "dynamic": bool(ad.get("multiple_versions")),
+        "status": ad.get("status"),
         "started": ad.get("started"),
+        "ended": ad.get("ended"),
         "days_running": ad.get("days_running"),
+        "impression_rank": ad.get("impression_rank"),
         "creatives": ad.get("creatives", 1),
+        "reach_total": ad.get("reach_total"),
+        "reach_per_day": ad.get("reach_per_day"),
+        "reach_cards_read": ad.get("reach_cards_read"),
+        "eu_total": reach.get("eu_total"),
+        "uk_total": reach.get("uk_total"),
         "score": ad.get("score"),
         "verdict": ad.get("verdict"),
         "thumbnail_path": ad.get("thumbnail_path"),
+    }
+
+
+def _audience_distribution(ads: list[dict]) -> dict | None:
+    """Normalized country × age_range × gender reach share across ads carrying breakdown_3d."""
+    counts: Counter[tuple[str, str, str]] = Counter()
+    ads_count = 0
+    for ad in ads:
+        cells = (ad.get("reach") or {}).get("breakdown_3d") or []
+        if not cells:
+            continue
+        has_positive = False
+        for cell in cells:
+            country = cell.get("country") or ""
+            age_range = cell.get("age_range") or "?"
+            for gender in ("male", "female", "unknown"):
+                val = int(cell.get(gender) or 0)
+                if val > 0:
+                    counts[(country, age_range, gender)] += val
+                    has_positive = True
+        if has_positive:
+            ads_count += 1
+    total = sum(counts.values())
+    if not total:
+        return None
+    ordered = sorted(counts.items(), key=lambda item: (-item[1], item[0][0], item[0][1], item[0][2]))
+    return {
+        "ads_with_breakdown": ads_count,
+        "total_cell_reach": total,
+        "cells": [
+            {"country": country, "age_range": age_range, "gender": gender,
+             "reach": count, "share": round(count / total, 6)}
+            for (country, age_range, gender), count in ordered
+        ],
     }
 
 
@@ -71,6 +115,7 @@ def snapshot_of(result: dict, now: datetime | None = None) -> dict:
             "active_ads": active, "ads_loaded": result.get("ads_parsed"),
             # how much of what the library lists was read: identical copies count, as in Meta's total
             "loaded_share": round(min(listed / active, 1.0), 2) if active else None,
+            "audience_distribution": _audience_distribution(result.get("ads", [])),
             "ads": [_lite(ad) for ad in result.get("ads", [])]}
 
 

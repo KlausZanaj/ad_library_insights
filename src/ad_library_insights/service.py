@@ -255,6 +255,8 @@ async def deepen(client: AdLibraryClient, result: dict, top_n: int = 10, frames:
             ad.pop("detail_error", None)
             if outcome.get("frames"):
                 ad["frames"] = outcome["frames"]
+            if outcome.get("video_meta"):
+                ad["video_meta"] = outcome["video_meta"]
         else:
             # another ad of the same concept: only its reach figures are kept
             ad.setdefault("card_reach", {})[card_id] = {

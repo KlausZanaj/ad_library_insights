@@ -357,3 +357,35 @@ def test_a_concept_of_one_ad_that_cannot_be_opened_is_replaced_by_the_next_and_n
     assert result["deep"]["concepts"] == 2 and result["deep"]["failed"] == [single]
     plan = service.estimate_deep(listed, 3, frames=True)
     assert plan["videos"] <= 3
+
+
+def test_video_meta_is_saved_and_attached_during_deepen(tmp_path):
+    store = MediaStore(tmp_path / "m")
+    assert store.save_video_meta("1", {"duration": 0, "width": 720, "height": 1280}) is None
+    assert store.save_video_meta("1", {"duration": float("nan")}) is None
+    assert store.save_video_meta("1", "bad") is None
+    saved_path = store.save_video_meta("1", {"duration": 18.456, "width": 1080, "height": 1920})
+    assert saved_path and store.video_meta("1") == {"duration": 18.46, "width": 1080, "height": 1920}
+
+    studio = Studio(tmp_path / "run")
+    base_session = studio._session
+
+    def session_with_meta(url, scroll_rounds=40):
+        inner = base_session(url, scroll_rounds=scroll_rounds)
+        orig_frames = inner.frames
+
+        async def frames_with_meta(video_url, stem):
+            paths = await orig_frames(video_url, stem)
+            Path(f"{stem}_meta.json").write_text(
+                json.dumps({"duration": 15.5, "width": 720, "height": 1280}), encoding="utf-8"
+            )
+            return paths
+
+        inner.frames = frames_with_meta
+        return inner
+
+    studio._session = session_with_meta
+    studio.client._session_factory = session_with_meta
+    result = deep_result(studio, top_n=2, frames=True)
+    assert result["ads"][0]["video_meta"] == {"duration": 15.5, "width": 720, "height": 1280}
+    assert "video_meta" not in result["ads"][2]
