@@ -98,6 +98,26 @@ def test_project_endpoints(app):
     assert client.get("/api/project").json()["project"]["market"] == "DE"
 
 
+def test_precheck_endpoint_computes_real_margin_italy_fee_and_cpc(app):
+    client, _ = app
+    assert client.post("/api/precheck", content=b"not json").status_code == 400
+    assert client.post("/api/precheck", json={"price": 0, "product_cost": 10}).status_code == 400
+    assert client.post("/api/precheck", json={"price": 40, "product_cost": 35, "shipping_cost": 10}).status_code == 400
+
+    res = client.post("/api/precheck", json={
+        "price": 60, "product_cost": 15, "shipping_cost": 5,
+        "payment_fee_pct": 2.9, "payment_fee_fixed": 0.25, "market": "IT",
+    })
+    assert res.status_code == 200
+    body = res.json()
+    assert body["ok"] is True and body["ad_fee_pct"] == 3.0
+    assert body["net_margin"] == 38.01
+    assert body["cpa_ads"] == round(38.01 / 1.03, 2)
+    assert [s["cvr_pct"] for s in body["cpc_scenarios"]] == [1, 2, 3]
+    assert body["risk"]["max_loss_billed"] > body["risk"]["round_spend"]
+    assert body["stop_rule"]["p_zero_3x"] == 0.0498
+
+
 # --- searches -------------------------------------------------------------------------
 
 def test_page_and_static_files_are_served(app):
@@ -905,3 +925,53 @@ def test_page_durata_section_renders_states_svg_and_runs_endpoint(site, page_of)
     page.wait_for_selector(".durata-chart svg")
     assert posted == [{"page_id": PAGE_ID, "country": "IT", "window_days": 120, "fresh": False}]
     assert "22 giorni" in page.inner_text(".durata-sec")
+
+
+def test_page_level3_prova_prima_di_spendere_updates_live_and_saves_optional_costs(site, page_of):
+    page = page_of("it")
+    page.click(".lvl-head[data-value=plan]")
+    page.wait_for_selector(".precheck-box")
+    assert _count(page, "#lv-plan li") == 4
+    assert _count(page, ".lvl-body .btn") == 0
+
+    vis_text = page.inner_text("#lv-plan .lvl-vis")
+    assert "1,06" in vis_text and "0,82" in vis_text and "1,28" in vis_text
+    assert _count(page, "#lv-plan .jury-card") == 4
+
+    # Live updates when editing price, cost, shipping and toggling Italy +3% fee
+    page.fill("[data-sim=price]", "100")
+    page.fill("[data-sim=cost]", "30")
+    page.click(".sim-extra summary")
+    page.fill("[data-sim=ship]", "10")
+    cpa_it = page.inner_text("#sim-cpa")
+    risk_it = page.inner_text("#sim-risk-line")
+    page.uncheck("[data-sim-check=itFee]")
+    cpa_no_fee = page.inner_text("#sim-cpa")
+    risk_no_fee = page.inner_text("#sim-risk-line")
+    assert cpa_no_fee == "60" and cpa_it != cpa_no_fee
+    assert risk_it != risk_no_fee
+
+    # English + Dark mode check
+    page.click(".topbar [data-action=lang][data-value=en]")
+    page.click(".topbar [data-action=theme][data-value=dark]")
+    en_text = page.inner_text("#lv-plan .lvl-vis")
+    assert "1.06" in en_text and "Skeptical jury" in en_text
+
+    # Save project card with optional real costs and verify persistence
+    page.click("[data-action=project]")
+    page.wait_for_selector(".proj-extra")
+    page.fill("[data-pf=product]", "Test Item")
+    page.fill("[data-pf=price]", "100")
+    page.fill("[data-pf=product_cost]", "30")
+    page.fill("[data-pf=goal]", "10")
+    page.fill("[data-pf=main_problem]", "High CPA")
+    page.click(".proj-extra summary")
+    page.fill("[data-pf=shipping_cost]", "5")
+    page.fill("[data-pf=return_rate_pct]", "10")
+    page.click("[data-action=save-project]")
+    page.wait_for_function("S.project && S.project.shipping_cost === 5")
+
+    page.click("[data-action=project]")
+    page.wait_for_selector(".proj-extra[open]")
+    assert page.input_value("[data-pf=shipping_cost]") == "5"
+    assert page.input_value("[data-pf=return_rate_pct]") == "10"

@@ -22,6 +22,7 @@ from starlette.staticfiles import StaticFiles
 
 from .. import __version__, briefs, compare, consumption, details, history, link, media, project, rating, service
 from ..client import AdLibraryClient, normalise_country
+from ..lab import precheck
 from ..storage import DiskCache, Throttle
 
 STATIC = Path(__file__).parent / "static"
@@ -242,6 +243,33 @@ class Workspace:
             return JSONResponse({"errors": errors, "project": None})   # 200: a refused card is not a failed request
         return JSONResponse({"project": card})
 
+    async def precheck_api(self, request: Request) -> Response:
+        try:
+            body = await request.json()
+            if not isinstance(body, dict):
+                raise ValueError("body must be a JSON object")
+            if body.get("price") is None:
+                raise ValueError("price is required")
+            kwargs = {
+                "price": float(body["price"]),
+                "product_cost": float(body.get("product_cost") or 0),
+                "market": str(body.get("market") or ""),
+                "vat_pct": float(body.get("vat_pct") or 0),
+                "shipping_cost": float(body.get("shipping_cost") or 0),
+                "payment_fee_pct": float(body.get("payment_fee_pct") or 0),
+                "payment_fee_fixed": float(body.get("payment_fee_fixed") or 0),
+                "return_rate_pct": float(body.get("return_rate_pct") or 0),
+                "other_costs": float(body.get("other_costs") or 0),
+                "ad_fee_pct": float(body["ad_fee_pct"]) if body.get("ad_fee_pct") not in (None, "") else None,
+                "ideas": int(body.get("ideas") or precheck.DEFAULT_IDEAS),
+                "multiplier": float(body.get("multiplier") or precheck.DEFAULT_MULTIPLIER),
+                "test_budget": float(body["test_budget"]) if body.get("test_budget") not in (None, "") else None,
+            }
+            found = precheck.analyze(**kwargs)
+        except (ValueError, TypeError) as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+        return JSONResponse({"ok": True, **found})
+
     async def create_job(self, request: Request) -> Response:
         body = await request.json()
         try:
@@ -424,6 +452,7 @@ def create_app(client: AdLibraryClient | None = None, home: Path | None = None,
         Route("/api/pages", space.pages),
         Route("/api/project", space.get_project, methods=["GET"]),
         Route("/api/project", space.put_project, methods=["PUT"]),
+        Route("/api/precheck", space.precheck_api, methods=["POST"]),
         Route("/api/jobs", space.create_job, methods=["POST"]),
         Route("/api/durata", space.create_durata_job, methods=["POST"]),
         Route("/api/jobs/{job_id}", space.get_job),

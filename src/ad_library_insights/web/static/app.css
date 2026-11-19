@@ -465,6 +465,31 @@ table.cmp td.num { font-variant-numeric: tabular-nums; }
 .vis-kpi:first-child strong { color: var(--accent); }
 .vis-kpi small { display: block; font-size: .73rem; color: var(--muted); }
 
+/* level 3: real costs & Prova prima di spendere */
+.sim-extra { margin: 8px 0 10px; padding: 6px 10px; border: 1px solid var(--line-soft); border-radius: 6px; background: var(--sunken); font-size: .8rem; }
+.sim-extra summary { cursor: pointer; font-weight: 600; color: var(--accent); outline: none; }
+.sim-extra-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
+.sim-extra-grid .sim-field { background: var(--surface); }
+.sim-check { display: flex; align-items: center; gap: 7px; margin-top: 8px; font-size: .8rem; color: var(--muted); cursor: pointer; }
+.sim-check input { width: 15px; height: 15px; accent-color: var(--accent); }
+.precheck-box { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line-soft); font-size: .81rem; }
+.precheck-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-weight: 640; color: var(--text); margin-bottom: 6px; }
+.cpc-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.cpc-row { padding: 7px 8px; border-radius: 6px; background: var(--sunken); border: 1px solid var(--line-soft); text-align: center; }
+.cpc-row span { display: block; font-size: .73rem; color: var(--muted); }
+.cpc-row strong { display: block; font-size: .95rem; font-weight: 700; margin: 2px 0; font-variant-numeric: tabular-nums; }
+.cpc-row small { display: block; font-size: .71rem; color: var(--muted); }
+.cpc-row.hard small { color: var(--warn); font-weight: 600; }
+.cpc-row.ok small { color: var(--ok); font-weight: 600; }
+.precheck-bench, .precheck-risk { margin-top: 6px; font-size: .76rem; color: var(--muted); line-height: 1.4; }
+.jury-box { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
+.jury-title { font-size: .76rem; font-weight: 650; color: var(--muted); margin-bottom: 6px; }
+.jury-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.jury-card { padding: 6px 8px; border-radius: 5px; background: var(--sunken); border: 1px solid var(--line-soft); font-size: .74rem; color: var(--muted); line-height: 1.35; }
+.proj-extra { grid-column: 1 / -1; padding: 10px 12px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--sunken); }
+.proj-extra summary { cursor: pointer; font-size: .88rem; font-weight: 620; color: var(--accent); outline: none; }
+.proj-extra-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; margin-top: 12px; }
+
 /* expandable interactive explainer */
 .lvl-details { margin-top: 12px; background: var(--surface); border: 1px solid var(--accent-border); border-radius: 7px; padding: 9px 14px; }
 .lvl-details summary { cursor: pointer; font-size: .88rem; font-weight: 640; color: var(--accent); outline: none; }
@@ -521,7 +546,7 @@ table.cmp td.num { font-variant-numeric: tabular-nums; }
   .lvl-tag { grid-column: 2; grid-row: 2; text-align: left; justify-self: start; white-space: normal; }
   .lvl-arrow { grid-column: 3; grid-row: 1; }
   .lvl-body { padding: 12px 14px 18px; }
-  .vis-lenses, .vis-econ { grid-template-columns: 1fr; }
+  .vis-lenses, .vis-econ, .proj-extra-grid, .jury-grid { grid-template-columns: 1fr; }
   .way-card { padding: 18px 16px; }
   .dialog { padding: 22px 18px; }
   .tldr { flex-direction: column; gap: 6px; padding: 14px 16px !important; }

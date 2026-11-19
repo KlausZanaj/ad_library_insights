@@ -34,7 +34,8 @@ const S = {
   project: null, overlay: null, estimate: null, pending: null,
   history: null, news: null, sort: 'score', filter: 'all', tableQuery: '',
   durataWindow: 90, durataBusy: false, durataError: false,
-  simPrice: null, simCost: null, cmpCopied: false,
+  simPrice: null, simCost: null, simVat: null, simShip: null, simFeePct: null, simRetPct: null, simItFee: null,
+  cmpCopied: false,
   link: { quick: null, mcp: 'checking', running: false, result: null, error: null, test: null, copy: null, hint: false },
 };
 let T = { it: {}, en: {} };
@@ -197,13 +198,62 @@ function renderSearch() {
   updateProgress();
 }
 function simNumbers() {
-  const p = Number(S.simPrice ?? (S.project && S.project.price) ?? 180);
-  const c = Number(S.simCost ?? (S.project && S.project.product_cost) ?? 62);
-  const margin = Math.max(0, Math.round((p - c) * 10) / 10);
-  const lowCut = Math.round(margin * 2 * 10) / 10, highCut = Math.round(margin * 3 * 10) / 10;
-  const round1 = Math.round(margin * 2.5 * 5 * 10) / 10;
-  const roas = margin > 0 ? (p / margin).toFixed(2) : '—';
-  return { p, c, margin, lowCut, highCut, round1, roas };
+  const pr = S.project;
+  const p = Number(S.simPrice ?? (pr && pr.price) ?? 180);
+  const c = Number(S.simCost ?? (pr && pr.product_cost) ?? 62);
+  const vat = Math.min(99.9, Math.max(0, Number(S.simVat ?? (pr && pr.vat_pct) ?? 0)));
+  const ship = Math.max(0, Number(S.simShip ?? (pr && pr.shipping_cost) ?? 0));
+  const feePctPay = Math.min(99.9, Math.max(0, Number(S.simFeePct ?? (pr && pr.payment_fee_pct) ?? 0)));
+  const retPct = Math.min(99.9, Math.max(0, Number(S.simRetPct ?? (pr && pr.return_rate_pct) ?? 0)));
+  const fixedPay = Math.max(0, Number((pr && pr.payment_fee_fixed) ?? 0));
+  const otherCost = Math.max(0, Number((pr && pr.other_costs) ?? 0));
+  const market = (pr && pr.market) || S.country;
+  const itFee = S.simItFee !== null ? S.simItFee : (pr && pr.ad_fee_pct != null ? pr.ad_fee_pct > 0 : market === 'IT');
+  const adFeePct = itFee ? (pr && pr.ad_fee_pct > 0 ? Number(pr.ad_fee_pct) : 3) : 0;
+
+  const netPrice = vat > 0 ? p / (1 + vat / 100) : p;
+  const payFee = p * (feePctPay / 100) + fixedPay;
+  const rawMargin = Math.max(0, (netPrice - c) * (1 - retPct / 100) - ship - payFee - otherCost);
+  const cpaRaw = rawMargin / (1 + adFeePct / 100);
+  const cpa = Math.round(cpaRaw * 10) / 10;
+  const lowCut = Math.round(cpaRaw * 2 * 10) / 10;
+  const highCut = Math.round(cpaRaw * 3 * 10) / 10;
+  const perAd = Math.round(cpaRaw * 2.5 * 10) / 10;
+  const round1 = Math.round(perAd * 5 * 10) / 10;
+  const billed = Math.round(round1 * (1 + adFeePct / 100) * 10) / 10;
+  const roas = cpaRaw > 0 ? (netPrice / cpaRaw).toFixed(2) : '—';
+  const cpcs = [1, 2, 3].map((cvr) => {
+    const cpc = Math.round(cpaRaw * (cvr / 100) * 100) / 100;
+    const zone = cpc < 0.82 ? 'below_iqr' : cpc < 1.06 ? 'below_median' : cpc <= 1.28 ? 'within_iqr' : 'above_iqr';
+    return { cvr, cpc, zone };
+  });
+  const zeroProb = cpaRaw > 0 ? Math.exp(-round1 / cpaRaw) : 1;
+  const oneIn = zeroProb > 1e-12 && zeroProb < 1 ? Math.round(1 / zeroProb) : null;
+  return {
+    p, c, vat, ship, feePctPay, retPct, itFee, adFeePct,
+    margin: Math.round(rawMargin * 10) / 10, cpa, lowCut, highCut, round1, billed, roas, cpcs, oneIn,
+  };
+}
+function precheckCpcRowsHtml(cpcs) {
+  return cpcs.map((row) => {
+    const cls = row.zone === 'below_iqr' || row.zone === 'below_median' ? ' hard' : row.zone === 'above_iqr' ? ' ok' : '';
+    return `<div class="cpc-row${cls}"><span>${esc(t('pre.cpc.cvr', { n: row.cvr }))}</span><strong>€${esc(num(row.cpc))}</strong><small>${esc(t(`pre.zone.${row.zone}`))}</small></div>`;
+  }).join('');
+}
+function updateSimDom() {
+  const { cpa, lowCut, highCut, round1, billed, roas, cpcs, oneIn } = simNumbers();
+  if ($('#sim-cpa')) $('#sim-cpa').textContent = num(cpa);
+  if ($('#sim-roas')) $('#sim-roas').textContent = t('lv.v3.sim.roas', { roas });
+  if ($('#sim-stop')) $('#sim-stop').textContent = `${num(lowCut)} - ${num(highCut)}`;
+  if ($('#sim-budget')) $('#sim-budget').textContent = num(round1);
+  if ($('#sim-cpc-rows')) $('#sim-cpc-rows').innerHTML = precheckCpcRowsHtml(cpcs);
+  if ($('#sim-risk-line')) {
+    $('#sim-risk-line').textContent = t('pre.risk.line', {
+      spend: num(round1),
+      billed: num(billed),
+      onein: oneIn != null ? num(oneIn) : '—',
+    });
+  }
 }
 function levelVisual(level) {
   if (level === 'data') {
@@ -222,17 +272,38 @@ function levelVisual(level) {
       </div>
     </div>`;
   }
-  const { p, c, margin, lowCut, highCut, round1, roas } = simNumbers();
+  const { p, c, vat, ship, feePctPay, retPct, itFee, cpa, lowCut, highCut, round1, billed, roas, cpcs, oneIn } = simNumbers();
+  const cpcHelp = `<span class="help-wrap"><button type="button" class="help-btn" data-action="help-toggle" aria-label="${esc(t('help.aria', { topic: t('pre.cpc.title') }))}" aria-expanded="false">?</button><div class="help-pop right" role="tooltip"><h4>${esc(t('pre.cpc.title'))}</h4><p>${esc(t('pre.cpc.help'))}</p></div></span>`;
   return `<div class="lvl-vis">
     <div class="vis-top"><span class="vis-title">${esc(t('lv.v3.badge'))}</span><button class="linklike" data-action="lv-project" style="font-size:.78rem">${esc(t('lv.v3.sim.edit'))}</button></div>
     <div class="sim-inputs">
       <label class="sim-field"><span>${esc(t('lv.v3.sim.price'))}</span><input type="number" min="1" step="1" data-sim="price" value="${esc(p)}"></label>
       <label class="sim-field"><span>${esc(t('lv.v3.sim.cost'))}</span><input type="number" min="0" step="1" data-sim="cost" value="${esc(c)}"></label>
     </div>
+    <details class="sim-extra">
+      <summary>${esc(t('lv.v3.sim.extra'))}</summary>
+      <div class="sim-extra-grid">
+        <label class="sim-field"><span>${esc(t('lv.v3.sim.vat'))}</span><input type="number" min="0" max="99" step="1" data-sim="vat" value="${esc(vat)}"></label>
+        <label class="sim-field"><span>${esc(t('lv.v3.sim.ship'))}</span><input type="number" min="0" step="0.5" data-sim="ship" value="${esc(ship)}"></label>
+        <label class="sim-field"><span>${esc(t('lv.v3.sim.fee'))}</span><input type="number" min="0" max="99" step="0.1" data-sim="feePct" value="${esc(feePctPay)}"></label>
+        <label class="sim-field"><span>${esc(t('lv.v3.sim.ret'))}</span><input type="number" min="0" max="99" step="1" data-sim="retPct" value="${esc(retPct)}"></label>
+      </div>
+      <label class="sim-check"><input type="checkbox" data-sim-check="itFee" ${itFee ? 'checked' : ''}><span>${esc(t('lv.v3.sim.itfee'))}</span></label>
+    </details>
     <div class="vis-econ num">
-      <div class="vis-kpi"><span>${esc(t('lv.v3.cpa'))}</span><strong id="sim-cpa">${num(margin)}</strong><small id="sim-roas">${esc(t('lv.v3.sim.roas', { roas }))}</small></div>
+      <div class="vis-kpi"><span>${esc(t('lv.v3.cpa'))}</span><strong id="sim-cpa">${num(cpa)}</strong><small id="sim-roas">${esc(t('lv.v3.sim.roas', { roas }))}</small></div>
       <div class="vis-kpi"><span>${esc(t('lv.v3.stop'))}</span><strong id="sim-stop">${num(lowCut)} - ${num(highCut)}</strong><small>${esc(t('lv.v3.stop.sub'))}</small></div>
       <div class="vis-kpi"><span>${esc(t('lv.v3.budget'))}</span><strong id="sim-budget">${num(round1)}</strong><small>${esc(t('lv.v3.budget.sub'))}</small></div>
+    </div>
+    <div class="precheck-box">
+      <div class="precheck-head"><span>${esc(t('pre.cpc.title'))}</span>${cpcHelp}</div>
+      <div class="cpc-grid" id="sim-cpc-rows">${precheckCpcRowsHtml(cpcs)}</div>
+      <p class="precheck-bench">${esc(t('pre.cpc.bench'))}</p>
+      <p class="precheck-risk" id="sim-risk-line">${esc(t('pre.risk.line', { spend: num(round1), billed: num(billed), onein: oneIn != null ? num(oneIn) : '—' }))}</p>
+    </div>
+    <div class="jury-box">
+      <p class="jury-title">${esc(t('pre.jury.title'))}</p>
+      <div class="jury-grid">${[1, 2, 3, 4].map((n) => `<div class="jury-card">${esc(t(`pre.jury.${n}`))}</div>`).join('')}</div>
     </div>
   </div>`;
 }
@@ -1117,6 +1188,8 @@ function projectDialog(overlay) {
     <option value="${esc(t('proj.goal.day'))}">${esc(t('proj.goal.day'))}</option>
     <option value="${esc(t('proj.goal.week'))}">${esc(t('proj.goal.week'))}</option>
     <option value="${esc(t('proj.goal.month'))}">${esc(t('proj.goal.month'))}</option></select></div>`;
+  const optFields = ['vat_pct', 'shipping_cost', 'payment_fee_pct', 'payment_fee_fixed', 'return_rate_pct', 'other_costs'];
+  const openExtra = optFields.some((k) => (p[k] !== undefined && p[k] !== null && String(p[k]).trim() !== '') || errors[k]);
   return `<div class="dialog" role="dialog" aria-modal="true"><h2>${esc(t('proj.title'))}</h2><p class="lead">${esc(t('proj.lead'))}</p>
     <div class="form">
       ${field('product', 'proj.product', input('product'), true)}
@@ -1126,6 +1199,17 @@ function projectDialog(overlay) {
       ${field('market', 'proj.market', `<select data-pf="market">${countryOptions(p.market || S.country)}</select>`)}
       ${field('goal', 'proj.goal', goalInput)}
       ${field('main_problem', 'proj.problem', input('main_problem', 'proj.problem.hint'), true)}
+      <details class="proj-extra"${openExtra ? ' open' : ''}>
+        <summary>${esc(t('proj.opt.title'))}</summary>
+        <div class="proj-extra-grid">
+          ${field('vat_pct', 'proj.opt.vat', input('vat_pct'))}
+          ${field('shipping_cost', 'proj.opt.ship', input('shipping_cost'))}
+          ${field('payment_fee_pct', 'proj.opt.fee_pct', input('payment_fee_pct'))}
+          ${field('payment_fee_fixed', 'proj.opt.fee_fix', input('payment_fee_fixed'))}
+          ${field('return_rate_pct', 'proj.opt.ret', input('return_rate_pct'))}
+          ${field('other_costs', 'proj.opt.other', input('other_costs'))}
+        </div>
+      </details>
     </div>
     <div class="foot"><button class="btn quiet" data-action="close">${esc(t('button.back'))}</button><button class="btn" data-action="save-project">${esc(t('button.save'))}</button></div></div>`;
 }
@@ -1321,6 +1405,7 @@ async function saveProject() {
   try { saved = await api('/api/project', { method: 'PUT', body: overlay.draft }); } catch (error) { saved = { errors: {} }; }
   if (!saved.project) { overlay.errors = saved.errors || {}; return renderOverlay(); }
   S.project = saved.project;
+  S.simPrice = S.simCost = S.simVat = S.simShip = S.simFeePct = S.simRetPct = S.simItFee = null;
   S.overlay = null; render();
   if (overlay.thenSearch && S.pending) gate(S.pending);
 }
@@ -1461,18 +1546,25 @@ document.addEventListener('input', (event) => {
   if (el.dataset.sim) {
     if (el.dataset.sim === 'price') S.simPrice = Number(el.value || 0);
     if (el.dataset.sim === 'cost') S.simCost = Number(el.value || 0);
-    const { margin, lowCut, highCut, round1, roas } = simNumbers();
-    if ($('#sim-cpa')) $('#sim-cpa').textContent = num(margin);
-    if ($('#sim-roas')) $('#sim-roas').textContent = t('lv.v3.sim.roas', { roas });
-    if ($('#sim-stop')) $('#sim-stop').textContent = `${num(lowCut)} - ${num(highCut)}`;
-    if ($('#sim-budget')) $('#sim-budget').textContent = num(round1);
+    if (el.dataset.sim === 'vat') S.simVat = Number(el.value || 0);
+    if (el.dataset.sim === 'ship') S.simShip = Number(el.value || 0);
+    if (el.dataset.sim === 'feePct') S.simFeePct = Number(el.value || 0);
+    if (el.dataset.sim === 'retPct') S.simRetPct = Number(el.value || 0);
+    updateSimDom();
   }
 });
 document.addEventListener('change', (event) => {
   const el = event.target;
   if (el.dataset.change === 'frames') { S.frames = el.checked; refreshEstimate(); }
   if (el.dataset.change === 'brief-frames') makeBrief({ frames: el.checked });
-  if (el.dataset.bind === 'country') S.country = el.value;
+  if (el.dataset.bind === 'country') {
+    S.country = el.value;
+    if (S.simItFee === null && $('[data-sim-check="itFee"]')) {
+      $('[data-sim-check="itFee"]').checked = ((S.project && S.project.market) || S.country) === 'IT';
+      updateSimDom();
+    }
+  }
+  if (el.dataset.simCheck === 'itFee') { S.simItFee = el.checked; updateSimDom(); }
 });
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
