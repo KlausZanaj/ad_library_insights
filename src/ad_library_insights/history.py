@@ -14,7 +14,7 @@ from collections import Counter
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from .lab import ritmo
+from .lab import ritmo, struttura
 from .scoring import text_fingerprint
 from .storage import _read_json, _write_json, home_dir
 
@@ -251,7 +251,8 @@ class History:
             return {"available": False, "reason": "first_search" if saved else "never_searched",
                     "subject": saved[0]["subject"] if saved else None, "snapshots": len(saved)}
         return {**compare(saved[-2], saved[-1]), "snapshots": len(saved),
-                "ritmo": ritmo.analyze_snapshots(saved)}
+                "ritmo": ritmo.analyze_snapshots(saved),
+                "audience_drift": struttura.audience_js_drift(saved)}
 
     def ritmo(self, key: str, *, durata_report: dict | None = None, as_of: date | None = None) -> dict:
         """Launch pace, format drift (CUSUM), and Little's Law from saved snapshots of a subject."""

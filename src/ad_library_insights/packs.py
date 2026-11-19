@@ -25,7 +25,7 @@ from datetime import date
 from pathlib import Path
 
 from . import consumption, copy_analysis, history, rating
-from .lab import durata, ritmo
+from .lab import anomalie, durata, ritmo, struttura
 from .report import slugify
 from .storage import home_dir
 
@@ -275,6 +275,10 @@ def copy(result: dict, ads: list[dict]) -> str:
                   + (f" · headline: {ad['headline']}" if ad.get("headline") else ""),
                   f"first pass: {hook}; {promise}; proof: {proof}",
                   _quote(ad.get("body"))]
+    if result.get("struttura"):
+        lines += ["", "## Copy families (Su cosa si regge)", *struttura.format_copy_summary(result["struttura"])]
+    if result.get("anomalie"):
+        lines += ["", "## Out-of-pattern ads (Annunci fuori schema)", *anomalie.format_summary(result["anomalie"], lens="copy")]
     return "\n".join(lines) + "\n"
 
 
@@ -419,6 +423,10 @@ def reach(result: dict, ads: list[dict]) -> str:
                   + (f"; {audience['locations_included_count']} different locations in all"
                      if audience.get("locations_included_count", 0) > 20 else ""),
                   f"- Locations excluded (ads): {places(audience['locations_excluded'])}"]
+    if result.get("struttura"):
+        lines += ["", "## Account structure (Su cosa si regge)", *struttura.format_reach_summary(result["struttura"])]
+    if result.get("anomalie"):
+        lines += ["", "## Out-of-pattern ads (Annunci fuori schema)", *anomalie.format_summary(result["anomalie"], lens="reach")]
     return "\n".join(lines) + "\n"
 
 

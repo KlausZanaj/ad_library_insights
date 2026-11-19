@@ -8,7 +8,7 @@ from datetime import date, datetime, timezone
 from . import consumption, copy_analysis, details, media, rating, signals
 from .client import (AdLibraryClient, FetchResult, build_page_url, build_search_url,
                      normalise_country)
-from .lab import durata, ritmo
+from .lab import anomalie, durata, ritmo, struttura
 
 DEEP_CHOICES = (10, 20, 50)      # how many top ads to read reach for
 
@@ -68,6 +68,22 @@ def assemble(fetch: FetchResult, query: str, country: str, advertiser: str = "",
     return result
 
 
+def refresh_structure(result: dict, snapshots: list[dict] | None = None) -> None:
+    """Attach Su cosa si regge and Annunci fuori schema diagnostics to a result in place."""
+    ads = result.get("ads") or []
+    if not ads:
+        return
+    mode = result.get("mode") or "keyword"
+    result["struttura"] = struttura.analyze(
+        ads,
+        result.get("signals"),
+        mode=mode,
+        country=result.get("country"),
+        snapshots=snapshots,
+    )
+    result["anomalie"] = anomalie.select(ads, mode=mode)
+
+
 async def research(client: AdLibraryClient, query: str, country: str, advertiser: str = "",
                    active_status: str = "active", media_type: str = "all",
                    wait_seconds: float = 8, scroll_rounds: int = 6, use_cache: bool = True,
@@ -90,6 +106,7 @@ async def research(client: AdLibraryClient, query: str, country: str, advertiser
         for ad in result["ads"]:
             ad["query_match"] = rating.matches_query(ad, query)
         result["signals"]["off_query"] = sum(1 for ad in result["ads"] if not ad["query_match"])
+    refresh_structure(result)
     return result
 
 
@@ -174,6 +191,7 @@ async def research_company(client: AdLibraryClient, country: str, page_id: str =
             durata_report=result.get("durata"),
             active_status=active_status,
         )
+    refresh_structure(result)
     return result
 
 
@@ -340,4 +358,5 @@ async def deepen(client: AdLibraryClient, result: dict, top_n: int = 10, frames:
                       "failed": failed, "with_reach": with_reach, "frames": bool(frames),
                       "ceiling": ceiling, "capped": capped, "left_out": left_out, "ceiling_note": stopped,
                       "note": None if with_reach or failed else details.NO_REACH_NOTE}
+    refresh_structure(result)
     return result

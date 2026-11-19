@@ -531,6 +531,73 @@ def pack_texts(company, tmp_path) -> tuple[dict[str, str], set[str]]:
             "balance_state": "balanced",
         },
     }
+    marked["struttura"] = {
+        "available": True,
+        "mode": "company",
+        "sample_scope": "company",
+        "country": "IT",
+        "concepts_total": 10,
+        "reach_concentration": {
+            "measurable": True,
+            "scope": "market",
+            "country": "IT",
+            "concepts_with_reach": 5,
+            "total_read_reach": 100000,
+            "top1_share": 0.60,
+            "top3_share": 0.90,
+            "top20pct_share": 0.60,
+            "hhi": 0.41,
+            "normalized_hhi": 0.26,
+            "effective_n": 2.4,
+            "gini": 0.52,
+            "level": "concentrated",
+            "leaders": [{"library_id": "101", "share": 0.60, "reach": 60000, "cards_read": 1, "cards": 1}],
+        },
+        "copy_families": {
+            "measurable": True,
+            "evaluated": 8,
+            "total_with_text": 8,
+            "capped": False,
+            "threshold": 0.62,
+            "families_count": 3,
+            "diversity_ratio": 0.38,
+            "largest_family_share": 0.50,
+            "median_pairwise_ncd": 0.71,
+            "top_families": [{"representative_id": "101", "size": 4, "share": 0.50, "opening": "Sample opening", "member_ids": ["101"]}],
+        },
+        "shannon": {
+            "formats": {"measurable": True, "items": 8, "categories": 2, "entropy_bits": 0.81, "effective_k": 1.75, "evenness": 0.81, "dominant": "video", "dominant_share": 0.75, "label": "balanced"},
+            "destinations": {"measurable": True, "items": 8, "categories": 2, "entropy_bits": 0.81, "effective_k": 1.75, "evenness": 0.81, "dominant": "example.com", "dominant_share": 0.75, "label": "balanced"},
+        },
+        "audience_drift": {
+            "measurable": True,
+            "js_distance": 0.21,
+            "js_divergence": 0.044,
+            "state": "drifting",
+            "top_gainers": [{"country": "IT", "age_range": "25-34", "gender": "female", "delta": 0.08}],
+            "top_losers": [],
+            "days_between": 14.0,
+            "snapshots_with_audience": 2,
+        },
+    }
+    marked["anomalie"] = {
+        "available": True,
+        "mode": "company",
+        "sample_scope": "company",
+        "concepts_checked": 10,
+        "active_checked": 9,
+        "status": "flagged",
+        "baselines": {"median_days": 30.0, "median_reach_per_day": 500.0, "median_body_chars": 150.0, "reach_peers": 6},
+        "items": [{
+            "library_id": "101",
+            "kind": "long_live_low_reach",
+            "kinds": ["long_live_low_reach"],
+            "lenses": ["reach", "copy"],
+            "strength": 4.2,
+            "opening": "Quiet steady offer",
+            "detail": "90d on air vs 30d median, yet only 80/day vs 500/day median",
+        }],
+    }
     cases.append((marked, True))
     unread = copies.deepcopy(company)                  # reach not read at all, then not published in the country
     for ad in unread["ads"]:

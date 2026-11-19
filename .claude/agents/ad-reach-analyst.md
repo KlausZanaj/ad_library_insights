@@ -46,6 +46,13 @@ Then read `reach.md`. The other data files belong to the other specialists.
   `not published` for the country, nobody knows how many people these ads reached
   there. Work from audience, locations and languages, and write nothing about
   people reached, impressions or spend in that country.
+- `Account structure (Su cosa si regge)` reports `Reach concentration` (top 1,
+  top 3, HHI, effective concepts, Gini) strictly across the read concepts,
+  `Structural Shannon diversity` across destinations and formats, and snapshot
+  audience drift when two historical snapshots exist.
+- `Out-of-pattern ads (Annunci fuori schema)` lists up to four concepts with sharp
+  contradictions (e.g. long life vs tiny reach, fast breakout vs short life, single
+  creative holding top reach or rank).
 
 ## Method
 
@@ -54,16 +61,19 @@ Then read `reach.md`. The other data files belong to the other specialists.
    or are they small and steady? Use the lines under `Across the` for the middle
    concept and for the two leaders (`Most people per day`, most people in all): each
    figure there is written with the concept it belongs to, and concepts are never
-   added to each other.
+   added to each other. Cite `Reach concentration` shares as shares of those read
+   concepts (never claim account-wide totals when ads were left unread).
 2. **Audience.** Age span, gender, how many locations, whole countries or regions
    and cities, exclusions (`Audience over the`). Broad or narrow, and is it the same
-   on every ad?
+   on every ad? Note snapshot drift if present.
 3. **Localisation.** Under `Languages and countries`: the languages of the texts
    against the countries reached. One ad translated or different ads per country,
    and where delivery really goes (`Where delivery goes`), set against the
    locations targeted.
-4. **Flags.** If a concept in the table is flagged for review, what it has in
-   common with the others on air for long. Most packs hold none.
+4. **Flags and out-of-pattern ads.** Check any concept `flagged for review` or
+   listed under `Out-of-pattern ads (Annunci fuori schema)` and always state one
+   plausible alternative explanation (e.g. retargeting pool, narrow budget cap, or
+   budget consolidation onto a proven winner).
 
 ## Output
 

@@ -7,6 +7,8 @@ one earns more, which the Ad Library does not show.
 """
 from __future__ import annotations
 
+from .lab import struttura
+
 RATIO_WORTH_NOTING = 1.5          # one side at least one and a half times the other
 SHARE_GAP_WORTH_NOTING = 0.2      # twenty points of difference in a share
 
@@ -115,6 +117,7 @@ def compare(first: dict, second: dict) -> dict:
         "rows": [{"group": group, "key": key, "kind": kind, "a": a[key], "b": b[key]}
                  for group, key, kind in ROWS],
         "highlights": _highlights(a, b),
+        "audience_overlap": struttura.pianka_overlap(first, second),
         "note": "Differences in how two companies advertise. The Ad Library shows no spend and no "
                 "sales, so this says nothing about which one earns more.",
     }

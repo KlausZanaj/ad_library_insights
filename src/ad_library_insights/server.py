@@ -68,16 +68,18 @@ async def _deepen(result: dict, deep_ads: int, frames: bool, use_cache: bool) ->
     if result.get("ads"):       # remembered, so that what_changed has something to compare
         store = history.History()
         result["changes"] = history.summary(store.record(result))
+        key = history.subject(result)["key"]
+        snaps = store.snapshots(key)
         if result.get("mode") == "company":
-            key = history.subject(result)["key"]
             result["ritmo"] = ritmo.analyze(
                 result["ads"],
                 mode="company",
                 loaded_share=service._loaded_share(result),
-                snapshots=store.snapshots(key),
+                snapshots=snaps,
                 durata_report=result.get("durata"),
                 active_status="all" if result.get("durata") else "active",
             )
+        service.refresh_structure(result, snapshots=snaps)
     return result
 
 

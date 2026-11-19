@@ -38,20 +38,30 @@ Each entry is one concept: one text, with every ad that carries it.
 - When the overview carries the line `NO REACH IN`, nobody knows how many people
   these ads reached in that country. Order the ads by verdict, days and creatives,
   and write nothing about people reached, impressions or spend.
+- `Copy families (Su cosa si regge)` reports distinct textual angles grouped via
+  `NCD zlib` compression distance (`diversity ratio`, `largest family`, and
+  `Format entropy`). A single family means variations share one underlying script.
+- `Out-of-pattern ads (Annunci fuori schema)` highlights specific concept IDs where
+  minimal copy achieved high reach or where a single creative held long top rank,
+  focusing reading without re-reading every ad.
 
 ## Method
 
 1. Sort the entries by the evidence that the ad is paid for: verdict and
    reliability, people reached per day where it is published, days, creatives. A
    text on one recent ad is a test, not a finding.
-2. For the texts that hold, write down the hook as it is worded, the offer, the
+2. Check `Copy families (Su cosa si regge)`: state how many distinct text families
+   exist and whether the account iterates one script or runs genuinely separate angles.
+3. For the texts that hold, write down the hook as it is worded, the offer, the
    proof, and the order they come in. The `first pass` line was made by rules:
    correct it when the text says otherwise.
-3. Compare the texts carried by many creatives with those on a single one. What do
-   the first have that the second lack?
-4. Note what is absent: no price, no proof, no urgency can be as telling as their
+4. Compare the texts carried by many creatives (and any `Out-of-pattern ads (Annunci fuori schema)`
+   contradictions) with ordinary single-creative tests. What do the first have that
+   the second lack, and what plausible alternative (e.g. strong opening visual or
+   product promo rather than copy) explains any contradiction?
+5. Note what is absent: no price, no proof, no urgency can be as telling as their
    presence.
-5. Give every ad a type from the list under "Ad types" in the overview, judging
+6. Give every ad a type from the list under "Ad types" in the overview, judging
    from the text. The `type hint from the format` is where to start, not the
    answer. When the text cannot settle it, write "to confirm from the pictures".
 
