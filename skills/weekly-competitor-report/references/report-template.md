@@ -33,6 +33,12 @@ Searches that could not be fetched: {none | list}.
 |---|---:|---|---:|---:|---:|---|---|
 | {name} | {score} | {verdict} | {reach_per_day} | {days_running} | {creatives} | {first line} | [{library_id}]({ad_url}) |
 
+## Pace and format shifts (Ritmo)
+
+| Advertiser | STA/LTA (1w vs 8w) | Format CUSUM | Little's Law (L = λW) | Alert |
+|---|---|---|---|---|
+| {name} | {sta_lta_summary} | {cusum_summary} | {littles_law_summary} | {steady or real peak + id + alternative explanation} |
+
 ## Messaging shifts
 
 - **{Advertiser}**: {what changed in hook, offer, proof or CTA, with a short quote}.

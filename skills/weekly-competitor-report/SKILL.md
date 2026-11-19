@@ -49,9 +49,11 @@ report folder:
 
 3.  **Compare with the previous run.** Call `what_changed` with the same
     `page_id` or `query` and country: it returns new ads, ads no longer
-    listed and ads whose copy, headline, button, destination or offer
-    changed since the previous saved search. Where only exported CSVs exist,
-    match rows on `library_id` instead. The buckets:
+    listed, ads whose copy, headline, button, destination or offer changed
+    since the previous saved search, and—for `page_id` company searches with
+    at least two snapshots—`ritmo` (`sta_lta` 1w vs 8w launch pace, `cusum`
+    format drift, `littles_law` `L = λW` balance, and `trigger_ai`). Where
+    only exported CSVs exist, match rows on `library_id` instead. The buckets:
 
     | Bucket | Definition |
     |---|---|
@@ -62,13 +64,17 @@ report folder:
     A missing row is only evidence that an ad stopped. The page shows a
     sample, so confirm notable disappearances by opening the ad link.
 
-4.  **Read the new ads.** Call `analyze_top_ads` for competitors with new
-    ads and note what changed: new hook type, new offer, new landing domain,
-    a switch between selling and lead capture.
+4.  **Read the new ads (peak-gated).** Inspect new ads in depth with
+    `analyze_top_ads` primarily when `ritmo.trigger_ai` is true (a real
+    STA/LTA launch spike or CUSUM format drift) or when notable copy/offer
+    edits appear, citing example ad IDs and noting what changed (hook type,
+    offer, landing domain, selling vs lead capture). Keep steady competitors
+    where `ritmo.status` is steady to a brief status line.
 
 5.  **Write the report** following the
     [template](references/report-template.md) and save it as
-    `<report folder>/<YYYY-MM-DD>/report.md`.
+    `<report folder>/<YYYY-MM-DD>/report.md`, including the
+    **Pace and format shifts (Ritmo)** table.
 
 6.  **First run.** With no previous search there is nothing to compare:
     deliver the baseline (longest-running ads and copy patterns) and say that
@@ -79,6 +85,10 @@ report folder:
 -   Keep the watchlist stable. Record any change to it in the report, because
     it breaks comparability.
 -   Report counts with their sample caveat: "at least N new ads seen".
+-   Include one plausible alternative explanation (seasonal drop, batch
+    upload, short testing sprint) for any launch spike or format shift in Ritmo;
+    mention active-only survivor bias when snapshot history spans fewer than
+    three weeks.
 -   No spend or performance claims about competitors; the library does not
     publish them for commercial ads.
 -   Keep the report to one page. Link to the CSVs for detail.

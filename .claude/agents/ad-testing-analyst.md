@@ -34,6 +34,12 @@ Then read `testing.md`. The other data files belong to the other specialists.
   `Median lifespan (Kaplan-Meier)` per concept, `Concepts still active by age`,
   `Stop pattern` (Weibull shape when enough concepts stopped) and
   `Conditional survival` (Lindy when enough concepts remain at risk).
+- `Pace and format drift (Ritmo)` appears for a company search and reports:
+  `Launch pace (STA/LTA, 1w vs prior 8w)` (last 7 days vs prior 8 weeks with exact
+  binomial p-value and active-only survivor-bias caveat when applicable),
+  `Format drift (CUSUM)` (sustained share shifts between baseline and recent halves),
+  and `Portfolio balance (Little's Law, L = λW)` (active concepts vs 28-day launch
+  velocity and cohort RMST when loaded). It flags real anomalies with `AI alert: yes`.
 - Verdicts and their thresholds are explained in the overview. `flagged for review`
   is a question to check, not a negative verdict.
 - Days in the table of top ads are those of the concept. A second age in brackets
@@ -55,8 +61,12 @@ Then read `testing.md`. The other data files belong to the other specialists.
    sample counts and loaded share.
 4. **Offer route.** Buttons and destinations: one landing page or several, store
    or site, app install or lead form.
-5. **Changes.** When the file has the line `Since the previous search`, use it: how
-   many new ads, how many with new copy, how many no longer listed.
+5. **Changes and Ritmo.** When the file has the line `Since the previous search`, use it: how
+   many new ads, how many with new copy, how many no longer listed. Under
+   `Pace and format drift (Ritmo)`, focus depth primarily when `AI alert: yes`
+   (a real launch spike or format drift), cite the example ad IDs, include the
+   active-only survivor-bias caveat when present, and give one plausible alternative
+   explanation (e.g. seasonal calendar or batch upload).
 
 ## Output
 

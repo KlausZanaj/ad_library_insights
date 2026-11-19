@@ -8,7 +8,7 @@ from datetime import date, datetime, timezone
 from . import consumption, copy_analysis, details, media, rating, signals
 from .client import (AdLibraryClient, FetchResult, build_page_url, build_search_url,
                      normalise_country)
-from .lab import durata
+from .lab import durata, ritmo
 
 DEEP_CHOICES = (10, 20, 50)      # how many top ads to read reach for
 
@@ -165,6 +165,15 @@ async def research_company(client: AdLibraryClient, country: str, page_id: str =
             loaded_share=_loaded_share(result),
             as_of=as_of,
         )
+    if result.get("ads"):
+        result["ritmo"] = ritmo.analyze(
+            result["ads"],
+            mode="company",
+            loaded_share=_loaded_share(result),
+            as_of=as_of,
+            durata_report=result.get("durata"),
+            active_status=active_status,
+        )
     return result
 
 
@@ -181,11 +190,20 @@ async def analyze_durata(client: AdLibraryClient, country: str, page_id: str,
               else durata.analyze(result.get("ads", []), mode="company", active_status="all",
                                   loaded_share=_loaded_share(result), window_days=window_days,
                                   as_of=as_of))
+    ritmo_report = ritmo.analyze(
+        result.get("ads", []),
+        mode="company",
+        loaded_share=_loaded_share(result),
+        as_of=as_of,
+        durata_report=cohort,
+        active_status="all",
+    )
     return {
         "ok": result.get("ok", False),
         "page": result.get("page"),
         "country": result.get("country"),
         "durata": cohort,
+        "ritmo": ritmo_report,
     }
 
 

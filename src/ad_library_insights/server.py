@@ -7,6 +7,7 @@ from fastmcp import FastMCP
 
 from . import breakeven, briefs, compare, consumption, history, project, report, service
 from .client import AdLibraryClient, default_client
+from .lab import ritmo
 
 mcp = FastMCP(
     name="Ad Library Insights",
@@ -65,7 +66,18 @@ async def _deepen(result: dict, deep_ads: int, frames: bool, use_cache: bool) ->
     if deep_ads > 0 and result.get("ads"):
         await service.deepen(_get_client(), result, deep_ads, frames, _progress_reporter(), use_cache)
     if result.get("ads"):       # remembered, so that what_changed has something to compare
-        result["changes"] = history.summary(history.History().record(result))
+        store = history.History()
+        result["changes"] = history.summary(store.record(result))
+        if result.get("mode") == "company":
+            key = history.subject(result)["key"]
+            result["ritmo"] = ritmo.analyze(
+                result["ads"],
+                mode="company",
+                loaded_share=service._loaded_share(result),
+                snapshots=store.snapshots(key),
+                durata_report=result.get("durata"),
+                active_status="all" if result.get("durata") else "active",
+            )
     return result
 
 
@@ -284,7 +296,8 @@ def what_changed(country: str = "", query: str = "", page_id: str = "") -> dict:
 
     Every search_ads and analyze_company call is saved on this machine; this compares
     the last two saved searches of the same keyword (query) or page (page_id) in a
-    country. It needs two searches: after the first one it says so. Call it with no
+    country. For company pages with at least two searches, it also returns `ritmo`
+    (STA/LTA launch pace, format CUSUM drift, Little's Law balance). Call with no
     arguments to list what has been searched so far. To look for changes now, run the
     search again with use_cache false, then call this.
     """

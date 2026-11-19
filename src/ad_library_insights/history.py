@@ -11,9 +11,10 @@ from __future__ import annotations
 import hashlib
 import re
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
+from .lab import ritmo
 from .scoring import text_fingerprint
 from .storage import _read_json, _write_json, home_dir
 
@@ -249,7 +250,12 @@ class History:
         if len(saved) < 2:
             return {"available": False, "reason": "first_search" if saved else "never_searched",
                     "subject": saved[0]["subject"] if saved else None, "snapshots": len(saved)}
-        return {**compare(saved[-2], saved[-1]), "snapshots": len(saved)}
+        return {**compare(saved[-2], saved[-1]), "snapshots": len(saved),
+                "ritmo": ritmo.analyze_snapshots(saved)}
+
+    def ritmo(self, key: str, *, durata_report: dict | None = None, as_of: date | None = None) -> dict:
+        """Launch pace, format drift (CUSUM), and Little's Law from saved snapshots of a subject."""
+        return ritmo.analyze_snapshots(self.snapshots(key), durata_report=durata_report, as_of=as_of)
 
     def subjects(self) -> list[dict]:
         """Every company or keyword searched so far, latest search first."""
