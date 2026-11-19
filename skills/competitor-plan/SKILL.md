@@ -1,7 +1,7 @@
 ---
 name: competitor-plan
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
   category: AdvertisingStrategy
 description: >-
   Turns a competitor's ads into a plan for the user's own product: diagnosis,
@@ -46,7 +46,10 @@ the means of the person who has to carry it out.
     `overview.md` yourself, then four sub-agents in parallel where the client
     has them, `brief.md` in a single pass where it does not. Ask each
     specialist for findings only; you do the planning. Keep what matters for
-    this product and mark what two lenses confirm.
+    this product, mark what two lenses confirm, cite an ad id for every
+    competitor claim, and apply at most one neutral follow-up if two lenses
+    squarely contradict on a core ad id (carrying any still-open clash into
+    page-one "Risks and what we do not know" instead of guessing).
 
 6.  **Diagnose the user's project.** From `project.md`: margin per order,
     break-even CPA, and where customers are most likely lost given the

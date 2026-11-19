@@ -1282,3 +1282,27 @@ def test_page_struttura_anomalie_pianka_and_js_drift(site, page_of):
     page.click("[data-action=news-open]")
     page.wait_for_selector(".js-drift-bar")
     assert "In spostamento" in page.inner_text(".js-drift-bar")
+
+
+def test_page_mobile_layout_has_no_overflow_and_clamps_popovers(site, page_of):
+    base = _result(site)
+    lead_id = base["ads"][0]["library_id"]
+    comp = _result(site, struttura=_sample_struttura(lead_id), anomalie=_sample_anomalie(lead_id))
+    page = page_of("it", comp)
+    page.set_viewport_size({"width": 420, "height": 900})
+    page.wait_for_selector(".struttura-sec")
+    overflow = page.evaluate("() => document.documentElement.scrollWidth <= 420")
+    assert overflow
+    for sel in (".struttura-sec [data-action=help-toggle]", ".anomalie-sec [data-action=help-toggle]",
+                "table.ads thead [data-action=help-toggle]"):
+        cnt = page.locator(sel).count()
+        assert cnt >= 1
+        for idx in range(cnt):
+            btn = page.locator(sel).nth(idx)
+            btn.scroll_into_view_if_needed()
+            btn.click()
+            pop = page.locator(".help-wrap.open .help-pop")
+            assert pop.is_visible()
+            box = pop.bounding_box()
+            assert box and box["x"] >= 0 and box["x"] + box["width"] <= 420
+            page.keyboard.press("Escape")

@@ -1,7 +1,7 @@
 ---
 name: competitor-analysis
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
   category: AdvertisingResearch
 description: >-
   Explains why a competitor gets the reach it gets on Meta, from its own ads:
@@ -72,7 +72,8 @@ analysis.
     -   **With sub-agents:** start the four in parallel. Give each the pack
         folder and the language to answer in. Each reads `overview.md` and
         its own file only, and returns findings as finding, evidence,
-        strength.
+        strength. The four specialist definitions pin sonnet where supported
+        so you can focus the stronger coordinator model on synthesis.
     -   **Without sub-agents:** read `brief.md` and follow it. It holds the
         same four passes and the data in one text.
 
@@ -87,8 +88,22 @@ analysis.
     -   Give every ad one type. When copy and creative disagree, the picture
         decides if it was looked at; otherwise keep the type from the text
         and mark it "to confirm".
-    -   When two findings contradict each other, say which evidence is
-        stronger before dropping one.
+    -   **Strict grounding:** every cause must cite an ad id returned by a
+        specialist or written in the pack; never invent a cause or fill a gap
+        without pack evidence. Keep the template's single Strength (high,
+        medium, low) and Confirmed by label system—do not add extra scoring
+        layers.
+    -   **Optional single neutral follow-up on unresolved clashes:** only if
+        two specialists squarely contradict each other on the same core ad id
+        and the tension is not already explained under `Out-of-pattern ads (Annunci fuori schema)`,
+        you may send at most one neutral follow-up to the single specialist
+        holding that raw slice, asking it to re-check that ad id in its file
+        (never prompt it to "find an error" or agree with another lens, and
+        never run a four-way debate). If the clash still stands—or in
+        single-pass mode without sub-agents—do not force consensus: say
+        which evidence is stronger, cap Strength at Medium (or Low without
+        reach), and put the open contradiction under "To test or verify, in
+        order".
 
 7.  **Check the answer against the pack before delivering.**
 

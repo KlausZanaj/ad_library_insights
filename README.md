@@ -33,9 +33,9 @@ The public Ad Library shows every active ad as an endless wall of cards, but it 
 
 | Level | What you get | What it uses |
 |---|---|---|
-| **Level 1 · Market Map & Concept Ranking** | Ranked creative concepts (0-100), interactive table guide, days on air, country reach, audience demographics, format mix, launch pace, buttons and destinations. | **Nothing:** 100% local Python code, free, no AI. |
-| **Level 2 · Four-Lens Competitive Diagnosis** | A sliced data pack (`overview.md`, `copy.md`, `creative.md` + video stills at 2%/50%/97%, `reach.md`, `testing.md`) and a ready brief to explain *why* the top concepts hold up, backed by ad ID citations. | Your own AI assistant (Claude Code, Google Antigravity, Codex, ChatGPT or Claude). |
-| **Level 3 · Test Strategy & Break-Even CPA** | Pre-spend Pixel/CAPI check, deterministic unit economics (net margin, break-even CPA, 2-3x CPA cut rule, first-round budget), five single-variable ad scripts anchored to winning competitor patterns, and a one-page decision report. | Your own AI assistant + your saved local product card. |
+| **Level 1 · Market Map & Concept Ranking** | Ranked creative concepts (0-100), interactive table guide, days on air, country reach, audience demographics, **Durata** cohort survival (Kaplan-Meier / Weibull / Lindy), **Ritmo** (9-week STA/LTA launch pace, CUSUM format drift, Little's Law), **Su cosa si regge** (reach HHI/Gini, zlib NCD copy families, Shannon diversity) and **Annunci fuori schema** contradictions. | **Nothing:** 100% local Python code (pure stdlib quant modules), free, no AI. |
+| **Level 2 · Four-Lens Competitive Diagnosis** | A sliced data pack (`overview.md`, `copy.md`, `creative.md` + video stills at 2%/50%/97%, `reach.md`, `testing.md`) and a ready brief to explain *why* the top concepts hold up. Where supported, the four specialist sub-agents run on `model: sonnet` while the stronger coordinator model enforces strict ad-ID grounding and optional single neutral follow-ups on unresolved contradictions. | Your own AI assistant (Claude Code, Google Antigravity, Codex, ChatGPT or Claude). |
+| **Level 3 · Test Strategy & Break-Even CPA** | Pre-spend Pixel/CAPI check, **Test before spending (`Prova prima di spendere`)** with optional real costs (VAT, shipping, payment fees, returns, IT `+3%` Meta fee), reverse-breakeven max CPC vs EU benchmark and Poisson zero-sales odds, plus the 4-profile skeptical buyer jury, five ad scripts anchored to winning patterns, and a one-page report. | Your own AI assistant + your saved local product card. |
 
 Before starting a Level 2 or Level 3 search, the app shows the exact number of concepts to open, the ceiling of detail views, and a token/image estimate, waiting for your confirmation.
 
@@ -48,13 +48,14 @@ A complete real-world example produced from a saved search is in [`examples/`](e
 ## What else is built in
 
 - **Four research modes**:
-  1. **Search by keyword** in any country (with automatic suggestions when a wording returns mostly off-topic ads).
-  2. **Analyse a company** from its verified Facebook page.
-  3. **Compare two companies** side by side across 26 objective indicators (volume, launch pace, video share, copy proof, median daily reach, audience breadth, platforms and destinations).
-  4. **What changed & cohort survival**: every search is saved locally; from the second search of the same company, it lists new, stopped and modified ads and computes the **survival rate by age cohort**.
-- **Interactive Table Guide & In-App Step-by-Step Tutorial**: click the **Tutorial** button in the top bar for a 4-tab operating walkthrough, or expand the **Table guide** above any ranking to inspect the exact meaning of every Verdict (`Scaling`, `Holding up`, `Testing`, `Worth checking`, `Average`, `Ended`), Reliability grade (`High`, `Medium`, `Low`) and column.
-- **Break-even CPA checker**: computes your break-even cost per purchase from selling price, product cost, shipping, payment fees and return rate, and flags ads from an Ads Manager CSV export that spent 2-3x break-even CPA with zero sales.
-- **Bilingual & dual-theme UI**: Italian and English interface, Apple Light and Deep Blue Dark themes.
+  1. **Search by keyword** in any country (with automatic suggestions when a wording returns mostly off-topic ads, plus **Su cosa si regge** & **Annunci fuori schema** sample breakdown).
+  2. **Analyse a company** from its verified Facebook page, with on-demand **Durata** cohort survival (60/90/120/180-day Kaplan-Meier curve, Weibull failure regime & Lindy conditional survival) and **Ritmo** 9-week pace chart.
+  3. **Compare two companies** side by side across 26 objective indicators (volume, launch pace, video share, copy proof, median daily reach, audience breadth, platforms and destinations) plus **EU+UK audience overlap (Pianka index)** across `country × age × gender`.
+  4. **What changed & cohort survival**: every search is saved locally; from the second search of the same company, it lists new, stopped and modified ads, computes **survival rate by age cohort**, tracks **Ritmo** launch/format alerts, and measures **Audience drift (Jensen-Shannon distance)** across snapshots.
+- **Account anatomy & contradictions (`Su cosa si regge` & `Annunci fuori schema`)**: pure Python stdlib modules quantify delivery concentration (HHI, effective concepts, Gini), text family clustering (`zlib` Normalized Compression Distance), Shannon format/destination diversity, and up to four deterministic cross-signal paradoxes (for instance long-running low-reach ads or fast breakouts).
+- **Interactive Table Guide, Auto Summary & Tutorial**: automatic **In breve** banner above results, inline **`?`** contextual popovers across KPIs and columns, a 6-tab **Tutorial** modal (including a KPI glossary), and an expandable **Table guide** explaining every Verdict and Reliability grade.
+- **Break-even CPA checker & `Prova prima di spendere`**: computes your net margin and break-even CPA from selling price, product cost, VAT, shipping, payment fees, return rate and Meta IT `+3%` auction fee, benchmarks max CPC at 1%/2%/3% CVR against the EU e-commerce IQR, reports Poisson zero-sales stop odds, and flags zero-sale over-spenders from an Ads Manager CSV export.
+- **Bilingual & dual-theme responsive UI**: Italian and English sticky toggle, smooth Light and Deep Blue Dark theme transitions, and mobile-safe horizontal table scrolling with viewport-clamped popovers.
 
 ![Summary of how a company advertises](docs/images/results-summary.png)
 
@@ -163,10 +164,10 @@ codex mcp add ad-library-insights -- /absolute/path/.venv/bin/python -m ad_libra
 | Skill / Agent | Role |
 |---|---|
 | `ad-library-research` | Map a market or advertiser and break down the hooks, promises, proof and CTAs of the top concepts. |
-| `competitor-analysis` | **Level 2 Coordinator:** runs the 4 specialist sub-agents in parallel (`ad-copy-analyst`, `ad-creative-analyst`, `ad-reach-analyst`, `ad-testing-analyst`) and cross-checks converging evidence. |
-| `competitor-plan` | **Level 3 Coordinator:** diagnoses your product card, enforces the Pixel/CAPI tracking check, writes 5 ad concepts and builds a 7-day test plan on deterministic break-even numbers. |
+| `competitor-analysis` | **Level 2 Coordinator:** runs the 4 `model: sonnet` specialist sub-agents in parallel (`ad-copy-analyst`, `ad-creative-analyst`, `ad-reach-analyst`, `ad-testing-analyst`), enforcing strict ad-ID grounding and optional single neutral follow-ups when core lenses clash. |
+| `competitor-plan` | **Level 3 Coordinator:** diagnoses your product card, enforces the Pixel/CAPI tracking check, integrates `Test before spending` (`Prova prima di spendere`) and the 4-profile skeptical buyer jury, writes 5 ad concepts and builds a 7-day test plan on deterministic break-even numbers. |
 | `breakeven-cpa-check` | Computes break-even CPA from unit economics and flags underperforming ads from an Ads Manager CSV export. |
-| `weekly-competitor-report` | Tracks a fixed watchlist across saved searches and reports new, stopped and changed ads plus cohort survival. |
+| `weekly-competitor-report` | Tracks a fixed watchlist across saved searches and reports new, stopped and changed ads plus cohort survival and `Ritmo` launch/format alerts. |
 
 ### MCP Tools
 
@@ -174,9 +175,9 @@ codex mcp add ad-library-insights -- /absolute/path/.venv/bin/python -m ad_libra
 |---|---|
 | `search_ads(country, query, advertiser, ..., deep_ads)` | Ranked concepts for a keyword and/or advertiser name. `deep_ads` reads reach and audience for that many of the most shown concepts. |
 | `find_advertiser_pages(name, country)` | Advertiser pages suggested by the library for a name, with followers and category. |
-| `analyze_company(country, page_id \| name, deep_ads, frames)` | Every active ad of one page, ranked, with company signals, reach and audience. |
-| `compare_companies(country, page_id_a, page_id_b, deep_ads)` | Two pages side by side on the same 26 metrics. |
-| `what_changed(country, query \| page_id)` | New, stopped and changed ads since the previous search, plus cohort survival. |
+| `analyze_company(country, page_id \| name, deep_ads, frames)` | Every active ad of one page, ranked, with company signals, reach, audience, `Ritmo`, `Su cosa si regge` and `Annunci fuori schema`. |
+| `compare_companies(country, page_id_a, page_id_b, deep_ads)` | Two pages side by side across 26 metrics plus EU+UK `Pianka` audience overlap. |
+| `what_changed(country, query \| page_id)` | New, stopped and changed ads since the previous search, cohort survival, `Ritmo` and Jensen-Shannon audience drift. |
 | `estimate_consumption(level, ads, frames)` | Token, image and time estimate for a Level 2 or Level 3 run. |
 | `prepare_analysis(country, level, page_id \| query, ads, frames)` | Collects the data and writes the specialist pack (`overview.md`, `copy.md`, `creative.md`, `reach.md`, `testing.md`, `project.md`, `brief.md`, `frames/`). |
 | `get_project()` / `save_project(...)` | Reads or validates and saves the local product card for Level 3. |
@@ -228,7 +229,7 @@ pip install -e ".[dev]"
 python -m pytest
 ```
 
-The 420-test suite runs entirely offline using recorded fixtures in `tests/fixtures/`, a scripted renderer and a deterministic fake clock.
+The 469-test suite runs entirely offline using recorded fixtures in `tests/fixtures/`, a scripted renderer and a deterministic fake clock.
 
 ## License
 

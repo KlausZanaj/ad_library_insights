@@ -75,3 +75,6 @@ its file. When you join them into causes:
 
 Where the reach in the country searched is not published, no cause is High:
 the ratings behind it are of medium reliability at best.
+If two lenses contradict each other on the same core ad id and at most one
+neutral re-check does not resolve it, cap the cause at Medium (or Low without
+reach) and put the open clash at the top of "To test or verify, in order".

@@ -509,9 +509,9 @@ function pagesSheet() {
       ${page.instagram ? `<small class="dim">@${esc(page.instagram)}</small>` : ''}</div></div></td>
     <td>${esc(page.category || '—')}</td><td class="r">${num(page.followers)}</td>
     <td class="r"><button class="btn small${page.page_id === S.pages.suggested_page_id ? '' : ' quiet'}" data-action="choose-page" data-value="${esc(page.page_id)}">${esc(t('pages.choose'))}</button></td></tr>`).join('');
-  return `<div class="sheet"><section><h2 style="margin-bottom:18px">${esc(t('pages.title'))}</h2><table>
+  return `<div class="sheet"><section><h2 style="margin-bottom:18px">${esc(t('pages.title'))}</h2><div class="table-scroll"><table>
     <thead><tr><th>${esc(t('pages.page'))}</th><th>${esc(t('pages.category'))}</th><th class="r">${esc(t('pages.followers'))}</th><th></th></tr></thead>
-    <tbody>${rows}</tbody></table></section></div>`;
+    <tbody>${rows}</tbody></table></div></section></div>`;
 }
 function headSection(r) {
   const company = r.mode === 'company';
@@ -1181,10 +1181,10 @@ function tableSection(r) {
       <button class="btn quiet small" data-action="export-csv">${esc(t('export.csv'))}</button>
     </div>
     ${tableLegend()}
-    <table class="ads${company ? '' : ' mixed'}"><thead><tr><th></th><th>${esc(t('t.ad'))}</th><th>${esc(t('t.tier'))}${tierScalePop()}</th>
+    <div class="table-scroll"><table class="ads${company ? '' : ' mixed'}"><thead><tr><th></th><th>${esc(t('t.ad'))}</th><th>${esc(t('t.tier'))}${tierScalePop()}</th>
     <th class="r">${esc(t('t.score'))}${scoreScalePop(true)}</th><th class="r">${esc(t('t.days'))}</th><th class="r">${esc(t('t.creatives'))}</th>
     ${company ? '' : `<th>${esc(t('t.format'))}</th>`}<th class="r">${esc(t('t.reached', { country: region(r.country) }))}</th><th class="r">${esc(t('t.perday'))}${perdayPop(true)}</th></tr></thead>
-    <tbody id="ads-tbody">${rows}</tbody></table><p class="tablenote">${esc(t(concepts === 1 ? 't.note.one' : 't.note', { concepts: count(concepts, 'n.concepts'), opened: count(opened, 'n.ads') }))}</p></section>`;
+    <tbody id="ads-tbody">${rows}</tbody></table></div><p class="tablenote">${esc(t(concepts === 1 ? 't.note.one' : 't.note', { concepts: count(concepts, 'n.concepts'), opened: count(opened, 'n.ads') }))}</p></section>`;
 }
 function renderResults() {
   const el = $('#results');
@@ -1208,9 +1208,9 @@ function cmpChooser() {
         ${page.instagram ? `<small class="dim">@${esc(page.instagram)}</small>` : ''}</div></div></td>
       <td>${esc(page.category || '—')}</td><td class="r">${num(page.followers)}</td>
       <td class="r"><button class="btn small${page.page_id === side.suggested ? '' : ' quiet'}" data-action="cmp-pick" data-side="${index}" data-value="${esc(page.page_id)}">${esc(t('pages.choose'))}</button></td></tr>`).join('');
-    return `<div class="sheet"><section><h2 style="margin-bottom:18px">${esc(t('cmp.pick', { name: side.name }))}</h2><table>
+    return `<div class="sheet"><section><h2 style="margin-bottom:18px">${esc(t('cmp.pick', { name: side.name }))}</h2><div class="table-scroll"><table>
       <thead><tr><th>${esc(t('pages.page'))}</th><th>${esc(t('pages.category'))}</th><th class="r">${esc(t('pages.followers'))}</th><th></th></tr></thead>
-      <tbody>${rows}</tbody></table></section></div>`;
+      <tbody>${rows}</tbody></table></div></section></div>`;
   }).join('');
 }
 function cmpValue(row, value) {
@@ -1275,10 +1275,10 @@ function compareSheet(r) {
     const numeric = row.kind === 'number' || row.kind === 'percent' ? ' class="num"' : '';
     return `${title}<tr><td>${esc(t(`cmp.row.${row.key}`, { country: region(r.country) }))}</td><td${numeric}>${cmpValue(row, row.a)}</td><td${numeric}>${cmpValue(row, row.b)}</td></tr>`;
   }).join('');
-  const top = (side) => `<div><table class="ads"><tbody>${side.ads.slice(0, 5).map((ad) => `<tr class="pick" data-action="open-ad" data-value="${esc(ad.library_id)}">
+  const top = (side) => `<div><div class="table-scroll"><table class="ads"><tbody>${side.ads.slice(0, 5).map((ad) => `<tr class="pick" data-action="open-ad" data-value="${esc(ad.library_id)}">
     <td><div class="adcell">${ad.thumbnail ? `<img class="thumb" src="${esc(ad.thumbnail)}" alt="" loading="lazy">` : '<span class="thumb"></span>'}
       <div class="adtext"><div>${esc(firstLine(ad) || t('t.notext'))}</div><small>${esc(`${t(`verdict.${ad.verdict}`)} · ${days(ad.days_running)} · ${oneOrMore('f.reused.n', ad.creatives)}`)}</small></div></div></td>
-    <td class="r">${Math.round(ad.score)}</td></tr>`).join('')}</tbody></table></div>`;
+    <td class="r">${Math.round(ad.score)}</td></tr>`).join('')}</tbody></table></div></div>`;
   return `<div class="sheet">
     <section class="cmphead">${head(a)}${head(b)}</section>
     <section class="ready"><p>${esc(t(S.cmpCopied ? 'cmp.brief.copied' : 'cmp.brief.ready'))}</p>
@@ -1286,7 +1286,7 @@ function compareSheet(r) {
     <section><h2>${esc(t('cmp.highlights'))}</h2>${notes ? `<ul class="notes">${notes}</ul>` : `<p class="muted" style="margin-top:8px">${esc(t('cmp.none'))}</p>`}
       <p class="pianka-note">${esc(t('cmp.note'))}</p></section>
     ${piankaSection(c)}
-    <section><table class="cmp"><thead><tr><th></th><th>${esc(c.names.a)}</th><th>${esc(c.names.b)}</th></tr></thead><tbody>${rows}</tbody></table></section>
+    <section><div class="table-scroll"><table class="cmp"><thead><tr><th></th><th>${esc(c.names.a)}</th><th>${esc(c.names.b)}</th></tr></thead><tbody>${rows}</tbody></table></div></section>
     <section><h2 style="margin-bottom:14px">${esc(t('cmp.top'))}</h2><div class="tops">${top(a)}${top(b)}</div>
       <p class="pianka-note"><button class="linklike" data-action="guide">${esc(t('link.guide'))}</button></p></section>
   </div>`;
@@ -1360,8 +1360,8 @@ function adCell(ad, keyword) {
     <small>${esc([keyword ? ad.advertiser : t(`format.${ad.media_type || 'unknown'}`), ad.cta].filter(Boolean).join(' · '))}</small></div></div>`;
 }
 function newsList(title, ads, keyword, extraHead, extraCell) {
-  const body = ads.length ? `<table class="ads"><thead><tr><th>${esc(t('t.ad'))}</th>${extraHead}<th class="r">${esc(t('news.started'))}</th><th class="r">${esc(t('news.ran'))}</th><th class="r">${esc(t('t.score'))}</th></tr></thead>
-    <tbody>${ads.map((ad) => `<tr><td>${adCell(ad, keyword)}</td>${extraCell(ad)}<td class="r">${ad.started ? esc(day(ad.started)) : '—'}</td><td class="r">${num(ad.days_running)}</td><td class="r">${(ad.score ?? ad.longevity_score) == null ? '—' : Math.round(ad.score ?? ad.longevity_score)}</td></tr>`).join('')}</tbody></table>`
+  const body = ads.length ? `<div class="table-scroll"><table class="ads"><thead><tr><th>${esc(t('t.ad'))}</th>${extraHead}<th class="r">${esc(t('news.started'))}</th><th class="r">${esc(t('news.ran'))}</th><th class="r">${esc(t('t.score'))}</th></tr></thead>
+    <tbody>${ads.map((ad) => `<tr><td>${adCell(ad, keyword)}</td>${extraCell(ad)}<td class="r">${ad.started ? esc(day(ad.started)) : '—'}</td><td class="r">${num(ad.days_running)}</td><td class="r">${(ad.score ?? ad.longevity_score) == null ? '—' : Math.round(ad.score ?? ad.longevity_score)}</td></tr>`).join('')}</tbody></table></div>`
     : `<p class="muted">${esc(t('news.none'))}</p>`;
   return `<section><div class="listhead"><h2>${esc(title)}</h2><span>${ads.length}</span></div>${body}</section>`;
 }
@@ -1405,9 +1405,9 @@ function renderNews() {
     <td class="r">${row.snapshots}</td><td class="r">${esc(stamp(row.last_taken_at))}</td>
     <td class="r">${row.snapshots > 1 ? `<button class="btn small${S.news && S.news.subject.key === row.key ? '' : ' quiet'}" data-action="news-open" data-value="${esc(row.key)}">${esc(t('news.view'))}</button>` : `<span class="dim">${esc(t('news.second'))}</span>`}</td>
     <td class="r"><button class="btn quiet small" data-action="news-refresh" data-value="${esc(row.key)}">${esc(t('news.refresh'))}</button></td></tr>`).join('');
-  el.innerHTML = `<div class="sheet"><section><h2 style="margin-bottom:18px">${esc(t('news.saved'))}</h2><table>
+  el.innerHTML = `<div class="sheet"><section><h2 style="margin-bottom:18px">${esc(t('news.saved'))}</h2><div class="table-scroll"><table>
     <thead><tr><th>${esc(t('news.subject'))}</th><th>${esc(t('news.kind'))}</th><th>${esc(t('field.country'))}</th><th class="r">${esc(t('news.count'))}</th><th class="r">${esc(t('news.last'))}</th><th></th><th></th></tr></thead>
-    <tbody>${rows}</tbody></table></section></div>${S.news ? newsDetail(S.news) : ''}`;
+    <tbody>${rows}</tbody></table></div></section></div>${S.news ? newsDetail(S.news) : ''}`;
 }
 async function loadHistory() {
   try { S.history = (await api('/api/history')).subjects; } catch { S.history = []; }
@@ -1854,11 +1854,41 @@ const ACTIONS = {
     } catch { briefStatus(t('brief.frames.failed'), true); }
   },
 };
+function positionHelpPop(wrap, btn) {
+  const pop = wrap.querySelector('.help-pop');
+  if (!pop || !btn) return;
+  pop.style.position = 'fixed';
+  pop.style.right = 'auto';
+  pop.style.zIndex = '40';
+  const vw = window.innerWidth;
+  const w = Math.min(pop.offsetWidth || 280, vw - 24);
+  const b = btn.getBoundingClientRect();
+  const preferRight = pop.classList.contains('right');
+  const rawLeft = preferRight ? b.right - w : b.left;
+  const left = Math.max(12, Math.min(rawLeft, vw - w - 12));
+  pop.style.width = `${w}px`;
+  pop.style.left = `${left}px`;
+  const h = pop.offsetHeight || 160;
+  let top = b.bottom + 8;
+  if (top + h > window.innerHeight - 12 && b.top - h - 8 >= 12) {
+    top = b.top - h - 8;
+  }
+  pop.style.top = `${Math.max(12, top)}px`;
+}
 function closeHelp() {
   document.querySelectorAll('.help-wrap.open').forEach((wrap) => {
     wrap.classList.remove('open');
     const btn = wrap.querySelector('.help-btn');
     if (btn) btn.setAttribute('aria-expanded', 'false');
+    const pop = wrap.querySelector('.help-pop');
+    if (pop) {
+      pop.style.position = '';
+      pop.style.left = '';
+      pop.style.top = '';
+      pop.style.right = '';
+      pop.style.width = '';
+      pop.style.zIndex = '';
+    }
   });
   if (document.activeElement && document.activeElement.closest('.help-wrap')) document.activeElement.blur();
 }
@@ -1873,6 +1903,7 @@ document.addEventListener('click', (event) => {
     if (wrap && willOpen) {
       wrap.classList.add('open');
       helpBtn.setAttribute('aria-expanded', 'true');
+      positionHelpPop(wrap, helpBtn);
     } else {
       helpBtn.blur();
     }
@@ -1884,6 +1915,7 @@ document.addEventListener('click', (event) => {
   const action = ACTIONS[el.dataset.action];
   if (action) action(el.dataset.value, el);
 });
+window.addEventListener('resize', closeHelp);
 document.addEventListener('input', (event) => {
   const el = event.target;
   if (el.dataset.bind) {

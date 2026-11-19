@@ -415,6 +415,25 @@ def test_each_specialist_agent_reads_only_its_slice():
     assert "start, middle" in (folder / "ad-creative-analyst.md").read_text(encoding="utf-8")
 
 
+def test_specialists_pin_sonnet_model():
+    folder = ROOT / ".claude" / "agents"
+    for name in AGENTS:
+        fields, _ = front_matter(folder / f"{name}.md")
+        assert fields.get("model") == "sonnet", (name, fields)
+
+
+def test_coordinator_enforces_strict_evidence_and_single_neutral_followup():
+    analysis = _flat((ROOT / "skills" / "competitor-analysis" / "SKILL.md").read_text(encoding="utf-8"))
+    template = _flat((ROOT / "skills" / "competitor-analysis" / "references" / "analysis-template.md").read_text(encoding="utf-8"))
+    plan = _flat((ROOT / "skills" / "competitor-plan" / "SKILL.md").read_text(encoding="utf-8"))
+    assert "never invent a cause" in analysis.lower()
+    assert "at most one neutral follow-up" in analysis.lower()
+    assert '"find an error"' in analysis and "four-way debate" in analysis.lower()
+    assert "`Out-of-pattern ads (Annunci fuori schema)`" in analysis
+    assert "contradict each other" in template and "To test or verify, in order" in template
+    assert "at most one neutral follow-up" in plan.lower() and "Risks and what we do not know" in plan
+
+
 def _flat(text: str) -> str:
     return re.sub(r"\s+", " ", text)
 
