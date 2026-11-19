@@ -319,9 +319,9 @@ def test_tutorial_mentions_only_real_ui_buttons_and_labels():
     import re
 
     root = Path(__file__).resolve().parents[1]
-    strings = json.loads(
-        (root / "src" / "ad_library_insights" / "web" / "static" / "strings.json").read_text(encoding="utf-8")
-    )
+    static = root / "src" / "ad_library_insights" / "web" / "static"
+    strings = json.loads((static / "strings.json").read_text(encoding="utf-8"))
+    app_js = (static / "app.js").read_text(encoding="utf-8")
 
     forbidden = (
         "Prepara l'analisi / il piano",
@@ -332,9 +332,16 @@ def test_tutorial_mentions_only_real_ui_buttons_and_labels():
         "Promettente",
         "Promising",
         "<percorso-.venv>",
+        "Solo Regge",
+        "Holding up only",
+        "36/60",
     )
     assert "<percorso-python-.venv>" in strings["it"]["tut.6.c3.f"]
     assert "<project-.venv-python>" in strings["en"]["tut.6.c3.f"]
+
+    filter_match = re.search(r"S\.filter\s*===\s*'scaling'\s*&&\s*ad\.verdict\s*!==\s*'([a-z]+)'", app_js)
+    assert filter_match, "Expected S.filter === 'scaling' verdict check in app.js"
+    scaling_verdict_key = filter_match.group(1)
 
     quote_pat = re.compile(r"«([^»]+)»|“([^”]+)”|(?<![A-Za-z])'([^']{3,})'")
     example_ctx = re.compile(r"\((?:es\.|e\.g\.)\s+[^)]*$")
@@ -347,6 +354,18 @@ def test_tutorial_mentions_only_real_ui_buttons_and_labels():
         all_tutorial_vals = "\n".join(strings[lang].values())
         for bad in forbidden:
             assert bad not in all_tutorial_vals, f"Forbidden stale label {bad!r} found in {lang}"
+
+        scaling_filter_label = strings[lang]["filter.scaling"]
+        verdict_label = strings[lang][f"verdict.{scaling_verdict_key}"].casefold()
+        other_verdict = strings[lang]["verdict.holding"].casefold()
+        assert verdict_label in scaling_filter_label.casefold(), (lang, scaling_filter_label)
+        assert other_verdict not in scaling_filter_label.casefold(), (lang, scaling_filter_label)
+
+        for key in ("how.3.text", "tut.4.c1.tip", "tut.4.c4.d", "tut.4.cap"):
+            assert scaling_filter_label in strings[lang][key], (lang, key)
+        for key in ("tut.4.c4.d", "tut.4.cap"):
+            for fkey in ("filter.scaling", "filter.video", "filter.high"):
+                assert strings[lang][fkey] in strings[lang][key], (lang, key, fkey)
 
         real_ui = {
             v for k, v in strings[lang].items()
