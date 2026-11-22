@@ -24,6 +24,7 @@ DEFAULT_WINDOW_DAYS = 90
 COMPLETE_SHARE = 0.9
 MIN_CONCEPTS = 10
 MIN_EVENTS = 3
+SMALL_SAMPLE_ENDED = 20
 MIN_WEIBULL_EVENTS = 5
 MIN_LINDY_AT_RISK = 5
 MILESTONES = (7, 14, 30, 60, 90)
@@ -248,7 +249,7 @@ def analyze(concepts: list[dict], *, mode: str = "company", active_status: str =
         return {**base, "reason": "active_only"}
     if active_status != "all":
         return {**base, "reason": "inactive_only"}
-    if loaded_share is not None and loaded_share < COMPLETE_SHARE:
+    if loaded_share is None or loaded_share < COMPLETE_SHARE:
         return {**base, "reason": "partial_list"}
 
     cutoff = as_of - timedelta(days=window_days) if window_days is not None else None
@@ -329,6 +330,7 @@ def analyze(concepts: list[dict], *, mode: str = "company", active_status: str =
         **base,
         "available": True,
         **counts,
+        "small_sample": ended_count < SMALL_SAMPLE_ENDED,
         "max_observed_days": max_obs,
         "tau_days": tau,
         "median_days": km["median_days"],
@@ -356,7 +358,11 @@ def format_summary(report: dict) -> list[str]:
             "keyword_mode": "a keyword search loads a sample across advertisers, not one company list",
             "active_only": "only active ads were loaded, without ended ads",
             "inactive_only": "only ended ads were loaded, without active ads",
-            "partial_list": f"the list was read in part (loaded share {share_label})",
+            "partial_list": (
+                f"the list was read in part (loaded share {share_label})"
+                if share is not None
+                else "the total ad count was not reported by Meta (completeness unverified)"
+            ),
             "too_few_concepts": (f"fewer than {MIN_CONCEPTS} dated concepts in the {win_label} window "
                                  f"({report.get('concepts_in_window', 0)} found)"),
             "too_few_ended": (f"fewer than {MIN_EVENTS} ended concepts with stop dates in the {win_label} window "
@@ -374,10 +380,15 @@ def format_summary(report: dict) -> list[str]:
     excluded = report.get("excluded_undated", 0) + report.get("excluded_invalid", 0)
     tau = report.get("tau_days") or report["max_observed_days"]
 
+    small_note = (
+        f"; small sample (< {SMALL_SAMPLE_ENDED} ended concepts)"
+        if report.get("small_sample", ended_n < SMALL_SAMPLE_ENDED)
+        else ""
+    )
     lines = [
         f"- Cohort window: {win_label}, unit = concept (active + ended), loaded share {share_label}; "
         f"{total} concepts ({active_n} still active, {ended_n} ended"
-        + (f", {excluded} undated or invalid excluded" if excluded else "") + ").",
+        + (f", {excluded} undated or invalid excluded" if excluded else "") + f"){small_note}.",
     ]
     if report.get("median_reached"):
         lines.append(

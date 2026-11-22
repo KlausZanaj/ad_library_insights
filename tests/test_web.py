@@ -985,19 +985,24 @@ def test_page_durata_section_renders_states_svg_and_runs_endpoint(site, page_of)
     page = page_of("it", kw)
     assert "Analizza un'azienda" in page.inner_text(".durata-locked")
 
-    # Partial list -> honest explanation
+    # Partial list -> honest explanation (both low loaded_share and unverified None)
     partial = _result(site, durata={"available": False, "reason": "partial_list", "loaded_share": 0.55, "window_days": 90})
     page = page_of("it", partial)
     assert "55%" in page.inner_text(".durata-sec")
 
+    unverified = _result(site, durata={"available": False, "reason": "partial_list", "loaded_share": None, "window_days": 90})
+    page = page_of("it", unverified)
+    assert "non verificata" in page.inner_text(".durata-sec")
+
     # Populated Durata in Light & Dark, IT & EN
     populated = _result(site, durata=SAMPLE_DURATA)
-    for lang, expected_word in (("it", "Taglio rapido iniziale"), ("en", "Early cut")):
+    for lang, expected_word, expected_small in (("it", "Taglio rapido iniziale", "Campione piccolo"),
+                                                ("en", "Early cut", "Small sample")):
         page = page_of(lang, populated)
         if lang == "en":
             page.click(".topbar [data-action=theme][data-value=dark]")
         sec = page.inner_text(".durata-sec")
-        assert expected_word in sec and "101" in sec and "202" in sec
+        assert expected_word in sec and expected_small in sec and "101" in sec and "202" in sec
         assert _count(page, ".durata-chart svg path") >= 1
         assert _count(page, ".durata-chart svg polygon") == 1
 

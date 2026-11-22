@@ -129,6 +129,10 @@ def test_analyze_quality_gates_fail_closed():
     partial = durata.analyze(cohort, mode="company", active_status="all", loaded_share=0.6)
     assert partial["available"] is False and partial["reason"] == "partial_list"
 
+    unverified = durata.analyze(cohort, mode="company", active_status="all", loaded_share=None, as_of=AS_OF)
+    assert unverified["available"] is False and unverified["reason"] == "partial_list"
+    assert "completeness unverified" in "\n".join(durata.format_summary(unverified))
+
     too_few = durata.analyze(cohort[:8], mode="company", active_status="all", loaded_share=1.0, as_of=AS_OF)
     assert too_few["available"] is False and too_few["reason"] == "too_few_concepts"
 
@@ -200,3 +204,15 @@ def test_format_summary_and_packs_isolation_in_testing_slice_only():
     assert "Median lifespan (Kaplan-Meier):" in slices["testing"]
     assert "Duration and survival" not in slices["overview"]
     assert "Median lifespan" not in slices["overview"]
+
+
+def test_durata_flags_small_sample_under_20_ended_concepts():
+    small_cohort = [_concept(i, 20 + i, ended_after=5 + (i % 6)) for i in range(12)]
+    small_rep = durata.analyze(small_cohort, mode="company", active_status="all", loaded_share=1.0, as_of=AS_OF)
+    assert small_rep["available"] is True and small_rep["small_sample"] is True
+    assert "small sample" in "\n".join(durata.format_summary(small_rep))
+
+    large_cohort = [_concept(i, 20 + (i % 40), ended_after=5 + (i % 12)) for i in range(22)]
+    large_rep = durata.analyze(large_cohort, mode="company", active_status="all", loaded_share=1.0, as_of=AS_OF)
+    assert large_rep["available"] is True and large_rep["small_sample"] is False
+    assert "small sample" not in "\n".join(durata.format_summary(large_rep))

@@ -872,6 +872,7 @@ function renderKmSvg(d) {
   </svg>`;
 }
 function durataUnavailableText(d) {
+  if (d.reason === 'partial_list' && d.loaded_share == null) return t('dur.unavail.unverified');
   const share = d.loaded_share != null ? pct(d.loaded_share) : '—';
   if (d.reason === 'partial_list') return t('dur.unavail.partial_list', { share });
   if (d.reason === 'too_few_concepts') return t('dur.unavail.too_few_concepts', { found: num(d.concepts_in_window), window: num(d.window_days || 90) });
@@ -907,7 +908,11 @@ function durataSection(r) {
       .map(([age, val]) => `<span><strong>${esc(t('dur.days.short', { n: age }))}</strong>: ${pct(val)}</span>`).join('');
     const exLong = (d.longest_active || []).slice(0, 2).map((x) => `${x.library_id} (${t('dur.days.short', { n: x.days })})`).join(', ');
     const exFast = (d.fastest_ended || []).slice(0, 2).map((x) => `${x.library_id} (${t('dur.days.short', { n: x.days })})`).join(', ');
+    const smallNote = (d.small_sample || Number(d.ended_in_window || 0) < 20)
+      ? `<p class="notice" style="margin-top:10px">${esc(t('dur.small_sample', { ended: num(d.ended_in_window || 0) }))}</p>`
+      : '';
     body = `<p class="durata-lead">${esc(lead)}</p>
+      ${smallNote}
       <div class="durata-kpis">
         <div class="durata-kpi"><span class="durata-kpi-label">${esc(t('dur.kpi.median'))}</span>
           <strong>${esc(d.median_reached ? days(d.median_days) : t('dur.kpi.open'))}</strong>
