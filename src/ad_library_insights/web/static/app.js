@@ -230,28 +230,35 @@ function simNumbers() {
   });
   const zeroProb = cpaRaw > 0 ? Math.exp(-round1 / cpaRaw) : 1;
   const oneIn = zeroProb > 1e-12 && zeroProb < 1 ? Math.round(1 / zeroProb) : null;
+  const isEur = !market || _EUR_MARKETS.has(String(market).toUpperCase());
   return {
-    p, c, vat, ship, feePctPay, retPct, itFee, adFeePct,
+    p, c, vat, ship, feePctPay, retPct, itFee, adFeePct, isEur,
     margin: Math.round(rawMargin * 10) / 10, cpa, lowCut, highCut, round1, billed, roas, cpcs, oneIn,
   };
 }
-function precheckCpcRowsHtml(cpcs) {
+const _EUR_MARKETS = new Set(['AT','BE','BG','CY','DE','EE','ES','FI','FR','GR','HR','IE','IT','LT','LU','LV','MT','NL','PT','SI','SK']);
+function simMoney(val, isEur) {
+  const s = num(val);
+  if (!isEur) return s;
+  return S.lang === 'it' ? `${s} €` : `€${s}`;
+}
+function precheckCpcRowsHtml(cpcs, isEur = true) {
   return cpcs.map((row) => {
     const cls = row.zone === 'below_iqr' || row.zone === 'below_median' ? ' hard' : row.zone === 'above_iqr' ? ' ok' : '';
-    return `<div class="cpc-row${cls}"><span>${esc(t('pre.cpc.cvr', { n: row.cvr }))}</span><strong>€${esc(num(row.cpc))}</strong><small>${esc(t(`pre.zone.${row.zone}`))}</small></div>`;
+    return `<div class="cpc-row${cls}"><span>${esc(t('pre.cpc.cvr', { n: row.cvr }))}</span><strong>${esc(simMoney(row.cpc, isEur))}</strong><small>${esc(t(`pre.zone.${row.zone}`))}</small></div>`;
   }).join('');
 }
 function updateSimDom() {
-  const { cpa, lowCut, highCut, round1, billed, roas, cpcs, oneIn } = simNumbers();
+  const { cpa, lowCut, highCut, round1, billed, roas, cpcs, oneIn, isEur } = simNumbers();
   if ($('#sim-cpa')) $('#sim-cpa').textContent = num(cpa);
   if ($('#sim-roas')) $('#sim-roas').textContent = t('lv.v3.sim.roas', { roas });
   if ($('#sim-stop')) $('#sim-stop').textContent = `${num(lowCut)} - ${num(highCut)}`;
   if ($('#sim-budget')) $('#sim-budget').textContent = num(round1);
-  if ($('#sim-cpc-rows')) $('#sim-cpc-rows').innerHTML = precheckCpcRowsHtml(cpcs);
+  if ($('#sim-cpc-rows')) $('#sim-cpc-rows').innerHTML = precheckCpcRowsHtml(cpcs, isEur);
   if ($('#sim-risk-line')) {
     $('#sim-risk-line').textContent = t('pre.risk.line', {
-      spend: num(round1),
-      billed: num(billed),
+      spend: simMoney(round1, isEur),
+      billed: simMoney(billed, isEur),
       onein: oneIn != null ? num(oneIn) : '—',
     });
   }
@@ -273,7 +280,7 @@ function levelVisual(level) {
       </div>
     </div>`;
   }
-  const { p, c, vat, ship, feePctPay, retPct, itFee, cpa, lowCut, highCut, round1, billed, roas, cpcs, oneIn } = simNumbers();
+  const { p, c, vat, ship, feePctPay, retPct, itFee, cpa, lowCut, highCut, round1, billed, roas, cpcs, oneIn, isEur } = simNumbers();
   const cpcHelp = `<span class="help-wrap"><button type="button" class="help-btn" data-action="help-toggle" aria-label="${esc(t('help.aria', { topic: t('pre.cpc.title') }))}" aria-expanded="false">?</button><div class="help-pop right" role="tooltip"><h4>${esc(t('pre.cpc.title'))}</h4><p>${esc(t('pre.cpc.help'))}</p></div></span>`;
   return `<div class="lvl-vis">
     <div class="vis-top"><span class="vis-title">${esc(t('lv.v3.badge'))}</span><button class="linklike" data-action="lv-project" style="font-size:.78rem">${esc(t('lv.v3.sim.edit'))}</button></div>
@@ -298,9 +305,9 @@ function levelVisual(level) {
     </div>
     <div class="precheck-box">
       <div class="precheck-head"><span>${esc(t('pre.cpc.title'))}</span>${cpcHelp}</div>
-      <div class="cpc-grid" id="sim-cpc-rows">${precheckCpcRowsHtml(cpcs)}</div>
+      <div class="cpc-grid" id="sim-cpc-rows">${precheckCpcRowsHtml(cpcs, isEur)}</div>
       <p class="precheck-bench">${esc(t('pre.cpc.bench'))}</p>
-      <p class="precheck-risk" id="sim-risk-line">${esc(t('pre.risk.line', { spend: num(round1), billed: num(billed), onein: oneIn != null ? num(oneIn) : '—' }))}</p>
+      <p class="precheck-risk" id="sim-risk-line">${esc(t('pre.risk.line', { spend: simMoney(round1, isEur), billed: simMoney(billed, isEur), onein: oneIn != null ? num(oneIn) : '—' }))}</p>
     </div>
     <div class="jury-box">
       <p class="jury-title">${esc(t('pre.jury.title'))}</p>
@@ -793,7 +800,8 @@ function tldrSection(r) {
     sub += t('tldr.struttura.families', { k: num(cf.families_count), m: num(cf.evaluated) });
   }
   if (r.anomalie && r.anomalie.available && (r.anomalie.items || []).length) {
-    sub += t('tldr.anomalie.flagged', { n: num(r.anomalie.items.length) });
+    const anomN = r.anomalie.items.length;
+    sub += anomN === 1 ? t('tldr.anomalie.flagged.one') : t('tldr.anomalie.flagged', { n: num(anomN) });
   }
   return `<section class="tldr" aria-label="${esc(t('tldr.label'))}">
     <span class="tldr-label">${esc(t('tldr.label'))}</span>
@@ -978,10 +986,11 @@ function ritmoSection(r, inNews = false) {
     ? `<div class="ritmo-controls"><button class="btn small quiet" data-action="ritmo-refresh" ${busy ? 'disabled' : ''}>${esc(t('rit.refresh'))}</button></div>`
     : '';
 
+  const ritNoteTxt = (m.snapshots || 0) === 1 ? t('rit.note.one') : t('rit.note', { snapshots: num(m.snapshots || 0) });
   let body = '';
   if (!m.available) {
     body = `<p class="notice" style="margin-top:14px">${esc(ritmoUnavailableText(m))}</p>
-      <p class="ritmo-note">${esc(t('rit.note', { snapshots: num(m.snapshots || 0) }))}</p>`;
+      <p class="ritmo-note">${esc(ritNoteTxt)}</p>`;
   } else {
     const st = m.sta_lta || {};
     const cu = m.cusum || {};
@@ -1056,7 +1065,7 @@ function ritmoSection(r, inNews = false) {
         <div class="ritmo-kpi"><span class="ritmo-kpi-label">${esc(t('rit.kpi.little'))}${littlePop(true)}</span>${ltHtml}</div>
       </div>
       ${chartHtml}
-      <p class="ritmo-note">${esc(t('rit.note', { snapshots: num(m.snapshots || 0) }))}</p>`;
+      <p class="ritmo-note">${esc(ritNoteTxt)}</p>`;
   }
 
   return `<section class="ritmo-sec">
@@ -1109,10 +1118,15 @@ function strutturaSection(r) {
 
   let famHtml = '';
   if (cf.measurable && (cf.top_families || []).length) {
-    const chips = cf.top_families.map((fam) => `<button type="button" class="fam-chip" data-action="open-ad" data-value="${esc(fam.representative_id)}">
-      <strong>${esc(t('str.families.item', { size: num(fam.size), share: pct(fam.share), id: fam.representative_id }))}</strong>
+    const chips = cf.top_families.map((fam) => {
+      const famHead = fam.size === 1
+        ? t('str.families.item.one', { share: pct(fam.share), id: fam.representative_id })
+        : t('str.families.item', { size: num(fam.size), share: pct(fam.share), id: fam.representative_id });
+      return `<button type="button" class="fam-chip" data-action="open-ad" data-value="${esc(fam.representative_id)}">
+      <strong>${esc(famHead)}</strong>
       <span>${esc(fam.opening || '—')}</span>
-    </button>`).join('');
+    </button>`;
+    }).join('');
     famHtml = `<div class="struttura-families">
       <div class="struttura-families-head">${esc(t('str.families.title'))}</div>
       <div class="fam-chips">${chips}</div>
@@ -1133,6 +1147,36 @@ function strutturaSection(r) {
     <p class="struttura-note">${esc(noteText)}</p>
   </section>`;
 }
+function anomDetailText(item, baselines) {
+  const m = item.metrics || {};
+  const b = baselines || {};
+  const perDay = t('t.perday').toLowerCase();
+  const rpd = m.reach_per_day != null ? `${num(Math.round(m.reach_per_day))} ${perDay}` : '—';
+  const medianRpd = b.median_reach_per_day != null ? `${num(Math.round(b.median_reach_per_day))} ${perDay}` : '—';
+  const daysStr = m.days_running != null ? days(m.days_running) : '—';
+  const medDaysStr = b.median_days != null ? days(Math.round(Number(b.median_days))) : '—';
+  const medCharsStr = b.median_body_chars != null ? num(Math.round(Number(b.median_body_chars))) : '—';
+  const creativesStr = oneOrMore('f.reused.n', m.creatives || 1);
+  if (item.kind === 'long_live_low_reach') {
+    return t('anom.detail.long_live_low_reach', { days: daysStr, median_days: medDaysStr, rpd, median_rpd: medianRpd });
+  }
+  if (item.kind === 'fast_breakout_reach') {
+    return t('anom.detail.fast_breakout_reach', { days: daysStr, rpd, median_rpd: medianRpd });
+  }
+  if (item.kind === 'high_reach_minimal_copy') {
+    return t('anom.detail.high_reach_minimal_copy', { rpd, median_rpd: medianRpd, chars: num(m.body_chars ?? 0), median_chars: medCharsStr });
+  }
+  if (item.kind === 'many_creatives_low_reach') {
+    return t('anom.detail.many_creatives_low_reach', { creatives: creativesStr, rpd, median_rpd: medianRpd });
+  }
+  if (item.kind === 'long_live_single_creative_top_rank') {
+    const basis = m.reach_per_day != null
+      ? rpd
+      : (m.impression_rank != null ? t('anom.norpd', { rank: num(m.impression_rank) }) : '—');
+    return t('anom.detail.long_live_single_creative_top_rank', { days: daysStr, basis });
+  }
+  return item.detail || '';
+}
 function anomalieSection(r) {
   if (!r || !r.anomalie) return '';
   const a = r.anomalie;
@@ -1150,11 +1194,15 @@ function anomalieSection(r) {
       const rpdTxt = m.reach_per_day != null
         ? `${num(m.reach_per_day)} ${t('t.perday').toLowerCase()}`
         : (m.impression_rank != null ? t('anom.norpd', { rank: num(m.impression_rank) }) : '—');
-      const metaTxt = t('anom.meta', { days: num(m.days_running), creatives: num(m.creatives || 1), rpd: rpdTxt });
+      const metaTxt = t('anom.meta', {
+        days: m.days_running != null ? days(m.days_running) : '—',
+        creatives: oneOrMore('f.reused.n', m.creatives || 1),
+        rpd: rpdTxt,
+      });
       return `<button type="button" class="anom-card" data-action="open-ad" data-value="${esc(item.library_id)}">
         <span class="anom-tag">${esc(kindLbl)} · id ${esc(item.library_id)}</span>
         <strong class="anom-open">${esc(item.opening || t('t.notext'))}</strong>
-        <small class="anom-detail">${esc(item.detail || '')}</small>
+        <small class="anom-detail">${esc(anomDetailText(item, a.baselines))}</small>
         <span class="anom-meta">${esc(metaTxt)}</span>
       </button>`;
     }).join('');
@@ -1232,6 +1280,7 @@ function genderLabel(g) {
   if (g === 'female' && hasT('gender.Women')) return t('gender.Women');
   if (g === 'male' && hasT('gender.Men')) return t('gender.Men');
   if (g === 'all' && hasT('gender.All')) return t('gender.All');
+  if (g === 'unknown' && hasT('gender.unknown')) return t('gender.unknown');
   return hasT(`gender.${g}`) ? t(`gender.${g}`) : (g || '—');
 }
 function piankaSection(c) {
@@ -1854,6 +1903,7 @@ const ACTIONS = {
     } catch { briefStatus(t('brief.frames.failed'), true); }
   },
 };
+let _helpAnchor = null;
 function positionHelpPop(wrap, btn) {
   const pop = wrap.querySelector('.help-pop');
   if (!pop || !btn) return;
@@ -1863,6 +1913,7 @@ function positionHelpPop(wrap, btn) {
   const vw = window.innerWidth;
   const w = Math.min(pop.offsetWidth || 280, vw - 24);
   const b = btn.getBoundingClientRect();
+  _helpAnchor = { btn, left: b.left, top: b.top, at: performance.now() };
   const preferRight = pop.classList.contains('right');
   const rawLeft = preferRight ? b.right - w : b.left;
   const left = Math.max(12, Math.min(rawLeft, vw - w - 12));
@@ -1876,6 +1927,7 @@ function positionHelpPop(wrap, btn) {
   pop.style.top = `${Math.max(12, top)}px`;
 }
 function closeHelp() {
+  _helpAnchor = null;
   document.querySelectorAll('.help-wrap.open').forEach((wrap) => {
     wrap.classList.remove('open');
     const btn = wrap.querySelector('.help-btn');
@@ -1916,6 +1968,13 @@ document.addEventListener('click', (event) => {
   if (action) action(el.dataset.value, el);
 });
 window.addEventListener('resize', closeHelp);
+window.addEventListener('scroll', (event) => {
+  if (!_helpAnchor) return;
+  const b = _helpAnchor.btn.getBoundingClientRect();
+  const moved = Math.abs(b.top - _helpAnchor.top) > 3 || Math.abs(b.left - _helpAnchor.left) > 3;
+  if (!moved && event.isTrusted && performance.now() - _helpAnchor.at < 250) return;
+  closeHelp();
+}, true);
 document.addEventListener('input', (event) => {
   const el = event.target;
   if (el.dataset.bind) {

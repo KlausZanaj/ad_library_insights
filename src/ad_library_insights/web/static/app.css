@@ -240,8 +240,6 @@ table.cmp td.num { font-variant-numeric: tabular-nums; }
 }
 .help-pop.right { left: auto; right: 0; }
 @keyframes helpPopIn { from { opacity: .05; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
-.help-wrap:hover .help-pop,
-.help-wrap:focus-within .help-pop,
 .help-wrap.open .help-pop { display: block; animation: helpPopIn .14s ease forwards; }
 .help-pop h4 { margin: 0 0 8px; font-size: .88rem; font-weight: 660; color: var(--text); }
 .help-pop p { margin: 0; color: var(--muted); }
@@ -386,7 +384,7 @@ table.cmp td.num { font-variant-numeric: tabular-nums; }
 .rel { display: block; color: var(--muted); font-size: .8rem; }
 .sortbar { display: flex; align-items: center; gap: 8px 10px; margin-bottom: 14px; color: var(--muted); flex-wrap: wrap; }
 .sort-spacer { flex: 1; }
-.tbl-search { height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--text); font-size: .86rem; width: 170px; }
+.tbl-search { height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--text); font-size: .86rem; width: 245px; min-width: 225px; flex: 0 0 auto; }
 .table-legend { margin-bottom: 16px; background: var(--sunken); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; }
 .table-legend summary { cursor: pointer; font-size: .9rem; font-weight: 640; color: var(--accent); outline: none; }
 .leg-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line-soft); font-size: .86rem; }

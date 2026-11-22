@@ -595,7 +595,7 @@ def test_page_says_one_day_in_the_singular(site, page_of):
         page = page_of(lang, result)
         page.evaluate("(id) => { S.overlay = { type: 'ad', id }; renderOverlay(); }", ad["library_id"])
         drawer = page.inner_text(".drawer")
-        assert one in drawer and wrong not in drawer
+        assert one in drawer and not re.search(rf"(?<!\d){re.escape(wrong)}", drawer)
         page.evaluate("(id) => { const ad = findAd(id); ad.days_running = 12; ad.too_recent = false; renderOverlay(); }",
                       ad["library_id"])
         assert ("12 giorni" if lang == "it" else "12 days") in page.inner_text(".drawer")
@@ -1355,3 +1355,69 @@ def test_page_mobile_layout_has_no_overflow_and_clamps_popovers(site, page_of):
             box = pop.bounding_box()
             assert box and box["x"] >= 0 and box["x"] + box["width"] <= 420
             page.keyboard.press("Escape")
+
+
+def test_page_v05_i18n_singulars_currency_and_popover_scroll(site, page_of):
+    base = _result(site)
+    lead_id = base["ads"][0]["library_id"]
+    anom = _sample_anomalie(lead_id)
+    anom["items"][0]["metrics"]["days_running"] = 1
+    anom["items"][0]["metrics"]["creatives"] = 1
+    strutt = _sample_struttura(lead_id)
+    strutt["copy_families"]["top_families"][0]["size"] = 1
+    rit = {**SAMPLE_RITMO, "snapshots": 1}
+
+    comp = _result(site, struttura=strutt, anomalie=anom, ritmo=rit)
+    page = page_of("it", comp)
+    page.wait_for_selector(".anomalie-sec")
+
+    # 1. Localized Italian Annunci fuori schema detail + singulars across sections
+    detail = page.inner_text(".anom-detail")
+    assert "al giorno" in detail and "mediana" in detail
+    assert "on air" not in detail and "/day" not in detail
+    meta = page.inner_text(".anom-meta")
+    assert "1 giorno" in meta and "1 creativit" in meta
+    assert "1 annuncio in contrasto" in page.inner_text(".tldr")
+    assert "1 snapshot salvato" in page.inner_text(".ritmo-note")
+    assert "1 testo (" in page.inner_text(".fam-chip")
+
+    # 2. Search input widened so English/Italian placeholder is not truncated
+    assert page.evaluate("() => document.querySelector('.tbl-search').getBoundingClientRect().width") >= 225
+
+    # 3. Scrolling closes open help popover instead of leaving it detached
+    btn = page.locator(".anomalie-sec [data-action=help-toggle]").first
+    btn.scroll_into_view_if_needed()
+    btn.click()
+    assert _count(page, ".help-wrap.open") == 1
+    page.evaluate("() => window.scrollBy(0, -300)")
+    page.wait_for_function("() => document.querySelectorAll('.help-wrap.open').length === 0")
+
+    # 4. gender.unknown localizes in both IT and EN compare segments
+    pianka_unk = {
+        **SAMPLE_PIANKA,
+        "shared_segments": [{"country": "US", "age_range": "25-34", "gender": "unknown", "share_a": 0.45, "share_b": 0.40}],
+    }
+    cmp_payload = {
+        "mode": "compare", "country": "US",
+        "sides": [base, {**base, "page": {**base["page"], "name": "Beta Co"}}],
+        "comparison": {
+            "names": {"a": "Kingshot", "b": "Beta Co"},
+            "country": "US", "rows": [], "highlights": [],
+            "audience_overlap": pianka_unk, "note": "Note",
+        },
+    }
+    page.evaluate("""(r) => { S.mode = 'compare'; S.result = r; S.resultMode = 'compare'; S.cmp = null; render(); }""", cmp_payload)
+    page.wait_for_selector(".pianka-sec")
+    assert "Non indicato" in page.inner_text(".pianka-sec")
+    page.click(".topbar [data-action=lang][data-value=en]")
+    assert "Unknown" in page.inner_text(".pianka-sec")
+
+    # 5. Precheck simulator shows € for Eurozone markets (IT) and omits € for non-EUR markets (US)
+    page = page_of("it")
+    page.click(".lvl-head[data-value=plan]")
+    page.wait_for_selector("#sim-cpc-rows")
+    assert "€" in page.inner_text("#sim-cpc-rows") and "€" in page.inner_text("#sim-risk-line")
+    page.evaluate("() => { S.project = { ...(S.project || {}), market: 'US' }; S.simItFee = false; render(); }")
+    page.wait_for_selector("#sim-cpc-rows")
+    assert "€" not in page.inner_text("#sim-cpc-rows") and "€" not in page.inner_text("#sim-risk-line")
+
