@@ -222,7 +222,7 @@ function simNumbers() {
   const perAd = Math.round(cpaRaw * 2.5 * 10) / 10;
   const round1 = Math.round(perAd * 5 * 10) / 10;
   const billed = Math.round(round1 * (1 + adFeePct / 100) * 10) / 10;
-  const roas = cpaRaw > 0 ? (netPrice / cpaRaw).toFixed(2) : '—';
+  const roas = cpaRaw > 0 ? (p / cpaRaw).toFixed(2) : '—';
   const cpcs = [1, 2, 3].map((cvr) => {
     const cpc = Math.round(cpaRaw * (cvr / 100) * 100) / 100;
     const zone = cpc < 0.82 ? 'below_iqr' : cpc < 1.06 ? 'below_median' : cpc <= 1.28 ? 'within_iqr' : 'above_iqr';

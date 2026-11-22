@@ -124,7 +124,7 @@ def analyze(
 
     fee_pct = meta_ad_fee_pct(market, ad_fee_pct)
     cpa_ads_raw = net_margin_raw / (1.0 + fee_pct / 100.0)
-    roas_breakeven = net_price_raw / cpa_ads_raw
+    roas_breakeven = price / cpa_ads_raw
     has_real_costs = any(
         val > 0
         for val in (vat_pct, shipping_cost, payment_fee_pct, payment_fee_fixed, return_rate_pct, other_costs)

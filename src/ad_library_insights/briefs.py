@@ -200,6 +200,7 @@ _T = {
             "Budget per test ad: up to {per_ad} ({multiplier} times break-even CPA)",
             "First round with {ideas} ads: up to {round_total}",
         ],
+        "numbers.margin.real": "Net margin per order (after VAT, shipping, fees and returns): {margin}",
         "numbers.goal": [
             "Goal of {orders} orders a day: at break-even the most to spend is {daily_max} a day "
             "({orders} × {cpa}), {weekly_max} a week",
@@ -381,6 +382,7 @@ _T = {
             "Budget per annuncio in test: fino a {per_ad} ({multiplier} volte il CPA di pareggio)",
             "Primo giro con {ideas} annunci: fino a {round_total}",
         ],
+        "numbers.margin.real": "Margine netto per ordine (dopo IVA, spedizione, commissioni e resi): {margin}",
         "numbers.goal": [
             "Obiettivo di {orders} ordini al giorno: a pareggio la spesa massima è {daily_max} al giorno "
             "({orders} × {cpa}), {weekly_max} a settimana",
@@ -559,11 +561,14 @@ def project_section(project: dict, lang: str, result: dict | None = None) -> str
         for key, label in words["project.opt"].items()
         if project.get(key) is not None and (float(project[key]) > 0 or key == "ad_fee_pct")
     ]
+    num_templates = list(words["numbers"])
+    if pc["has_real_costs"]:
+        num_templates[0] = words["numbers.margin.real"]
     lines = [f"## {words['project.title']}",
              *[f"- {label}: {value}" for label, value in zip(words["project"], values)],
              *opt_lines,
              "", f"## {words['numbers.title']}", words["numbers.intro"],
-             *[f"- {line.format(**numbers)}" for line in words["numbers"]]]
+             *[f"- {line.format(**numbers)}" for line in num_templates]]
     if "orders" in raw:
         lines += [f"- {line.format(**numbers)}" for line in words["numbers.goal"]]
     else:

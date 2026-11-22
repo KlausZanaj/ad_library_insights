@@ -184,3 +184,26 @@ def test_briefs_project_section_unifies_real_costs_without_contradiction():
     assert "includono già i costi reali opzionali" in md_it
     assert "non sono compresi" not in md_it
     assert "46,38" in md_it and "579,75" in md_it and "597,14" in md_it
+
+
+def test_breakeven_roas_uses_vat_inclusive_price_and_real_margin_label():
+    # VAT-inclusive price 122, VAT 22% (net 100), cost 30, shipping 5, IT (+3% Meta fee):
+    # margin = 100 - 30 - 5 = 65; cpa_ads = 65 / 1.03 = 63.11; ROAS on gross price = 122 / (65 / 1.03) = 1.93
+    pc = precheck.analyze(price=122.0, product_cost=30.0, market="IT", vat_pct=22.0, shipping_cost=5.0)
+    assert pc["net_margin"] == 65.0
+    assert pc["cpa_ads"] == 63.11
+    assert pc["roas_breakeven"] == 1.93
+
+    card = {**BASE_CARD, "price": 122.0, "product_cost": 30.0, "market": "IT", "vat_pct": 22.0, "shipping_cost": 5.0}
+    assert briefs.test_numbers(card)["roas"] == 1.93
+
+    md_it = briefs.project_section(card, "it")
+    assert "Margine netto per ordine (dopo IVA, spedizione, commissioni e resi): 65" in md_it
+    assert "Margine per ordine (prezzo meno costo del prodotto)" not in md_it
+
+    md_en = briefs.project_section(card, "en")
+    assert "Net margin per order (after VAT, shipping, fees and returns): 65" in md_en
+    assert "Margin per order (price minus product cost)" not in md_en
+
+    plain_en = briefs.project_section(BASE_CARD, "en")
+    assert "Margin per order (price minus product cost)" in plain_en
