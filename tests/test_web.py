@@ -339,6 +339,15 @@ def test_durata_job_attaches_to_company_job_and_feeds_brief_testing_slice(app):
     assert "## Pace and format drift (Ritmo)" in testing_md
 
 
+def test_trusted_host_middleware_blocks_dns_rebinding_hosts(app):
+    client, _ = app
+    assert client.get("/api/project", headers={"Host": "evil.example"}).status_code == 400
+    assert client.get("/api/project", headers={"Host": "evil.example:8765"}).status_code == 400
+    assert client.get("/api/project", headers={"Host": "127.0.0.1:8765"}).status_code == 200
+    assert client.get("/api/project", headers={"Host": "localhost:8765"}).status_code == 200
+    assert client.get("/api/project").status_code == 200
+
+
 # --- texts ----------------------------------------------------------------------------
 
 def test_every_text_exists_in_both_languages():

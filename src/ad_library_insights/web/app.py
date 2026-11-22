@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from starlette.applications import Starlette
+from starlette.middleware import Middleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Mount, Route
@@ -524,7 +526,9 @@ def create_app(client: AdLibraryClient | None = None, home: Path | None = None,
                connection: link.Settings | None = None) -> Starlette:
     """The ASGI app. ``client``, ``home`` and ``connection`` are injectable for offline tests."""
     space = Workspace(client, home, connection)
-    app = Starlette(routes=[
+    app = Starlette(
+        middleware=[Middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"])],
+        routes=[
         Route("/", space.index),
         Route("/media/{name}", space.media_file),
         Route("/api/state", space.state),
@@ -546,7 +550,8 @@ def create_app(client: AdLibraryClient | None = None, home: Path | None = None,
         Route("/api/history/ritmo", space.ritmo_history),
         Mount("/docs/images", StaticFiles(directory=Path(__file__).resolve().parents[3] / "docs" / "images", check_dir=False), name="docs_images"),
         Mount("/static", StaticFiles(directory=STATIC), name="static"),
-    ])
+        ],
+    )
     app.state.workspace = space
     return app
 

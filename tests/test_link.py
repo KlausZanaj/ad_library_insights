@@ -166,13 +166,14 @@ def test_a_request_from_another_origin_is_refused_and_runs_nothing(client, fake)
 
 def test_a_request_with_another_host_is_refused(fake):
     studio = Studio(fake.tmp)
-    for base in ("http://testserver", "http://localhost:8765", "http://192.168.1.5:8765"):
+    for base, expected in (("http://testserver", 403), ("http://localhost:8765", 403),
+                           ("http://192.168.1.5:8765", 400)):
         with TestClient(create_app(studio.client, home=fake.tmp / "home", connection=fake.settings),
                         base_url=base) as page:
             token = secrets.token_hex(16)
             answer = page.post("/api/link/connect", json={"token": token},
                                headers={"Origin": base, "X-Link-Token": token})
-            assert answer.status_code == 403, base
+            assert answer.status_code == expected, base
     assert fake.calls() == []
 
 
