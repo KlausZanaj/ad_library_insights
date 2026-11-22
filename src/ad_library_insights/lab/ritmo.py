@@ -490,9 +490,9 @@ def format_cusum(concepts: list[dict], *, as_of: date) -> dict:
 def littles_law(active_concepts: list[dict], all_concepts: list[dict], *,
                 as_of: date, durata_report: dict | None = None) -> dict:
     """Link active inventory ``L`` and launch rate ``λ`` via ``L = λW``."""
-    L = len(active_concepts)
-    if L < MIN_LITTLE_ACTIVE:
-        return {"measurable": False, "reason": "too_few_active", "active_concepts": L}
+    L_total = len(active_concepts)
+    if L_total < MIN_LITTLE_ACTIVE:
+        return {"measurable": False, "reason": "too_few_active", "active_concepts": L_total}
 
     launches_28d = 0
     for c in all_concepts:
@@ -503,14 +503,14 @@ def littles_law(active_concepts: list[dict], all_concepts: list[dict], *,
         return {
             "measurable": False,
             "reason": "too_few_launches",
-            "active_concepts": L,
+            "active_concepts": L_total,
             "launches_28d": launches_28d,
             "window_days": LITTLE_WINDOW_DAYS,
         }
 
     lambda_per_day = launches_28d / float(LITTLE_WINDOW_DAYS)
     lambda_per_week = round(lambda_per_day * 7.0, 2)
-    implied_mean_days = round(L / lambda_per_day, 1)
+    implied_mean_days = round(L_total / lambda_per_day, 1)
 
     ages: list[int] = []
     for c in active_concepts:
@@ -521,7 +521,18 @@ def littles_law(active_concepts: list[dict], all_concepts: list[dict], *,
             ages.append(max(1, int(c["days_running"])))
     active_mean_age_days = round(sum(ages) / len(ages), 1) if ages else None
 
+    L = L_total
+    extra: dict[str, int] = {}
     if durata_report and durata_report.get("available") and (durata_report.get("rmst_days") or 0) > 0:
+        durata_window = durata_report.get("window_days")
+        if durata_window is not None:
+            # Cross-check L against expected_active on the exact same cohort window as Durata RMST
+            cutoff = as_of - timedelta(days=int(durata_window))
+            L = sum(
+                1 for c in active_concepts
+                if (s := _parse_day(c.get("started"))) is not None and cutoff <= s <= as_of
+            )
+            extra = {"active_concepts_total": L_total, "cohort_window_days": int(durata_window)}
         w_days = round(float(durata_report["rmst_days"]), 1)
         expected_active = round(lambda_per_day * float(durata_report["rmst_days"]), 1)
         balance_ratio = round(L / expected_active, 2) if expected_active > 0 else None
@@ -544,6 +555,7 @@ def littles_law(active_concepts: list[dict], all_concepts: list[dict], *,
     return {
         "measurable": True,
         "active_concepts": L,
+        **extra,
         "launches_28d": launches_28d,
         "window_days": LITTLE_WINDOW_DAYS,
         "lambda_per_day": round(lambda_per_day, 3),

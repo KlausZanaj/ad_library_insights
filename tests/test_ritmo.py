@@ -177,6 +177,29 @@ def test_littles_law_implied_and_durata_cross_check_and_gates():
     assert ritmo.littles_law(old_only, old_only, as_of=AS_OF)["reason"] == "too_few_launches"
 
 
+def test_littles_law_aligns_active_count_with_durata_cohort_window():
+    # Steady account: 30 evergreen concepts active for 200d + 1 launch/day lasting 10d (10 active + 18 ended in 28d)
+    evergreen = [_concept(f"ev{i}", 200) for i in range(30)]
+    recent_active = [_concept(f"ra{i}", i) for i in range(10)]
+    recent_ended = [_concept(f"re{i}", 10 + i, ended_after=10) for i in range(18)]
+    active_list = evergreen + recent_active
+    all_list = active_list + recent_ended
+
+    out = ritmo.littles_law(
+        active_list,
+        all_list,
+        as_of=AS_OF,
+        durata_report={"available": True, "rmst_days": 10.0, "window_days": 90},
+    )
+    assert out["steady_state_checked"] is True
+    assert out["active_concepts"] == 10
+    assert out["active_concepts_total"] == 40
+    assert out["cohort_window_days"] == 90
+    assert out["expected_active"] == 10.0
+    assert out["balance_ratio"] == 1.0
+    assert out["balance_state"] == "balanced"
+
+
 # --- Snapshot merging, History integration & Pack isolation --------------------------
 
 
