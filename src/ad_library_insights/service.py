@@ -198,7 +198,8 @@ async def research_company(client: AdLibraryClient, country: str, page_id: str =
 async def analyze_durata(client: AdLibraryClient, country: str, page_id: str,
                          window_days: int = durata.DEFAULT_WINDOW_DAYS,
                          scroll_rounds: int = 40, wait_seconds: float = 8,
-                         use_cache: bool = True, as_of: date | None = None) -> dict:
+                         use_cache: bool = True, as_of: date | None = None,
+                         snapshots: list[dict] | None = None) -> dict:
     """Load active and ended ads of one advertiser page and compute cohort Durata survival."""
     result = await research_company(client, country, page_id=page_id, active_status="all",
                                     scroll_rounds=scroll_rounds, wait_seconds=wait_seconds,
@@ -213,6 +214,7 @@ async def analyze_durata(client: AdLibraryClient, country: str, page_id: str,
         mode="company",
         loaded_share=_loaded_share(result),
         as_of=as_of,
+        snapshots=snapshots,
         durata_report=cohort,
         active_status="all",
     )

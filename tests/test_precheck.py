@@ -154,3 +154,33 @@ def test_briefs_project_section_and_plan_include_precheck_and_skeptical_jury():
     plan_en = briefs.instructions("plan", "Competitor", "en")
     assert "giuria scettica di quattro profili" in plan_it and "Nessun complimento" in plan_it
     assert "skeptical jury of four buyer profiles" in plan_en and "zero compliments" in plan_en
+
+
+def test_briefs_project_section_unifies_real_costs_without_contradiction():
+    rich_it = {
+        **BASE_CARD,
+        "price": 100.0,
+        "product_cost": 20.0,
+        "market": "IT",
+        "goal": "10 ordini al giorno",
+        "vat_pct": 22.0,
+        "shipping_cost": 6.0,
+        "payment_fee_pct": 2.0,
+        "return_rate_pct": 10.0,
+    }
+    nums = briefs.test_numbers(rich_it)
+    pc = precheck.analyze(
+        price=100.0, product_cost=20.0, market="IT",
+        vat_pct=22.0, shipping_cost=6.0, payment_fee_pct=2.0, return_rate_pct=10.0,
+    )
+    assert nums["margin"] == pc["net_margin"]
+    assert nums["cpa"] == pc["cpa_ads"]
+    assert nums["cut_low"] == pc["stop_rule"]["cut_low"]
+    assert nums["cut_high"] == pc["stop_rule"]["cut_high"]
+    assert nums["round_total"] == pc["risk"]["round_spend"]
+
+    md_it = briefs.project_section(rich_it, "it")
+    assert "IVA (%): 22" in md_it and "Spedizione: 6" in md_it
+    assert "includono già i costi reali opzionali" in md_it
+    assert "non sono compresi" not in md_it
+    assert "46,38" in md_it and "579,75" in md_it and "597,14" in md_it

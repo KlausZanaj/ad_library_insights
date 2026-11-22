@@ -837,3 +837,38 @@ def test_the_pack_holds_the_concepts_that_were_read_not_the_ones_that_rose_above
     assert "none of them was opened" in packs._contents(packs.chosen(nothing, 1))
     # a concept read only through its second ad counts as read
     assert packs.was_read({"library_id": "z", "card_reach": {"z2": {"available": True}}})
+
+
+def test_mcp_save_project_preserves_optional_costs_and_single_pass_mentions_new_sections(tmp_path, monkeypatch):
+    from ad_library_insights import project as project_mod
+
+    studio = Studio(tmp_path)
+    monkeypatch.setattr(server, "_client", studio.client)
+
+    # First save optional real costs (as the web UI does), then update goal via MCP without passing them
+    project_mod.save({**CARD, "market": "IT", "vat_pct": 22.0, "shipping_cost": 5.0})
+
+    async def run():
+        async with Client(server.mcp) as client:
+            res = (await client.call_tool("save_project", {
+                "product": CARD["product"], "price": 122.0, "product_cost": 35.0,
+                "market": "IT", "goal": "10 orders a day", "main_problem": CARD["main_problem"],
+            })).data
+            prep = (await client.call_tool("prepare_analysis", {
+                "country": "IT", "level": "analysis", "page_id": PAGE_ID, "ads": 2, "active_status": "all",
+            })).data
+            return res, prep
+
+    res, prep = asyncio.run(run())
+    assert res["ok"] is True
+    assert res["project"]["vat_pct"] == 22.0 and res["project"]["shipping_cost"] == 5.0
+    assert res["numbers"]["cpa"] < 122.0 - 35.0
+    assert prep["ok"] is True
+
+    for lang in ("en", "it"):
+        txt = briefs.instructions("analysis", "Northwind", lang)
+        assert "Copy families (Su cosa si regge)" in txt
+        assert "Out-of-pattern ads (Annunci fuori schema)" in txt
+        assert "Account structure (Su cosa si regge)" in txt
+        assert "Duration and survival (cohort)" in txt
+        assert "Pace and format drift (Ritmo)" in txt

@@ -225,7 +225,10 @@ def get_project() -> dict:
 
 @mcp.tool
 def save_project(product: str, price: float, product_cost: float, market: str, goal: str,
-                 main_problem: str) -> dict:
+                 main_problem: str, vat_pct: float | None = None,
+                 shipping_cost: float | None = None, payment_fee_pct: float | None = None,
+                 payment_fee_fixed: float | None = None, return_rate_pct: float | None = None,
+                 other_costs: float | None = None, ad_fee_pct: float | None = None) -> dict:
     """Store the user's project card on this machine. It is asked once and reused.
 
     Args:
@@ -235,9 +238,38 @@ def save_project(product: str, price: float, product_cost: float, market: str, g
         market: two-letter ISO code of the country they sell in.
         goal: what they want to reach.
         main_problem: e.g. high cost per purchase, too few creatives, low reach.
+        vat_pct: optional VAT percentage included in price.
+        shipping_cost: optional per-order shipping cost.
+        payment_fee_pct: optional payment gateway percentage fee.
+        payment_fee_fixed: optional fixed payment fee per order.
+        return_rate_pct: optional product return rate percentage.
+        other_costs: optional other per-order variable costs.
+        ad_fee_pct: optional override for Meta market ad-spend fee percentage.
     """
-    card, errors = project.save({"product": product, "price": price, "product_cost": product_cost,
-                                 "market": market, "goal": goal, "main_problem": main_problem})
+    existing = project.load() or {}
+    payload: dict = {
+        "product": product,
+        "price": price,
+        "product_cost": product_cost,
+        "market": market,
+        "goal": goal,
+        "main_problem": main_problem,
+    }
+    optional = {
+        "vat_pct": vat_pct,
+        "shipping_cost": shipping_cost,
+        "payment_fee_pct": payment_fee_pct,
+        "payment_fee_fixed": payment_fee_fixed,
+        "return_rate_pct": return_rate_pct,
+        "other_costs": other_costs,
+        "ad_fee_pct": ad_fee_pct,
+    }
+    for key, val in optional.items():
+        if val is not None:
+            payload[key] = val
+        elif key in existing:
+            payload[key] = existing[key]
+    card, errors = project.save(payload)
     if errors:
         return {"ok": False, "errors": errors}
     return {"ok": True, "project": card, "numbers": briefs.test_numbers(card)}
@@ -246,7 +278,7 @@ def save_project(product: str, price: float, product_cost: float, market: str, g
 @mcp.tool
 async def prepare_analysis(country: str, level: str = "analysis", page_id: str = "", query: str = "",
                            ads: int = 10, frames: bool = False, language: str = "en",
-                           use_cache: bool = True) -> dict:
+                           use_cache: bool = True, active_status: str = "active") -> dict:
     """Collect the data for an Analysis or Plan and write it as a pack of files.
 
     Plain code does the collecting: the ranked ads of a page (page_id) or keyword
@@ -267,6 +299,7 @@ async def prepare_analysis(country: str, level: str = "analysis", page_id: str =
             and, next to each figure, how many of its ads were opened.
         frames: also save and list video stills of the ten best ads.
         language: language of the instructions in brief.md (en or it).
+        active_status: active | inactive | all (for company pages; "all" loads ended ads for Durata).
     """
     if level not in briefs.LEVELS:
         return {"ok": False, "error": "level must be analysis or plan"}
@@ -277,9 +310,13 @@ async def prepare_analysis(country: str, level: str = "analysis", page_id: str =
                         "store them with save_project, then call this again."}
     try:
         if page_id:
-            result = await service.research_company(_get_client(), country, page_id, use_cache=use_cache)
+            if active_status not in ("active", "inactive", "all"):
+                raise ValueError("active_status must be active, inactive or all")
+            result = await service.research_company(_get_client(), country, page_id,
+                                                    active_status=active_status, use_cache=use_cache)
         else:
-            result = await service.research(_get_client(), query, country, use_cache=use_cache)
+            result = await service.research(_get_client(), query, country,
+                                            active_status=active_status, use_cache=use_cache)
         if not result.get("ads"):
             return {k: v for k, v in result.items() if k != "ads"}
         await _deepen(result, ads, frames, use_cache)

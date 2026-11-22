@@ -74,20 +74,24 @@ _T = {
             "which passes confirm it. A fact seen in one pass only stays, marked \"one pass only\"."),
         "lens": [
             "Copy (section Copy). Which hooks open the ads that scale or hold, which offer and which proof "
-            "they carry, which structures repeat, and what separates texts carried by many creatives from texts "
-            "on a single one. Give every ad a type from the list in \"Ad types\", judging from the text.",
+            "they carry, which structures repeat, what separates texts carried by many creatives from texts "
+            "on a single one, and what `Copy families (Su cosa si regge)` and `Out-of-pattern ads (Annunci fuori schema)` "
+            "show when present. Give every ad a type from the list in \"Ad types\", judging from the text.",
             "Creative (section Creative). For videos: what happens in the first seconds, how it develops, "
             "how it closes. Look at the attached stills (start, middle, end) and pictures. Give every ad a type "
             "from the list in \"Ad types\", judging from what you see. If there are no pictures, say so in one "
             "line and work from formats and copy.",
             "Reach and audience (section Reach and audience). People reached and reach per day, how broad the "
-            "audience is (age, gender, locations), and what differs between ads that reach many people and ads "
-            "that reach few. Then localisation (section Languages and countries): languages of the texts against "
+            "audience is (age, gender, locations), what differs between ads that reach many people and ads "
+            "that reach few, and what `Account structure (Su cosa si regge)` and `Out-of-pattern ads (Annunci fuori schema)` "
+            "highlight when present. Then localisation (section Languages and countries): languages of the texts against "
             "countries reached. One ad translated or different ads per country, and where delivery really goes.",
             "Testing and destinations (section Testing and destinations). How many new ads a week, which buttons "
-            "and landing pages. Survival: compare only ads of the same age. Use the table under Survival when it "
-            "is there; when it says NOT MEASURABLE, write that it cannot be measured yet and why. The ads on air "
-            "today never show how many were stopped.",
+            "and landing pages. Survival: compare only ads of the same age. Use the table under Survival and "
+            "`Duration and survival (cohort)` when present; when both are absent or say NOT MEASURABLE, write that "
+            "survival cannot be measured yet and why. Also read `Pace and format drift (Ritmo)` when present, "
+            "focusing on `AI alert: yes` peaks with a plausible alternative explanation. The ads on air today never "
+            "show how many were stopped.",
         ],
         "deliver.title": "What to deliver",
         "deliver.analysis": [
@@ -102,7 +106,8 @@ _T = {
         "lens.noreach": (
             "Audience and localisation (sections Reach and audience, Languages and countries). Reach in the country "
             "searched is not published, so no ad is compared by people reached. How broad the audience is (age, "
-            "gender, locations), then languages of the texts against the countries targeted: one ad translated or "
+            "gender, locations), what `Account structure (Su cosa si regge)` and `Out-of-pattern ads (Annunci fuori schema)` "
+            "highlight when present, then languages of the texts against the countries targeted: one ad translated or "
             "different ads per country."),
         "deliver.analysis.noreach": {
             0: "The answer in two lines: what {name} keeps running and what that suggests, with the limit that "
@@ -171,6 +176,15 @@ _T = {
             "competitor reading (3) as an appendix. Whoever decides reads the first page only."),
         "project.title": "My project",
         "project": ["Product", "Selling price", "Product cost", "Market", "Goal", "Main problem"],
+        "project.opt": {
+            "vat_pct": "VAT (%)",
+            "shipping_cost": "Shipping cost",
+            "payment_fee_pct": "Payment fee (%)",
+            "payment_fee_fixed": "Fixed payment fee",
+            "return_rate_pct": "Return rate (%)",
+            "other_costs": "Other costs",
+            "ad_fee_pct": "Meta ad fee (%)",
+        },
         "numbers.title": "Numbers for the test",
         "precheck.title": "Test before spending",
         "numbers.intro": "Computed by the app from the card, by arithmetic. Use them as they are. Amounts are "
@@ -201,6 +215,8 @@ _T = {
         "numbers.costs": "These numbers use product cost only. VAT, shipping, payment fees and returns are not "
                          "included: if the price includes VAT or those costs are not in the product cost, the "
                          "real break-even is lower. Say so in the plan and ask me for the values.",
+        "numbers.costs.included": "These numbers already include the optional real costs saved on the card and "
+                                  "any applicable Meta market ad fee (also detailed under Test before spending below).",
         "data.title": "Data",
         "attach.title": "Pictures to attach",
         "attach.some": "Attach the {n} pictures of the folder \"{folder}\" of this analysis. File names start "
@@ -231,20 +247,24 @@ _T = {
             "resta, segnato «un solo passaggio»."),
         "lens": [
             "Testi (sezione Copy). Quali ganci aprono gli annunci che scalano o reggono, quale offerta e quale "
-            "prova portano, quali strutture si ripetono, e cosa distingue i testi portati da molte creatività da "
-            "quelli su una sola. Dai a ogni annuncio un tipo dell'elenco «Ad types», giudicando dal testo.",
+            "prova portano, quali strutture si ripetono, cosa distingue i testi portati da molte creatività da "
+            "quelli su una sola, e cosa mostrano `Copy families (Su cosa si regge)` e `Out-of-pattern ads (Annunci fuori schema)` "
+            "quando presenti. Dai a ogni annuncio un tipo dell'elenco «Ad types», giudicando dal testo.",
             "Creatività (sezione Creative). Per i video: cosa succede nei primi secondi, come si sviluppa, "
             "come chiude. Guarda i fotogrammi allegati (inizio, metà, fine) e le immagini. Dai a ogni annuncio "
             "un tipo dell'elenco «Ad types», giudicando da ciò che vedi. Se le immagini non ci sono, dillo in "
             "una riga e lavora su formati e testi.",
             "Copertura e pubblico (sezione Reach and audience). Persone raggiunte e copertura al giorno, ampiezza "
-            "del pubblico (età, genere, luoghi), e cosa cambia tra gli annunci che raggiungono molte persone e "
-            "quelli che ne raggiungono poche. Poi la localizzazione (sezione Languages and countries): lingue dei "
-            "testi contro paesi raggiunti. Un annuncio tradotto o annunci diversi per paese, e dove va davvero la consegna.",
+            "del pubblico (età, genere, luoghi), cosa cambia tra gli annunci che raggiungono molte persone e "
+            "quelli che ne raggiungono poche, e cosa evidenziano `Account structure (Su cosa si regge)` e "
+            "`Out-of-pattern ads (Annunci fuori schema)` quando presenti. Poi la localizzazione (sezione Languages and countries): "
+            "lingue dei testi contro paesi raggiunti. Un annuncio tradotto o annunci diversi per paese, e dove va davvero la consegna.",
             "Test e destinazioni (sezione Testing and destinations). Quanti annunci nuovi a settimana, quali "
             "bottoni e quali pagine di arrivo. Sopravvivenza: confronta solo annunci della stessa età. Usa la "
-            "tabella sotto Survival quando c'è; quando dice NOT MEASURABLE scrivi che non è ancora misurabile e "
-            "perché. Gli annunci accesi oggi non dicono mai quanti ne sono stati spenti.",
+            "tabella sotto Survival e `Duration and survival (cohort)` quando ci sono; quando entrambi mancano o "
+            "dicono NOT MEASURABLE scrivi che non è ancora misurabile e perché. Leggi anche `Pace and format drift (Ritmo)` "
+            "quando presente, concentrandoti sui picchi con `AI alert: yes` e indicando un'ipotesi alternativa. "
+            "Gli annunci accesi oggi non dicono mai quanti ne sono stati spenti.",
         ],
         "deliver.title": "Cosa consegnare",
         "deliver.analysis": [
@@ -260,7 +280,8 @@ _T = {
         "lens.noreach": (
             "Pubblico e localizzazione (sezioni Reach and audience, Languages and countries). La copertura nel paese "
             "cercato non è pubblicata, quindi nessun annuncio si confronta per persone raggiunte. Ampiezza del "
-            "pubblico (età, genere, luoghi), poi lingue dei testi contro i paesi scelti: un annuncio tradotto o "
+            "pubblico (età, genere, luoghi), eventuali evidenze di `Account structure (Su cosa si regge)` e "
+            "`Out-of-pattern ads (Annunci fuori schema)`, poi lingue dei testi contro i paesi scelti: un annuncio tradotto o "
             "annunci diversi per paese."),
         "deliver.analysis.noreach": {
             0: "La risposta in due righe: cosa {name} tiene acceso e cosa suggerisce, con il limite che la "
@@ -335,6 +356,15 @@ _T = {
             "appendice la diagnosi (1) e la lettura del concorrente (3). Chi decide legge solo la prima pagina."),
         "project.title": "Il mio progetto",
         "project": ["Prodotto", "Prezzo di vendita", "Costo del prodotto", "Mercato", "Obiettivo", "Problema principale"],
+        "project.opt": {
+            "vat_pct": "IVA (%)",
+            "shipping_cost": "Spedizione",
+            "payment_fee_pct": "Commissione pagamento (%)",
+            "payment_fee_fixed": "Commissione fissa",
+            "return_rate_pct": "Tasso resi (%)",
+            "other_costs": "Altri costi",
+            "ad_fee_pct": "Maggiorazione Meta (%)",
+        },
         "numbers.title": "Numeri per il test",
         "precheck.title": "Prova prima di spendere",
         "numbers.intro": "Calcolati dall'app a partire dalla scheda, con semplice aritmetica. Usali così come "
@@ -368,6 +398,8 @@ _T = {
         "numbers.costs": "Questi numeri usano solo il costo del prodotto. IVA, spedizione, commissioni di pagamento "
                          "e resi non sono compresi: se il prezzo è IVA inclusa o quei costi non sono nel costo del "
                          "prodotto, il pareggio reale è più basso. Scrivilo nel piano e chiedimi i valori.",
+        "numbers.costs.included": "Questi numeri includono già i costi reali opzionali salvati nella scheda e "
+                                  "l'eventuale maggiorazione Meta per mercato (dettagliati anche sotto Prova prima di spendere).",
         "data.title": "Dati",
         "attach.title": "Immagini da allegare",
         "attach.some": "Allega le {n} immagini della cartella «{folder}» di questa analisi. I nomi dei file "
@@ -429,18 +461,40 @@ def test_numbers(project: dict, ideas: int = IDEAS, multiplier: float = TEST_MUL
     """
     if project["product_cost"] < 0 or project["price"] <= 0:
         raise ValueError("price must be above zero and product cost cannot be negative")
-    cpa = breakeven.breakeven_cpa(project["price"], project["product_cost"])
-    if cpa <= 0:
-        raise ValueError("the product cost leaves no margin: no test budget can be computed")
-    per_ad = round(cpa * multiplier, 2)
+    use_real = (
+        any(project.get(k) is not None for k in (
+            "vat_pct", "shipping_cost", "payment_fee_pct",
+            "payment_fee_fixed", "return_rate_pct", "other_costs", "ad_fee_pct",
+        ))
+        or precheck.meta_ad_fee_pct(project.get("market"), project.get("ad_fee_pct")) > 0
+    )
+    if use_real:
+        pc = precheck_numbers(project, ideas=ideas, multiplier=multiplier)
+        margin = pc["net_margin"]
+        cpa = pc["cpa_ads"]
+        roas = pc["roas_breakeven"]
+        cut_low = pc["stop_rule"]["cut_low"]
+        cut_high = pc["stop_rule"]["cut_high"]
+        per_ad = pc["stop_rule"]["per_ad"]
+        round_total = pc["risk"]["round_spend"]
+    else:
+        cpa = breakeven.breakeven_cpa(project["price"], project["product_cost"])
+        if cpa <= 0:
+            raise ValueError("the product cost leaves no margin: no test budget can be computed")
+        margin = round(project["price"] - project["product_cost"], 2)
+        roas = round(project["price"] / cpa, 2)
+        cut_low = round(cpa * 2, 2)
+        cut_high = round(cpa * 3, 2)
+        per_ad = round(cpa * multiplier, 2)
+        round_total = round(per_ad * ideas, 2)
     numbers = {
-        "margin": round(project["price"] - project["product_cost"], 2),
+        "margin": margin,
         "cpa": cpa,
-        "roas": round(project["price"] / cpa, 2),
-        "cut_low": round(cpa * 2, 2),
-        "cut_high": round(cpa * 3, 2),
+        "roas": roas,
+        "cut_low": cut_low,
+        "cut_high": cut_high,
         "per_ad": per_ad,
-        "round_total": round(per_ad * ideas, 2),
+        "round_total": round_total,
         "multiplier": multiplier,
         "ideas": ideas,
     }
@@ -450,7 +504,7 @@ def test_numbers(project: dict, ideas: int = IDEAS, multiplier: float = TEST_MUL
         weekly_test = round(weekly_max * TEST_SHARE, 2)
         numbers.update(orders=orders, daily_max=round(orders * cpa, 2), weekly_max=weekly_max,
                        share=round(TEST_SHARE * 100), weekly_test=weekly_test,
-                       capacity=math.floor(weekly_test / per_ad))
+                       capacity=math.floor(weekly_test / per_ad) if per_ad > 0 else 0)
     if pace is not None:
         numbers["pace"] = pace
     return numbers
@@ -496,10 +550,18 @@ def project_section(project: dict, lang: str, result: dict | None = None) -> str
     found = (result or {}).get("signals") or {}
     pace = found.get("new_per_week")
     raw = test_numbers(project, pace=pace)
+    pc = precheck_numbers(project)
     numbers = {key: _money(value, lang) for key, value in raw.items()}
     values = [project["product"], _money(float(project["price"]), lang), _money(float(project["product_cost"]), lang),
               project["market"], project["goal"], project["main_problem"]]
-    lines = [f"## {words['project.title']}", *[f"- {label}: {value}" for label, value in zip(words["project"], values)],
+    opt_lines = [
+        f"- {label}: {_money(float(project[key]), lang)}"
+        for key, label in words["project.opt"].items()
+        if project.get(key) is not None and (float(project[key]) > 0 or key == "ad_fee_pct")
+    ]
+    lines = [f"## {words['project.title']}",
+             *[f"- {label}: {value}" for label, value in zip(words["project"], values)],
+             *opt_lines,
              "", f"## {words['numbers.title']}", words["numbers.intro"],
              *[f"- {line.format(**numbers)}" for line in words["numbers"]]]
     if "orders" in raw:
@@ -516,8 +578,8 @@ def project_section(project: dict, lang: str, result: dict | None = None) -> str
                 active = words["numbers.more"].format(n=_money(found["active_ads"] - 1, lang))
             lines.append("- " + words["numbers.pace.part"].format(
                 name=packs.subject_name(result), loaded=_money(found["ads_loaded"], lang), active=active))
-    lines.append(f"- {words['numbers.costs']}")
-    lines += ["", f"## {words['precheck.title']}", *precheck.format_markdown(precheck_numbers(project), lang)]
+    lines.append(f"- {words['numbers.costs.included'] if pc['has_real_costs'] else words['numbers.costs']}")
+    lines += ["", f"## {words['precheck.title']}", *precheck.format_markdown(pc, lang)]
     return "\n".join(lines) + "\n"
 
 
