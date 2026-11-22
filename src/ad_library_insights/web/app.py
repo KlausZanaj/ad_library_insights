@@ -174,14 +174,30 @@ class Workspace:
                                   "comparison": compare.compare(first, second) if both else None}
                 elif params["mode"] == "durata":
                     job.phase, job.detail = "list", {}
+                    snaps = self.history.snapshots(f"company:{params['country']}:{params['page_id']}")
                     found = await service.analyze_durata(
                         self.client,
                         params["country"],
                         params["page_id"],
                         window_days=params["window_days"],
                         use_cache=not params.get("fresh"),
+                        snapshots=snaps,
                     )
                     job.result = found
+                    for source in reversed(list(self.jobs.values())):
+                        if (source is not job and source.status == "done" and source.raw
+                                and source.params.get("mode") == "company"
+                                and source.params.get("country") == params["country"]
+                                and (source.params.get("page_id") == params["page_id"]
+                                     or (source.raw.get("page") or {}).get("page_id") == params["page_id"])):
+                            source.raw["durata"] = found["durata"]
+                            if found.get("ritmo"):
+                                source.raw["ritmo"] = found["ritmo"]
+                            if isinstance(source.result, dict):
+                                source.result["durata"] = found["durata"]
+                                if found.get("ritmo"):
+                                    source.result["ritmo"] = found["ritmo"]
+                            break
                 else:
                     result = await self._collect(
                         job, params, params["page_id"] if params["mode"] == "company" else None)
@@ -249,32 +265,47 @@ class Workspace:
         return JSONResponse({"project": project.load(self.home)})
 
     async def put_project(self, request: Request) -> Response:
-        card, errors = project.save(await request.json(), self.home)
+        if not _allowed_origin(request):
+            return JSONResponse({"error": "forbidden_origin"}, status_code=403)
+        try:
+            body = await _json_object(request)
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        card, errors = project.save(body, self.home)
         if errors:
             return JSONResponse({"errors": errors, "project": None})   # 200: a refused card is not a failed request
         return JSONResponse({"project": card})
 
     async def precheck_api(self, request: Request) -> Response:
+        if not _allowed_origin(request):
+            return JSONResponse({"error": "forbidden_origin"}, status_code=403)
         try:
-            body = await request.json()
-            if not isinstance(body, dict):
-                raise ValueError("body must be a JSON object")
-            if body.get("price") is None:
+            body = await _json_object(request)
+            raw_price = body.get("price")
+            if raw_price is None or isinstance(raw_price, bool):
                 raise ValueError("price is required")
+            raw_ideas = body.get("ideas")
+            if isinstance(raw_ideas, bool):
+                raise ValueError("ideas must be an integer")
+            ideas = precheck.DEFAULT_IDEAS if raw_ideas in (None, "") else int(raw_ideas)
+            raw_mult = body.get("multiplier")
+            if isinstance(raw_mult, bool):
+                raise ValueError("multiplier must be a number")
+            multiplier = precheck.DEFAULT_MULTIPLIER if raw_mult in (None, "") else float(raw_mult)
             kwargs = {
-                "price": float(body["price"]),
-                "product_cost": float(body.get("product_cost") or 0),
+                "price": float(raw_price),
+                "product_cost": _opt_float(body.get("product_cost"), 0.0, "product_cost"),
                 "market": str(body.get("market") or ""),
-                "vat_pct": float(body.get("vat_pct") or 0),
-                "shipping_cost": float(body.get("shipping_cost") or 0),
-                "payment_fee_pct": float(body.get("payment_fee_pct") or 0),
-                "payment_fee_fixed": float(body.get("payment_fee_fixed") or 0),
-                "return_rate_pct": float(body.get("return_rate_pct") or 0),
-                "other_costs": float(body.get("other_costs") or 0),
-                "ad_fee_pct": float(body["ad_fee_pct"]) if body.get("ad_fee_pct") not in (None, "") else None,
-                "ideas": int(body.get("ideas") or precheck.DEFAULT_IDEAS),
-                "multiplier": float(body.get("multiplier") or precheck.DEFAULT_MULTIPLIER),
-                "test_budget": float(body["test_budget"]) if body.get("test_budget") not in (None, "") else None,
+                "vat_pct": _opt_float(body.get("vat_pct"), 0.0, "vat_pct"),
+                "shipping_cost": _opt_float(body.get("shipping_cost"), 0.0, "shipping_cost"),
+                "payment_fee_pct": _opt_float(body.get("payment_fee_pct"), 0.0, "payment_fee_pct"),
+                "payment_fee_fixed": _opt_float(body.get("payment_fee_fixed"), 0.0, "payment_fee_fixed"),
+                "return_rate_pct": _opt_float(body.get("return_rate_pct"), 0.0, "return_rate_pct"),
+                "other_costs": _opt_float(body.get("other_costs"), 0.0, "other_costs"),
+                "ad_fee_pct": _opt_float(body.get("ad_fee_pct"), None, "ad_fee_pct"),
+                "ideas": ideas,
+                "multiplier": multiplier,
+                "test_budget": _opt_float(body.get("test_budget"), None, "test_budget"),
             }
             found = precheck.analyze(**kwargs)
         except (ValueError, TypeError) as exc:
@@ -282,8 +313,10 @@ class Workspace:
         return JSONResponse({"ok": True, **found})
 
     async def create_job(self, request: Request) -> Response:
-        body = await request.json()
+        if not _allowed_origin(request):
+            return JSONResponse({"error": "forbidden_origin"}, status_code=403)
         try:
+            body = await _json_object(request)
             params = {
                 "mode": body.get("mode"),
                 "country": normalise_country(body.get("country", "")),
@@ -316,10 +349,10 @@ class Workspace:
         return JSONResponse(self.start(params).view(), status_code=202)
 
     async def create_durata_job(self, request: Request) -> Response:
+        if not _allowed_origin(request):
+            return JSONResponse({"error": "forbidden_origin"}, status_code=403)
         try:
-            body = await request.json()
-            if not isinstance(body, dict):
-                raise ValueError("body must be a JSON object")
+            body = await _json_object(request)
             page_id = str(body.get("page_id") or "").strip()
             if not page_id.isdigit():
                 raise ValueError("page_id must be the numeric id of an advertiser page")
@@ -354,7 +387,12 @@ class Workspace:
         return JSONResponse(self.history.ritmo(request.query_params.get("key", "")))
 
     async def brief(self, request: Request) -> Response:
-        body = await request.json()
+        if not _allowed_origin(request):
+            return JSONResponse({"error": "forbidden_origin"}, status_code=403)
+        try:
+            body = await _json_object(request)
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
         job = self.jobs.get(str(body.get("job_id")))
         if not job or not job.raw or not job.raw.get("ads"):
             return JSONResponse({"error": "not_found"}, status_code=404)
@@ -383,18 +421,11 @@ class Workspace:
 
     async def open_frames(self, request: Request) -> Response:
         """Open the stills folder of a pack this app wrote; nothing else can be opened."""
-        origin = request.headers.get("origin")
-        if origin is not None:
-            host = request.headers.get("host", "")
-            port = host.rsplit(":", 1)[1] if ":" in host else ""
-            own = {f"http://{name}" + (f":{port}" if port else "") for name in ("127.0.0.1", "localhost")}
-            if origin not in own:
-                return JSONResponse({"error": "forbidden_origin"}, status_code=403)
+        if not _allowed_origin(request):
+            return JSONResponse({"error": "forbidden_origin"}, status_code=403)
         try:
-            body = await request.json()
+            body = await _json_object(request)
         except ValueError:
-            body = None
-        if not isinstance(body, dict):
             return JSONResponse({"error": "bad_request"}, status_code=400)
         folder = self.frame_folders.get(str(body.get("key") or ""))
         if folder is None or not folder.is_dir():
@@ -442,6 +473,41 @@ class Workspace:
 
 
 _TOKEN = re.compile(r"^[0-9a-f]{32,128}$")
+
+
+async def _json_object(request: Request) -> dict:
+    try:
+        body = await request.json()
+    except (ValueError, TypeError) as exc:
+        raise ValueError("body must be valid JSON") from exc
+    if not isinstance(body, dict):
+        raise ValueError("body must be a JSON object")
+    return body
+
+
+def _opt_float(val, default: float | None, name: str) -> float | None:
+    if val in (None, ""):
+        return default
+    if isinstance(val, bool):
+        raise ValueError(f"{name} must be a number")
+    return float(val)
+
+
+def _allowed_origin(request: Request) -> bool:
+    """Allow same-origin local browser calls and local non-browser clients without Origin."""
+    if (request.headers.get("sec-fetch-site") or "").strip().lower() == "cross-site":
+        return False
+    origin = request.headers.get("origin")
+    if origin is None:
+        return True
+    host = (request.headers.get("host") or "").strip()
+    if not host:
+        return False
+    _, _, port = host.partition(":")
+    if port and not port.isdigit():
+        return False
+    own = {f"http://{h}" + (f":{port}" if port else "") for h in ("127.0.0.1", "localhost")}
+    return origin in own
 
 
 def _own_page(request: Request) -> bool:

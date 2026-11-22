@@ -290,6 +290,55 @@ def test_brief_without_project_is_refused():
         briefs.compose("data", {"ads": []})
 
 
+def test_mutating_endpoints_reject_cross_origin_and_malformed_json_and_zero_precheck(tmp_path):
+    studio = Studio(tmp_path)
+    with TestClient(create_app(studio.client, home=tmp_path / "home"), base_url="http://127.0.0.1:8765") as client:
+        for method, path in (
+            ("PUT", "/api/project"),
+            ("POST", "/api/precheck"),
+            ("POST", "/api/jobs"),
+            ("POST", "/api/durata"),
+            ("POST", "/api/brief"),
+            ("POST", "/api/frames/open"),
+        ):
+            bad_orig = client.request(method, path, json={"x": 1}, headers={"Origin": "https://evil.example"})
+            assert bad_orig.status_code == 403, (method, path)
+            cross = client.request(method, path, json={"x": 1}, headers={"Sec-Fetch-Site": "cross-site"})
+            assert cross.status_code == 403, (method, path)
+
+        for method, path in (("PUT", "/api/project"), ("POST", "/api/jobs"), ("POST", "/api/brief")):
+            assert client.request(method, path, content=b"{bad", headers={"Content-Type": "application/json"}).status_code == 400
+            assert client.request(method, path, json=["not-a-dict"]).status_code == 400
+
+        assert client.post("/api/precheck", json={"price": 60, "ideas": 0}).status_code == 400
+        assert client.post("/api/precheck", json={"price": 60, "multiplier": 0}).status_code == 400
+        assert client.post("/api/precheck", json={"price": 60, "ideas": False}).status_code == 400
+
+
+def test_durata_job_attaches_to_company_job_and_feeds_brief_testing_slice(app):
+    client, _ = app
+    comp = run_job(client, mode="company", page_id=PAGE_ID, country="IT", level="analysis", deep=2)
+    assert "durata" not in comp["result"]
+
+    res = client.post("/api/durata", json={"page_id": PAGE_ID, "country": "IT", "window_days": 90})
+    assert res.status_code == 202
+    djob = res.json()
+    for _ in range(200):
+        djob = client.get(f"/api/jobs/{djob['id']}").json()
+        if djob["status"] != "running":
+            break
+        time.sleep(0.02)
+    assert djob["status"] == "done" and djob["result"]["ritmo"]["snapshots"] == 1
+    comp_after = client.get(f"/api/jobs/{comp['id']}").json()
+    assert comp_after["result"]["durata"] == djob["result"]["durata"]
+    assert comp_after["result"]["ritmo"]["snapshots"] == 1
+
+    made = client.post("/api/brief", json={"job_id": comp["id"], "level": "analysis", "ads": 2, "lang": "en"}).json()
+    testing_md = Path(made["files"]["testing"]).read_text(encoding="utf-8")
+    assert "## Duration and survival (cohort)" in testing_md
+    assert "## Pace and format drift (Ritmo)" in testing_md
+
+
 # --- texts ----------------------------------------------------------------------------
 
 def test_every_text_exists_in_both_languages():
