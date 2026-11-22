@@ -21,7 +21,7 @@ import re
 import statistics
 import zlib
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timezone
 
 MIN_REACH_CONCEPTS = 3
 MIN_TEXT_CHARS = 30
@@ -40,18 +40,24 @@ def _finite_pos(val) -> float | None:
     return float(val) if val > 0 else None
 
 
+def _finite_nonneg(val) -> float | None:
+    if isinstance(val, bool) or not isinstance(val, (int, float)) or not math.isfinite(val):
+        return None
+    return float(val) if val >= 0 else None
+
+
 def reach_concentration(ads: list[dict], *, country: str | None = None) -> dict:
     """Measure how strongly read reach concentrates in the top concepts."""
     market_items: list[tuple[dict, float]] = []
     for ad in ads:
-        val = _finite_pos(ad.get("reach_total"))
+        val = _finite_nonneg(ad.get("reach_total"))
         if val is not None:
             market_items.append((ad, val))
 
-    if len(market_items) >= MIN_REACH_CONCEPTS:
+    if len(market_items) >= MIN_REACH_CONCEPTS and sum(val for _, val in market_items) > 0:
         items = market_items
         scope = "market"
-    else:
+    elif len(market_items) < MIN_REACH_CONCEPTS and not any(ad.get("reach_in_market") for ad in ads):
         eu_uk_items: list[tuple[dict, float]] = []
         for ad in ads:
             r = ad.get("reach") or {}
@@ -67,9 +73,16 @@ def reach_concentration(ads: list[dict], *, country: str | None = None) -> dict:
             return {
                 "measurable": False,
                 "reason": "too_few_with_reach",
-                "concepts_with_reach": max(len(market_items), len(eu_uk_items)),
-                "scope": "market" if market_items else None,
+                "concepts_with_reach": len(eu_uk_items),
+                "scope": None,
             }
+    else:
+        return {
+            "measurable": False,
+            "reason": "too_few_with_reach",
+            "concepts_with_reach": len(market_items),
+            "scope": "market" if market_items else None,
+        }
 
     items.sort(key=lambda pair: (-pair[1], str(pair[0].get("library_id") or "")))
     n = len(items)
@@ -179,6 +192,7 @@ def copy_families(ads: list[dict]) -> dict:
                 best_fam = fam
         lib_id = str(ad.get("library_id") or "")
         if best_fam is not None:
+            best_fam["count"] += 1
             if lib_id:
                 best_fam["member_ids"].append(lib_id)
         else:
@@ -188,13 +202,14 @@ def copy_families(ads: list[dict]) -> dict:
                 "bytes": payload,
                 "clen": clen,
                 "opening": opening,
+                "count": 1,
                 "member_ids": [lib_id] if lib_id else [],
             })
 
     m = len(eval_items)
     k = len(families)
     diversity_ratio = round(k / float(m), 2)
-    largest_size = max(len(f["member_ids"]) for f in families)
+    largest_size = max(f["count"] for f in families)
     largest_family_share = round(largest_size / float(m), 2)
 
     sample = eval_items[:25]
@@ -206,12 +221,12 @@ def copy_families(ads: list[dict]) -> dict:
             pair_dists.append(_ncd(bi, bj, ci, cj))
     median_ncd = round(float(statistics.median(pair_dists)), 3) if pair_dists else 0.0
 
-    ordered_fams = sorted(families, key=lambda f: (-len(f["member_ids"]), f["first_rank"]))
+    ordered_fams = sorted(families, key=lambda f: (-f["count"], f["first_rank"]))
     top_families = [
         {
             "representative_id": f["rep_id"],
-            "size": len(f["member_ids"]),
-            "share": round(len(f["member_ids"]) / float(m), 2),
+            "size": f["count"],
+            "share": round(f["count"] / float(m), 2),
             "opening": f["opening"],
             "member_ids": f["member_ids"][:5],
         }
@@ -388,11 +403,29 @@ def _cells_to_dist(snap: dict) -> dict[tuple[str, str, str], float]:
     return {k: v / tot for k, v in raw.items()} if tot > 0 else {}
 
 
+def _parse_iso_utc(raw) -> datetime | None:
+    if not raw or not isinstance(raw, str):
+        return None
+    text = raw.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(text)
+    except (ValueError, TypeError):
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def audience_js_drift(snapshots: list[dict]) -> dict:
     """Measure Jensen-Shannon audience shift between saved snapshots with breakdown cells."""
     valid = sorted(
         (s for s in (snapshots or []) if _cells_to_dist(s)),
-        key=lambda s: str(s.get("taken_at") or ""),
+        key=lambda s: (
+            _parse_iso_utc(s.get("taken_at")) or datetime.min.replace(tzinfo=timezone.utc),
+            str(s.get("taken_at") or ""),
+        ),
     )
     if len(valid) < 2:
         return {
@@ -442,13 +475,9 @@ def audience_js_drift(snapshots: list[dict]) -> dict:
         for c, a, g in loser_keys[:3]
     ]
 
-    days_between = 0.0
-    try:
-        dt1 = datetime.fromisoformat(str(before.get("taken_at") or ""))
-        dt2 = datetime.fromisoformat(str(after.get("taken_at") or ""))
-        days_between = round(max(0.0, (dt2 - dt1).total_seconds() / 86400.0), 1)
-    except ValueError:
-        pass
+    dt1 = _parse_iso_utc(before.get("taken_at"))
+    dt2 = _parse_iso_utc(after.get("taken_at"))
+    days_between = round(max(0.0, (dt2 - dt1).total_seconds() / 86400.0), 1) if dt1 and dt2 else 0.0
 
     return {
         "measurable": True,

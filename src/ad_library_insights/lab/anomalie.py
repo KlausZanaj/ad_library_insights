@@ -55,6 +55,7 @@ def select(ads: list[dict], *, mode: str = "company") -> dict:
     median_rpd = round(float(statistics.median(rpd_vals)), 1) if has_reach_peers else None
     p25_rpd = _quantile(rpd_vals, 0.25) if has_reach_peers else None
     p75_rpd = _quantile(rpd_vals, 0.75) if has_reach_peers else None
+    has_pos_reach_peers = has_reach_peers and median_rpd is not None and median_rpd > 0
     median_body_chars = round(float(statistics.median(body_vals)), 1) if body_vals else 0.0
     p75_creatives = _quantile(creatives_vals, 0.75) if creatives_vals else 1.0
 
@@ -70,7 +71,7 @@ def select(ads: list[dict], *, mode: str = "company") -> dict:
 
         fired: list[tuple[str, float, list[str], str]] = []
 
-        if (has_reach_peers and days is not None and rpd is not None
+        if (has_pos_reach_peers and days is not None and rpd is not None
                 and days >= max(45, p75_days) and rpd <= min(median_rpd * 0.30, p25_rpd)):
             strength = (days / max(median_days, 1.0)) * (median_rpd / max(float(rpd), 1.0))
             detail = (
@@ -79,7 +80,7 @@ def select(ads: list[dict], *, mode: str = "company") -> dict:
             )
             fired.append(("long_live_low_reach", round(strength, 2), ["reach", "copy"], detail))
 
-        if (has_reach_peers and days is not None and rpd is not None
+        if (has_pos_reach_peers and days is not None and rpd is not None and rpd > 0
                 and days <= 21 and rpd >= max(median_rpd * 2.5, p75_rpd * 1.5)):
             strength = float(rpd) / max(float(median_rpd), 1.0)
             detail = (
@@ -88,7 +89,7 @@ def select(ads: list[dict], *, mode: str = "company") -> dict:
             )
             fired.append(("fast_breakout_reach", round(strength, 2), ["reach", "copy"], detail))
 
-        if (has_reach_peers and rpd is not None
+        if (has_pos_reach_peers and rpd is not None and rpd > 0
                 and rpd >= max(median_rpd * 1.5, p75_rpd)
                 and (body_chars == 0 or (body_chars <= 60 and median_body_chars >= 120))):
             strength = (float(rpd) / max(float(median_rpd), 1.0)) * (max(median_body_chars, 60.0) / max(float(body_chars), 10.0))
@@ -98,7 +99,7 @@ def select(ads: list[dict], *, mode: str = "company") -> dict:
             )
             fired.append(("high_reach_minimal_copy", round(strength, 2), ["copy", "reach"], detail))
 
-        if (has_reach_peers and rpd is not None
+        if (has_pos_reach_peers and rpd is not None
                 and creatives >= max(3, int(p75_creatives))
                 and rpd <= min(median_rpd * 0.45, p25_rpd)):
             strength = float(creatives) * (float(median_rpd) / max(float(rpd), 1.0))
@@ -109,7 +110,7 @@ def select(ads: list[dict], *, mode: str = "company") -> dict:
             fired.append(("many_creatives_low_reach", round(strength, 2), ["reach", "copy"], detail))
 
         rank_top = imp_rank is not None and imp_rank <= max(3, len(active) // 5)
-        reach_top = rpd is not None and p75_rpd is not None and rpd >= p75_rpd
+        reach_top = has_pos_reach_peers and rpd is not None and rpd > 0 and p75_rpd is not None and p75_rpd > 0 and rpd >= p75_rpd
         if days is not None and days >= max(60, p75_days) and creatives == 1 and (reach_top or (rpd is None and rank_top)):
             strength = float(days) / max(median_days, 1.0) + (2.0 if reach_top else 1.0)
             basis_txt = (

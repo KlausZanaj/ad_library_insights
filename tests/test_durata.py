@@ -108,6 +108,19 @@ def test_lindy_conditional_survival_respects_risk_and_horizon_gates():
     short = [(5, True)] * 5 + [(25, False)] * 6
     assert durata.lindy_conditional(durata.kaplan_meier(short)["steps"], short, 25) is None
 
+    # Concepts ending ON age=14 must not count as at-risk past day 14
+    ended_on_age = [(14, True)] * 5 + [(50, False)] + [(5, True)] * 4
+    assert durata.lindy_conditional(durata.kaplan_meier(ended_on_age)["steps"], ended_on_age, 50) is None
+
+
+def test_analyze_treats_future_ended_date_as_active_at_as_of():
+    cohort = [_concept(i, 30, ended_after=40 if i < 4 else None) for i in range(6)]
+    cohort += [_concept(10 + i, 35, ended_after=10) for i in range(4)]
+    report = durata.analyze(cohort, mode="company", active_status="all", loaded_share=1.0, as_of=AS_OF)
+    assert report["available"] is True
+    assert report["active_in_window"] == 6 and report["ended_in_window"] == 4
+    assert report["max_observed_days"] == 30
+
 
 def test_analyze_quality_gates_fail_closed():
     cohort = [_concept(i, 30 + i * 4, ended_after=5 + i if i < 5 else None) for i in range(12)]

@@ -16,6 +16,10 @@ from __future__ import annotations
 import math
 
 META_AD_FEE_BY_MARKET = {"IT": 3.0}
+_EUR_MARKETS = frozenset({
+    "AT", "BE", "BG", "CY", "DE", "EE", "ES", "FI", "FR", "GR",
+    "HR", "IE", "IT", "LT", "LU", "LV", "MT", "NL", "PT", "SI", "SK",
+})
 CVR_SCENARIOS = (0.01, 0.02, 0.03)
 EU_CPC_BENCHMARK = {
     "median": 1.06,
@@ -217,9 +221,18 @@ def format_markdown(report: dict, lang: str = "en") -> list[str]:
         },
     }[lang]
 
-    one_in = _fmt(risk["one_in_round"], lang) if risk.get("one_in_round") else ("<0.0001%" if lang == "en" else "<0,0001%")
+    one_in_round = risk.get("one_in_round")
+    p2 = f"{round(stop['p_zero_2x'] * 100, 1):.1f}"
+    p3 = f"{round(stop['p_zero_3x'] * 100, 1):.1f}"
+    if lang == "it":
+        p2 = p2.replace(".", ",")
+        p3 = p3.replace(".", ",")
+    market_code = (report["inputs"].get("market") or "").strip().upper()
+    is_eur = (not market_code) or (market_code in _EUR_MARKETS)
 
     if lang == "it":
+        round_odds = f"circa 1 caso su {_fmt(one_in_round, lang)}" if one_in_round else "probabilità <0,0001%"
+        bench_caveat = "" if is_eur else " (benchmark in EUR; gli importi della scheda restano nella valuta del prezzo)"
         fee_note = (
             f"; maggiorazione Meta +{fee_pct:g}% su {market}: CPA massimo su Gestione Inserzioni {_fmt(report['cpa_ads'], lang)}"
             if fee_pct > 0
@@ -236,7 +249,7 @@ def format_markdown(report: dict, lang: str = "en") -> list[str]:
             f"a 2% conv. <= {_fmt(c2['max_cpc'], lang)} ({zone_labels[c2['zone']]}), "
             f"a 3% conv. <= {_fmt(c3['max_cpc'], lang)}.",
             f"- Benchmark e-commerce UE (settembre 2026): mediana {_fmt(bench['median'], lang)} EUR per clic sul link, "
-            f"metà centrale dei brand tra {_fmt(bench['p25'], lang)} e {_fmt(bench['p75'], lang)} EUR.",
+            f"metà centrale dei brand tra {_fmt(bench['p25'], lang)} e {_fmt(bench['p75'], lang)} EUR{bench_caveat}.",
             f"- Perdita massima del primo giro ({risk['ideas']} annunci): fino a {_fmt(risk['round_spend'], lang)} "
             + (
                 f"su Gestione Inserzioni ({_fmt(risk['max_loss_billed'], lang)} fatturati con +{fee_pct:g}% Meta)."
@@ -244,12 +257,14 @@ def format_markdown(report: dict, lang: str = "en") -> list[str]:
                 else "in budget di test."
             ),
             f"- Regola di stop (annuncio già assestato al CPA di pareggio): a 2x ({_fmt(stop['cut_low'], lang)}) 0 vendite "
-            f"ha probabilità ~{round(stop['p_zero_2x'] * 100, 1)}%; a 3x ({_fmt(stop['cut_high'], lang)}) scende al "
-            f"~{round(stop['p_zero_3x'] * 100, 1)}%; sull'intero giro con 0 vendite è quasi impossibile per sfortuna "
-            f"(circa 1 caso su {one_in}, al netto della fase iniziale di apprendimento Meta).",
+            f"ha probabilità ~{p2}%; a 3x ({_fmt(stop['cut_high'], lang)}) scende al "
+            f"~{p3}%; sull'intero giro con 0 vendite è quasi impossibile per sfortuna "
+            f"({round_odds}, al netto della fase iniziale di apprendimento Meta).",
         ]
         return lines
 
+    round_odds = f"about 1 in {_fmt(one_in_round, lang)}" if one_in_round else "probability <0.0001%"
+    bench_caveat = "" if is_eur else " (EUR benchmark; card amounts stay in the currency of your selling price)"
     fee_note = (
         f"; Meta +{fee_pct:g}% ad fee on {market}: max Ads Manager CPA {_fmt(report['cpa_ads'], lang)}"
         if fee_pct > 0
@@ -266,7 +281,7 @@ def format_markdown(report: dict, lang: str = "en") -> list[str]:
         f"at 2% CVR <= {_fmt(c2['max_cpc'], lang)} ({zone_labels[c2['zone']]}), "
         f"at 3% CVR <= {_fmt(c3['max_cpc'], lang)}.",
         f"- EU e-commerce benchmark (September 2026): median EUR {_fmt(bench['median'], lang)} per link click, "
-        f"central half of brands between EUR {_fmt(bench['p25'], lang)} and EUR {_fmt(bench['p75'], lang)}.",
+        f"central half of brands between EUR {_fmt(bench['p25'], lang)} and EUR {_fmt(bench['p75'], lang)}{bench_caveat}.",
         f"- Maximum first-round loss ({risk['ideas']} ads): up to {_fmt(risk['round_spend'], lang)} in Ads Manager"
         + (
             f" ({_fmt(risk['max_loss_billed'], lang)} billed including +{fee_pct:g}% Meta fee)."
@@ -274,8 +289,8 @@ def format_markdown(report: dict, lang: str = "en") -> list[str]:
             else "."
         ),
         f"- Stop rule (settled ad at break-even CPA): at 2x ({_fmt(stop['cut_low'], lang)}) 0 sales "
-        f"is ~{round(stop['p_zero_2x'] * 100, 1)}%; at 3x ({_fmt(stop['cut_high'], lang)}) it drops to "
-        f"~{round(stop['p_zero_3x'] * 100, 1)}%; zero signal over the full round is nearly impossible by luck alone "
-        f"(about 1 in {one_in}, once past Meta's initial learning days).",
+        f"is ~{p2}%; at 3x ({_fmt(stop['cut_high'], lang)}) it drops to "
+        f"~{p3}%; zero signal over the full round is nearly impossible by luck alone "
+        f"({round_odds}, once past Meta's initial learning days).",
     ]
     return lines

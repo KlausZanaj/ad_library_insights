@@ -61,6 +61,34 @@ def test_reach_concentration_concentrated_balanced_eu_fallback_and_gate():
     fb = struttura.reach_concentration(eu_only, country="US")
     assert fb["measurable"] is True and fb["scope"] == "eu_uk" and fb["top1_share"] == round(4000 / 7000, 3)
 
+    # In-market reads including zero-reach ads must not silently fall back to EU+UK
+    mixed_zero = [_ad("m1", 1000, eu_total=5000), _ad("m2", 0, eu_total=5000), _ad("m3", 0, eu_total=5000), _ad("m4", 0, eu_total=5000)]
+    for ad in mixed_zero:
+        ad["reach_in_market"] = True
+    mz = struttura.reach_concentration(mixed_zero, country="IT")
+    assert mz["measurable"] is True and mz["scope"] == "market" and mz["concepts_with_reach"] == 4
+
+    too_few_in_market = [_ad("z1", 1000, eu_total=5000), _ad("z2", 0, eu_total=5000)]
+    for ad in too_few_in_market:
+        ad["reach_in_market"] = True
+    extra = [_ad("z3", None, eu_total=5000), _ad("z4", None, eu_total=5000)]
+    no_fb = struttura.reach_concentration(too_few_in_market + extra, country="IT")
+    assert no_fb["measurable"] is False and no_fb["reason"] == "too_few_with_reach"
+
+
+def test_copy_families_counts_concepts_without_library_id_and_js_drift_handles_mixed_timestamps():
+    tpl = "Compact insulated steel bottle keeps water cold for 24 hours on trails and daily commutes."
+    ads = [_ad("", body=f"{tpl} Variant A"), _ad("", body=f"{tpl} Variant B"), _ad("", body=f"{tpl} Variant C"), _ad("id4", body="Completely separate espresso roast copy delivered fresh every week.")]
+    cf = struttura.copy_families(ads)
+    assert cf["measurable"] is True and cf["top_families"][0]["size"] == 3 and cf["largest_family_share"] == 0.75
+
+    snaps = [
+        {"taken_at": "2026-10-01T10:00:00", "audience_distribution": {"ads_with_breakdown": 1, "cells": [{"country": "IT", "age_range": "25-34", "gender": "male", "reach": 100}]}},
+        {"taken_at": "2026-10-15T10:00:00Z", "audience_distribution": {"ads_with_breakdown": 1, "cells": [{"country": "IT", "age_range": "25-34", "gender": "female", "reach": 100}]}},
+    ]
+    js = struttura.audience_js_drift(snaps)
+    assert js["measurable"] is True and js["days_between"] == 14.0
+
 
 def test_copy_families_ncd_clustering_symmetry_gate_and_cap():
     assert struttura.copy_families([_ad("1", body="Short copy.")])["measurable"] is False

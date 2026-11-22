@@ -7,6 +7,7 @@ prepared: one more question beats a generic plan.
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 from .lab import precheck
@@ -31,9 +32,10 @@ def _path(directory: Path | None = None) -> Path:
 
 def _number(value) -> float | None:
     try:
-        return float(str(value).replace(",", ".").strip())
+        val = float(str(value).replace(",", ".").strip())
     except (TypeError, ValueError):
         return None
+    return val if math.isfinite(val) else None
 
 
 def clean(data: dict) -> tuple[dict, dict]:

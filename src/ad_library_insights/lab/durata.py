@@ -203,7 +203,7 @@ def lindy_conditional(steps: list[dict], observations: list[tuple[int, bool]], m
         horizon_end = age + LINDY_HORIZON
         if horizon_end > max_observed:
             continue
-        at_risk = sum(1 for t, _ in observations if t >= age)
+        at_risk = sum(1 for t, _ in observations if t > age)
         if at_risk < MIN_LINDY_AT_RISK:
             continue
         s_age = survival_at(steps, age, max_observed)
@@ -276,8 +276,13 @@ def analyze(concepts: list[dict], *, mode: str = "company", active_status: str =
             if ended_date < started_date:
                 excluded_invalid += 1
                 continue
-            duration_days = max(1, (ended_date - started_date).days)
-            ended_iso = ended_date.isoformat()
+            if ended_date > as_of:
+                is_ended = False
+                duration_days = max(1, (as_of - started_date).days)
+                ended_iso = None
+            else:
+                duration_days = max(1, (ended_date - started_date).days)
+                ended_iso = ended_date.isoformat()
         else:
             duration_days = max(1, (as_of - started_date).days)
             ended_iso = None

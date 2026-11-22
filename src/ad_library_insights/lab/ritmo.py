@@ -18,7 +18,7 @@ is a keyword sample, a partial list, or lacks history:
 from __future__ import annotations
 
 import math
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 COMPLETE_SHARE = 0.9
 
@@ -63,11 +63,19 @@ def _parse_day(raw) -> date | None:
 def _parse_dt(raw) -> datetime | None:
     if not raw or not isinstance(raw, str):
         return None
+    text = raw.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
     try:
-        return datetime.fromisoformat(raw)
+        dt = datetime.fromisoformat(text)
     except ValueError:
-        d = _parse_day(raw)
-        return datetime(d.year, d.month, d.day) if d else None
+        d = _parse_day(text)
+        if d is None:
+            return None
+        return datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 def _ad_ids(ad: dict) -> set[str]:
@@ -353,6 +361,22 @@ def format_cusum(concepts: list[dict], *, as_of: date) -> dict:
         }
 
     mid = len(ordered) // 2
+    if ordered[mid - 1][0] == ordered[mid][0]:
+        min_side = max(4, MIN_CUSUM_CONCEPTS // 4)
+        candidates = [
+            i for i in range(min_side, len(ordered) - min_side + 1)
+            if ordered[i - 1][0] < ordered[i][0]
+        ]
+        if not candidates:
+            return {
+                "measurable": False,
+                "reason": "clustered_dates",
+                "concepts": len(ordered),
+                "span_days": span_days,
+                "drift_detected": False,
+                "trigger_ai": False,
+            }
+        mid = min(candidates, key=lambda i: (abs(i - mid), i))
     baseline = ordered[:mid]
     recent = ordered[mid:]
     split_date = recent[0][0].isoformat()

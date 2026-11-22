@@ -96,3 +96,9 @@ def test_anomalie_gates_clean_account_all_five_rules_cap_and_pack_isolation():
     for untouched in ("overview", "creative", "testing"):
         assert "Out-of-pattern ads" not in slices[untouched]
         assert "Annunci fuori schema" not in slices[untouched]
+
+
+def test_anomalie_ignores_zero_reach_baselines():
+    zero_ads = [_ad(f"z{i}", days=5, rpd=0, creatives=1, body="", rank=i + 1, verdict="testing") for i in range(5)]
+    res = anomalie.select(zero_ads, mode="company")
+    assert res["available"] is True and res["status"] == "none" and res["items"] == []

@@ -134,6 +134,24 @@ def test_format_cusum_detects_slow_up_and_down_drifts_without_single_ad_false_al
     short = ritmo.format_cusum(clustered, as_of=AS_OF)
     assert short["measurable"] is False and short["reason"] == "short_span"
 
+    # Same-day batch across formats must NOT trigger false CUSUM drift by library_id ordering
+    same_day_batch = (
+        [_concept(f"10{i}", 30, media_type="image") for i in range(8)]
+        + [_concept(f"20{i}", 30, media_type="video") for i in range(8)]
+        + [_concept("301", 5, media_type="video")]
+    )
+    batch_cu = ritmo.format_cusum(same_day_batch, as_of=AS_OF)
+    assert batch_cu["measurable"] is False and batch_cu["reason"] == "clustered_dates"
+    assert batch_cu["drift_detected"] is False and batch_cu["trigger_ai"] is False
+
+    # Mixed naive / Z / offset-aware snapshot timestamps must not crash merge_snapshot_concepts
+    mixed_snaps = [
+        _snap("2026-10-01T10:00:00", [_concept("m1", 10)]),
+        _snap("2026-10-22T10:00:00Z", [_concept("m1", 31), _concept("m2", 2)]),
+    ]
+    _, _, span_days = ritmo.merge_snapshot_concepts(mixed_snaps)
+    assert span_days == 21
+
 
 # --- Little's Law --------------------------------------------------------------------
 

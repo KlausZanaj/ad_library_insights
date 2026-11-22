@@ -115,6 +115,24 @@ def test_project_clean_preserves_backwards_compatibility_and_validates_optional_
     _, wipeout = project.clean({**BASE_CARD, "shipping_cost": "250"})
     assert wipeout == {"product_cost": "above_price"}
 
+    for bad_num in ("nan", "inf", "-inf"):
+        _, bad_res = project.clean({**BASE_CARD, "price": bad_num})
+        assert bad_res["price"] == "number"
+
+
+def test_precheck_format_markdown_handles_tiny_p_zero_and_non_eur_market():
+    rep = precheck.analyze(price=100, product_cost=20, market="IT", ideas=12, multiplier=2.5)
+    assert rep["risk"]["one_in_round"] is None
+    it_text = "\n".join(precheck.format_markdown(rep, "it"))
+    en_text = "\n".join(precheck.format_markdown(rep, "en"))
+    assert "1 caso su <" not in it_text and "probabilità <0,0001%" in it_text
+    assert "13,5%" in it_text and "5,0%" in it_text
+    assert "1 in <" not in en_text and "probability <0.0001%" in en_text
+
+    us_rep = precheck.analyze(price=100, product_cost=20, market="US")
+    us_en = "\n".join(precheck.format_markdown(us_rep, "en"))
+    assert "EUR benchmark; card amounts stay in the currency of your selling price" in us_en
+
 
 def test_briefs_project_section_and_plan_include_precheck_and_skeptical_jury():
     # briefs.test_numbers stays unchanged for existing callers
