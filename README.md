@@ -65,7 +65,14 @@ A complete real-world example produced from a saved search is in [`examples/`](e
 
 ## Installation
 
-Requires Python 3.10 or newer.
+Requires Python 3.10 or newer. First download the repository (or clone it) and open the project folder:
+
+```bash
+git clone https://github.com/KlausZanaj/ad_library_insights.git
+cd ad_library_insights
+```
+
+*(Alternatively, download and extract the ZIP archive from GitHub before running the commands below.)*
 
 **Windows (PowerShell)**
 
@@ -217,6 +224,7 @@ The weights never change. See [`docs/valutazione.md`](docs/valutazione.md) and [
 - **Reach exists only for the EU and the UK.** Meta publishes reach and audience for ads delivered in the European Union or the United Kingdom. Elsewhere the app states that reach is not published and rates on impression position.
 - **Reach is a floor for concepts split over many ads.** Up to three ads per concept are opened and summed, and every figure states how many ads of the concept were read.
 - **Standard live searches only list currently active ads.** Tracking cut rates, stopped ads, and `audience_drift` over time requires a second saved snapshot of the same company (`what_changed`), while the on-demand **Durata** view explicitly fetches both active and recently ended ads (60–180 days) to estimate cohort survival.
+- **Durata requires ≥90% cohort coverage (up to ~400 ads loaded).** For advertisers with hundreds or thousands of ads in the window—or when Meta does not report the total ad count—**Durata** reports *not measurable* rather than extrapolating from a partial list (and flags cohorts with fewer than 20 ended concepts as a small sample).
 - **It reads a web page, not an API.** Layout changes can require parser updates; when no cards are served after retries, the tool reports `blocked` rather than "no results".
 - **Start dates reset on edits,** and the rule-based copy breakdown is a first pass in English, Italian, Spanish, French and German.
 
@@ -229,7 +237,7 @@ pip install -e ".[dev]"
 python -m pytest
 ```
 
-The 478-test suite runs entirely offline using recorded fixtures in `tests/fixtures/`, a scripted renderer and a deterministic fake clock.
+The 482-test suite runs entirely offline using recorded fixtures in `tests/fixtures/`, a scripted renderer and a deterministic fake clock.
 
 ## License
 
