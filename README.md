@@ -229,7 +229,7 @@ pip install -e ".[dev]"
 python -m pytest
 ```
 
-The 469-test suite runs entirely offline using recorded fixtures in `tests/fixtures/`, a scripted renderer and a deterministic fake clock.
+The 478-test suite runs entirely offline using recorded fixtures in `tests/fixtures/`, a scripted renderer and a deterministic fake clock.
 
 ## License
 
