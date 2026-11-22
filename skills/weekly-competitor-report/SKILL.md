@@ -1,7 +1,7 @@
 ---
 name: weekly-competitor-report
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
   category: AdvertisingResearch
 description: >-
   Recurring competitor ad report built from the public Meta Ad Library. Use
@@ -52,7 +52,10 @@ report folder:
     listed, ads whose copy, headline, button, destination or offer changed
     since the previous saved search, and—for `page_id` company searches with
     at least two snapshots—`ritmo` (`sta_lta` 1w vs 8w launch pace, `cusum`
-    format drift, `littles_law` `L = λW` balance, and `trigger_ai`). Where
+    format drift, `littles_law` `L = λW` balance, and `trigger_ai`) plus
+    `audience_drift` (Jensen-Shannon distance on `country × age × gender`
+    distributions when EU/UK reach breakdowns are available across
+    snapshots). Where
     only exported CSVs exist, match rows on `library_id` instead. The buckets:
 
     | Bucket | Definition |
@@ -74,7 +77,7 @@ report folder:
 5.  **Write the report** following the
     [template](references/report-template.md) and save it as
     `<report folder>/<YYYY-MM-DD>/report.md`, including the
-    **Pace and format shifts (Ritmo)** table.
+    **Pace and format shifts (Ritmo)** table and any measurable `audience_drift`.
 
 6.  **First run.** With no previous search there is nothing to compare:
     deliver the baseline (longest-running ads and copy patterns) and say that

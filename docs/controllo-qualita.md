@@ -62,6 +62,17 @@ stato corretto.
 | Budget del primo giro | Budget per annuncio per cinque annunci | Come sopra | Come sopra | `briefs.test_numbers` |
 | Stima di utilizzo | Dimensione del testo e numero di immagini da passare all'assistente | Il testo preparato | È una stima: i limiti dipendono dal piano e dal modello dell'utente | `consumption.estimate`, `consumption.measure` |
 
+### Moduli v0.2–v0.5 (Durata, Ritmo, Su cosa si regge, Annunci fuori schema, Prova prima di spendere)
+
+| Cosa mostra | Cosa misura davvero | Dove lo prende | Limiti da conoscere | Funzione / modulo |
+|---|---|---|---|---|
+| Durata (sopravvivenza coorte) | Curva Kaplan-Meier con banda di Greenwood, RMST, regime Weibull (`k`) e previsione condizionata Lindy (`60–180 gg`) | Fetch on-demand `active + ended` della pagina (`/api/durata` / `analyze_durata`) | Richiede copertura >= 90% della coorte; non vede annunci cancellati prima della finestra o rimossi dalla Library | `lab.durata.analyze`, `service.analyze_durata` |
+| Ritmo (cadenza e mix formati) | Burst lanci STA/LTA (1s vs 8s), derapate di formato via CUSUM bivariato e bilancio `L = λW` (Legge di Little) | Date di avvio + snapshot locali della stessa pagina (`/api/history`, `/api/durata`) | Sotto 3 settimane su soli annunci attivi risente di survivor bias; misura cadenza/formati, mai spesa né ROAS | `lab.ritmo.analyze`, `history.diff` |
+| Sovrapposizione e deriva audience | Indice di Pianka (compare A vs B) e distanza di Jensen-Shannon fra snapshot sullo spazio `country × age × gender` | Breakdown demografici/geografici UE+UK degli annunci letti | Disponibile solo per annunci mostrati in UE/UK; stima esposizione demografica, non acquirenti reali | `lab.struttura.audience_overlap_pianka`, `lab.struttura.audience_js_drift` |
+| Su cosa si regge (anatomia) | Concentrazione reach (HHI, `effective_n`, Gini, quota top 1/3), famiglie di copy via NCD `zlib` e diversità di Shannon | Concetti caricati della ricerca (azienda o campione keyword) | Sulle keyword descrive il campione letto; l'identità testuale usa NCD deterministica sui testi | `lab.struttura.analyze` |
+| Annunci fuori schema | Fino a 4 annunci attivi con contrasti tra segnali indipendenti rispetto alle mediane interne (es. longevo con poca copertura, picco rapido, alta reach con copy minimo) | Median/quantili interni del set analizzato | Segnala anomalie strutturali per la lettura critica (retargeting, visual hook), non decreta vincitori né perdenti | `lab.anomalie.select` |
+| Prova prima di spendere | Margine unitario, CPA massimo, cut `2x–3x`, CPC massimo a `1%/2%/3%` CVR vs IQR benchmark UE, probabilità Poisson `0` vendite e audit CSV Ads Manager | Parametri reali progetto (`Prezzo`, costi, IVA, reso, fee `+3%` IT) + CSV esportato opzionale | I benchmark CPC UE sono in euro (riferimento Set 2026); l'output indica rischi aritmetici prima di spendere, mai previsioni di profitto | `lab.precheck.precheck_numbers`, `lab.precheck.audit_ads_csv`, `briefs.test_numbers` |
+
 ## B. Revisore indipendente
 
 Un revisore che non aveva visto il lavoro ha ricevuto solo il codice e i dati reali salvati

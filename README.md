@@ -216,7 +216,7 @@ The weights never change. See [`docs/valutazione.md`](docs/valutazione.md) and [
 - **No spend and no sales.** The Ad Library does not publish them. The rating is a clue about what an advertiser keeps funding, not proof of profit.
 - **Reach exists only for the EU and the UK.** Meta publishes reach and audience for ads delivered in the European Union or the United Kingdom. Elsewhere the app states that reach is not published and rates on impression position.
 - **Reach is a floor for concepts split over many ads.** Up to three ads per concept are opened and summed, and every figure states how many ads of the concept were read.
-- **Ads already stopped are not visible in a single search.** Cut rates and survival require a second saved search of the same company.
+- **Standard live searches only list currently active ads.** Tracking cut rates, stopped ads, and `audience_drift` over time requires a second saved snapshot of the same company (`what_changed`), while the on-demand **Durata** view explicitly fetches both active and recently ended ads (60–180 days) to estimate cohort survival.
 - **It reads a web page, not an API.** Layout changes can require parser updates; when no cards are served after retries, the tool reports `blocked` rather than "no results".
 - **Start dates reset on edits,** and the rule-based copy breakdown is a first pass in English, Italian, Spanish, French and German.
 

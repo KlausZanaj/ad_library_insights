@@ -35,9 +35,9 @@ Searches that could not be fetched: {none | list}.
 
 ## Pace and format shifts (Ritmo)
 
-| Advertiser | STA/LTA (1w vs 8w) | Format CUSUM | Little's Law (L = λW) | Alert |
-|---|---|---|---|---|
-| {name} | {sta_lta_summary} | {cusum_summary} | {littles_law_summary} | {steady or real peak + id + alternative explanation} |
+| Advertiser | STA/LTA (1w vs 8w) | Format CUSUM | Little's Law (L = λW) | Audience drift (JS) | Alert |
+|---|---|---|---|---|---|
+| {name} | {sta_lta_summary} | {cusum_summary} | {littles_law_summary} | {js_distance_summary_or_na} | {steady or real peak + id + alternative explanation} |
 
 ## Messaging shifts
 
