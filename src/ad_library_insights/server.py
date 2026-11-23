@@ -7,7 +7,7 @@ from fastmcp import FastMCP
 
 from . import breakeven, briefs, compare, consumption, history, project, report, service
 from .client import AdLibraryClient, default_client
-from .lab import ritmo
+from .lab import audit, ritmo
 
 mcp = FastMCP(
     name="Ad Library Insights",
@@ -424,6 +424,20 @@ def check_breakeven_cpa(price: float, product_cost: float = 0, shipping_cost: fl
     return {"ok": True, "breakeven_cpa": cpa, "cut_threshold": round(cpa * multiplier, 2),
             "multiplier": multiplier, "to_cut": [r["name"] for r in judged if r["verdict"] == "cut"],
             "ads": judged}
+
+
+@mcp.tool
+def check_report(pack_folder: str, report_text: str = "", report_path: str = "") -> dict:
+    """Audit a draft Markdown report against the pack manifest without blocking delivery.
+
+    Warning-only deterministic checks: flags unknown ad IDs, too-recent ads cited as
+    winners without caveat, mismatched Level 3 project numbers, reach claims when
+    NO REACH IN applies, unmeasured survival percentages, or competitor spend/profit claims.
+    """
+    try:
+        return audit.check_report(pack_folder, report_text, report_path=report_path or None)
+    except (ValueError, OSError) as exc:
+        return {"ok": False, "error": str(exc)}
 
 
 def run() -> None:

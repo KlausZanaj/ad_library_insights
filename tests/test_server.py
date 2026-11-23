@@ -30,7 +30,7 @@ def test_tools_are_registered():
             return {tool.name for tool in await client.list_tools()}
 
     assert asyncio.run(names()) == {"search_ads", "scrape_library_url", "analyze_top_ads",
-                                    "export_report", "check_breakeven_cpa",
+                                    "export_report", "check_breakeven_cpa", "check_report",
                                     "find_advertiser_pages", "analyze_company",
                                     "what_changed", "estimate_consumption", "prepare_analysis",
                                     "get_project", "save_project", "compare_companies"}

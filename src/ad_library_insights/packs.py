@@ -536,9 +536,79 @@ def folder_for(result: dict, level: str, directory: Path | None = None, today: d
     return (Path(directory) if directory else home_dir() / "packs") / name
 
 
+def _collect_audit_meta(result: dict, extra_meta: dict | None = None) -> dict:
+    ad_ids: set[str] = set()
+    too_recent_ids: set[str] = set()
+    ended_ids: set[str] = set()
+    has_reach = False
+    for ad in result.get("ads") or []:
+        if ad.get("reach_per_day") is not None:
+            has_reach = True
+        lid = str(ad.get("library_id") or "").strip()
+        if lid:
+            ad_ids.add(lid)
+        is_recent = bool(ad.get("too_recent"))
+        is_ended = ad.get("verdict") == "ended" or ad.get("status") == "inactive"
+        if is_recent and lid:
+            too_recent_ids.add(lid)
+        if is_ended and lid:
+            ended_ids.add(lid)
+        for member in ad.get("members") or []:
+            mid = str(member.get("library_id") or "").strip()
+            if mid:
+                ad_ids.add(mid)
+                if is_recent:
+                    too_recent_ids.add(mid)
+                if is_ended:
+                    ended_ids.add(mid)
+
+    dur = result.get("durata") or {}
+    for row in dur.get("longest_active") or []:
+        if row.get("library_id"):
+            ad_ids.add(str(row["library_id"]))
+    for row in dur.get("fastest_ended") or []:
+        if row.get("library_id"):
+            lid = str(row["library_id"])
+            ad_ids.add(lid)
+            ended_ids.add(lid)
+
+    rit = result.get("ritmo") or {}
+    for lid in ((rit.get("sta_lta") or {}).get("recent_ids") or []):
+        ad_ids.add(str(lid))
+    for lid in ((rit.get("cusum") or {}).get("example_ids") or []):
+        ad_ids.add(str(lid))
+
+    st = result.get("struttura") or {}
+    for row in ((st.get("reach_concentration") or {}).get("leaders") or []):
+        if row.get("library_id"):
+            ad_ids.add(str(row["library_id"]))
+    for fam in ((st.get("copy_families") or {}).get("top_families") or []):
+        if fam.get("representative_id"):
+            ad_ids.add(str(fam["representative_id"]))
+        for mid in fam.get("member_ids") or []:
+            ad_ids.add(str(mid))
+
+    anom = result.get("anomalie") or {}
+    for item in anom.get("items") or []:
+        if item.get("library_id"):
+            ad_ids.add(str(item["library_id"]))
+
+    survival_ok = bool(((result.get("changes") or {}).get("survival") or {}).get("available")) or bool(dur.get("available"))
+    meta: dict = {
+        "ad_ids": sorted(ad_ids),
+        "too_recent_ids": sorted(too_recent_ids),
+        "ended_ids": sorted(ended_ids),
+        "has_reach": has_reach,
+        "survival_measurable": survival_ok,
+    }
+    if extra_meta:
+        meta.update(extra_meta)
+    return meta
+
+
 def write(result: dict, level: str, slices: dict[str, str], pictures: list[dict], brief: str,
           extra: dict[str, str] | None = None, directory: Path | None = None,
-          today: date | None = None, ads: int = 0) -> dict:
+          today: date | None = None, ads: int = 0, audit_meta: dict | None = None) -> dict:
     """Save a pack to its own folder and return where everything is.
 
     The ``frames`` folder is rebuilt every time: it holds the pictures of this analysis
@@ -565,7 +635,8 @@ def write(result: dict, level: str, slices: dict[str, str], pictures: list[dict]
     manifest = {"level": level, "subject": subject_name(result), "country": result.get("country"),
                 "ads": ads, "files": sorted(Path(path).name for path in files.values()),
                 "images": [picture["name"] for picture in pictures],
-                "created": (today or date.today()).isoformat()}
+                "created": (today or date.today()).isoformat(),
+                "audit": _collect_audit_meta(result, audit_meta)}
     (folder / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
     return {"folder": str(folder), "files": files, "images": images,
             "frames_folder": str(frames_folder) if images else None}

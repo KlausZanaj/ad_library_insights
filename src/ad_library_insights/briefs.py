@@ -668,6 +668,16 @@ def prepare(level: str, result: dict, ads: int = 10, frames: bool = False, proje
     made = compose(level, result, ads, frames, project, lang)
     extra = ({"project": project_section(project, "en" if lang == "en" else "it", result)}
              if level == "plan" else None)
+    audit_meta = None
+    if level == "plan" and project:
+        raw_nums = test_numbers(project, pace=((result.get("signals") or {}).get("new_per_week")))
+        audit_meta = {
+            "project_numbers": {
+                k: raw_nums[k]
+                for k in ("margin", "cpa", "roas", "cut_low", "cut_high", "per_ad", "round_total")
+                if k in raw_nums
+            }
+        }
     saved = packs.write(result, level, made.pop("slices"), made.pop("pictures"), made["text"], extra,
-                        directory, today, ads=made["ads"])
+                        directory, today, ads=made["ads"], audit_meta=audit_meta)
     return {**made, **saved}
