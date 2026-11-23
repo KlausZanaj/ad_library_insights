@@ -399,11 +399,12 @@ def test_instructions_exist_in_both_languages():
 
 AGENTS = {"ad-copy-analyst": "copy.md", "ad-creative-analyst": "creative.md",
           "ad-reach-analyst": "reach.md", "ad-testing-analyst": "testing.md"}
+JURY_AGENT = "ad-skeptical-jury"
 
 
 def test_each_specialist_agent_reads_only_its_slice():
     folder = ROOT / ".claude" / "agents"
-    assert {p.stem for p in folder.glob("*.md")} == set(AGENTS)
+    assert {p.stem for p in folder.glob("*.md")} == set(AGENTS) | {JURY_AGENT}
     for name, data_file in AGENTS.items():
         fields, body = front_matter(folder / f"{name}.md")
         assert fields["name"] == name and len(fields["description"]) > 60
@@ -414,10 +415,19 @@ def test_each_specialist_agent_reads_only_its_slice():
         assert "**Strength**" in body and "Never invent" in body
     assert "start, middle" in (folder / "ad-creative-analyst.md").read_text(encoding="utf-8")
 
+    j_fields, j_body = front_matter(folder / f"{JURY_AGENT}.md")
+    assert j_fields["name"] == JURY_AGENT and len(j_fields["description"]) > 60
+    assert j_fields["tools"] == "Read, Glob, Grep"
+    assert "`overview.md`" in j_body and "`copy.md`" in j_body and "`project.md`" in j_body
+    for excluded in ("`creative.md`", "`reach.md`", "`testing.md`"):
+        assert excluded not in j_body
+    assert "No blocker — ready to test" in j_body
+    assert "Never rewrite" in j_body and "Never invent" in j_body
+
 
 def test_specialists_pin_sonnet_model():
     folder = ROOT / ".claude" / "agents"
-    for name in AGENTS:
+    for name in (*AGENTS, JURY_AGENT):
         fields, _ = front_matter(folder / f"{name}.md")
         assert fields.get("model") == "sonnet", (name, fields)
 
@@ -432,6 +442,9 @@ def test_coordinator_enforces_strict_evidence_and_single_neutral_followup():
     assert "`Out-of-pattern ads (Annunci fuori schema)`" in analysis
     assert "contradict each other" in template and "To test or verify, in order" in template
     assert "at most one neutral follow-up" in plan.lower() and "Risks and what we do not know" in plan
+    assert "`check_report`" in analysis and "warning-only" in analysis.lower()
+    assert "`check_report`" in plan and "warning-only" in plan.lower()
+    assert f"`{JURY_AGENT}`" in plan and "No blocker" in plan
 
 
 def _flat(text: str) -> str:
@@ -678,8 +691,8 @@ def test_level_skills_quote_only_what_the_code_makes(company, tmp_path):
         folder = ROOT / "skills" / name
         for path in (folder / "SKILL.md", *sorted((folder / "references").glob("*.md"))):
             for token in _quoted(path.read_text(encoding="utf-8")):
-                known = (token in files or token in AGENTS or token in skills or token in tools
-                         or token in briefs.LEVELS or token in everything)
+                known = (token in files or token in AGENTS or token == JURY_AGENT or token in skills
+                         or token in tools or token in briefs.LEVELS or token in everything)
                 assert known, (path.name, token)
     plan = _flat((ROOT / "skills" / "competitor-plan" / "SKILL.md").read_text(encoding="utf-8"))
     for step in ("Check before spending", "campaign structure", "creative pace", "Conversions API", "Use them as they are"):

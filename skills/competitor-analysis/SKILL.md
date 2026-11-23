@@ -1,17 +1,18 @@
 ---
 name: competitor-analysis
 metadata:
-  version: "1.2.0"
+  version: "1.3.0"
   category: AdvertisingResearch
 description: >-
   Explains why a competitor gets the reach it gets on Meta, from its own ads:
   copy, creative, reach and audience, testing and destinations. Use when
   someone asks why a company's ads work, what its ads have in common, or wants
   the Analysis level of Ad Library Insights. Needs the Ad Library Insights MCP
-  server (estimate_consumption, prepare_analysis, find_advertiser_pages). Runs
-  four specialist sub-agents where the client supports them and a single pass
-  otherwise. Skip for a plain list of ads (use ad-library-research) and for a
-  plan for the user's own product (use competitor-plan).
+  server (estimate_consumption, prepare_analysis, find_advertiser_pages,
+  check_report). Runs four specialist sub-agents where the client supports them
+  and a single pass otherwise. Skip for a plain list of ads (use
+  ad-library-research) and for a plan for the user's own product (use
+  competitor-plan).
 ---
 
 # Competitor Analysis
@@ -133,6 +134,10 @@ analysis.
     -   The launch pace is quoted with what it was counted on. When
         `the list was read in part`, say that the real pace is higher.
     -   Anything you inferred is called a hypothesis, with the way to check it.
+    -   When MCP tools are available, call `check_report` with the pack folder
+        and your draft report before delivering: it is warning-only and
+        non-blocking, so fix any real unknown ad id, too-recent winner slip,
+        unmeasured survival percentage or competitor spend claim it flags.
 
 8.  **State the limits** as the template asks, then stop. Offer the plan
     (`competitor-plan`) only if the user has a product of their own to apply

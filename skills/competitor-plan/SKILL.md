@@ -1,7 +1,7 @@
 ---
 name: competitor-plan
 metadata:
-  version: "1.2.0"
+  version: "1.3.0"
   category: AdvertisingStrategy
 description: >-
   Turns a competitor's ads into a plan for the user's own product: diagnosis,
@@ -11,8 +11,8 @@ description: >-
   ad ideas grounded in what works, a test plan, or the Plan level of Ad
   Library Insights. Needs the Ad Library Insights MCP server (get_project,
   save_project, estimate_consumption, prepare_analysis, check_breakeven_cpa,
-  what_changed). Skip when there is no product of the user's to plan for (use
-  competitor-analysis).
+  what_changed, check_report). Skip when there is no product of the user's to
+  plan for (use competitor-analysis).
 ---
 
 # Competitor Plan
@@ -68,11 +68,18 @@ the means of the person who has to carry it out.
     numbers, and has a type from the list in the overview. They are not
     copies: no sentences, brand names or promises of the competitor. Each idea
     tests one thing. Then run the **skeptical jury (`Test before spending`)**:
-    have four critical buyer profiles (price skeptic, 2-second fast scroller,
-    trust skeptic, comparison shopper) critique those five ideas side by side
-    against the competitor's top ads. Give zero compliments and zero invented
-    purchase probabilities; state one objection citing a competitor ad id and
-    one concrete fix to apply before spending.
+    -   **With sub-agents:** after drafting the five ideas, run
+        `ad-skeptical-jury` in isolation with the pack folder (`project.md`,
+        `overview.md`, `copy.md`) and only the five drafts (no ideation notes).
+        Its scope is strictly copy, hook, offer, proof and price/margin
+        alignment, and it outputs **No blocker — ready to test** whenever an
+        idea is already solid instead of forcing flaws. Apply valid surgical
+        fixes to the final five ideas and summarize its verdict under
+        `Test before spending`.
+    -   **Without sub-agents:** run those same four critical buyer profiles
+        (price skeptic, 2-second fast scroller, trust skeptic, comparison
+        shopper) directly from `brief.md` with the same zero-compliment,
+        zero-invented-probability and **No blocker — ready to test** rule.
 
 9.  **Propose the campaign structure.** Broad or narrow audience, in line
     with what `reach.md` shows the competitor does (age range, gender,
@@ -119,7 +126,10 @@ the means of the person who has to carry it out.
     reading go in the appendix. Whoever decides reads page one only. In the
     table of the next seven days the column Who says "You" unless the user
     named who works with them; where handing over makes sense, add to whom in
-    brackets.
+    brackets. When MCP tools are available, call `check_report` (warning-only,
+    non-blocking) with the pack folder and your draft plan before delivering,
+    and fix any real unknown ad id, `project.md` number mismatch, or ungrounded
+    claim it flags.
 
 ## Rules
 
