@@ -12,9 +12,11 @@ import re
 from pathlib import Path
 
 _BARE_ID_RE = re.compile(r"(?<!\d)(\d{15,18})(?!\d)")
-_CONTEXT_12_ID_RE = re.compile(r"(?:[?&]id=|\|\s*)(\d{12,18})(?=\s*\||[^\d]|$)")
+_CONTEXT_12_ID_RE = re.compile(r"[?&]id=(\d{12,18})(?!\d)")
 _PREFIXED_ID_RE = re.compile(
-    r"(?i)(?:(?<!per\s)(?<!test\s)\b(?:ad|annuncio)\s+#?|(?:\bad\s*id|\blibrary[\s_]+id|\bid)\s*#?:?\s*)(\d{4,18})\b"
+    r"(?i)(?:(?<!per\s)(?<!test\s)(?<!ogni\s)(?<!each\s)\b(?:ad|annuncio)\s+#?|"
+    r"(?:\bad\s*id|\blibrary[\s_]+id|\bid)\s*#?:?\s*)"
+    r"(\d{4,18})\b(?!\s*(?:€|\$|£|eur\b|euro\b|usd\b|gbp\b|%|x\b|giorni\b|days\b|volte\b|times\b))"
 )
 _SLICE_ID_RE = re.compile(r"(?<!\d)(\d{12,18})(?!\d)|\bid\s+(\d{3,18})\b", re.IGNORECASE)
 _NUMBER_RE = re.compile(r"\d[\d.,]*")
@@ -36,9 +38,9 @@ _REACH_NEGATION_RE = re.compile(
     r"nessuna\s+copertura|without\s+reach|senza\s+copertura|non\s+pubblica)"
 )
 _PROFIT_CLAIM_RE = re.compile(
-    r"(?i)\b(?:competitor|advertiser|concorrente|inserzionista|this\s+ad|questo\s+annuncio)\b.{0,55}"
+    r"(?i)\b(?:competitor|advertiser|concorrente|inserzionista|this\s+ad|questo\s+annuncio)\b[^,.;:\n]{0,45}"
     r"(?:\b(?:is\s+profitable|makes\s+money|è\s+profittevole|guadagna)\b|"
-    r"\b(?:spends?|spende|budget\s+(?:of|di))\s*[€$£]?\s*\d[\d.,]*|"
+    r"\b(?:spends?|spende)\s*(?:[€$£]\s*\d[\d.,]*|\d[\d.,]*\s*(?:€|\$|£|eur\b|euro\b|usd\b))|"
     r"\bhas\s+(?:a\s+)?roas\s+of\s*\d)"
 )
 _PROFIT_NEGATION_RE = re.compile(
@@ -216,8 +218,10 @@ def check_report(pack_folder: str | Path, report_text: str = "",
                 low = proj_nums.get("cut_low")
                 high = proj_nums.get("cut_high")
                 per_ad = proj_nums.get("per_ad")
-                # Ignore 2x/3x rule multipliers when real monetary thresholds sit well above 4
-                monetary = [v for v in nums if v not in (2.0, 3.0)] if (low or 0) > 4.0 else nums
+                # Ignore 2x/3x rule multipliers when real monetary thresholds sit well above 4, and exclude break-even CPA
+                monetary = [v for v in nums if v not in (2.0, 3.0)] if (low or 0) > 4.0 else list(nums)
+                if "cpa" in proj_nums and float(proj_nums["cpa"]) + 0.06 < (low or float("inf")):
+                    monetary = [v for v in monetary if not _matches_expected([v], float(proj_nums["cpa"]))]
                 if not monetary:
                     continue
                 if low is not None and high is not None and len(monetary) >= 2:

@@ -183,26 +183,31 @@ def test_audit_single_cut_threshold_and_contextual_12digit_id_rules(tmp_path):
     pack = briefs.prepare("plan", _sample_result(), ads=1, project=_project_card(), lang="it", directory=tmp_path)
     folder = Path(pack["folder"])
 
-    # Single-threshold cut lines + 12-digit non-ID order code must NOT produce false alarms
+    # Single-threshold cut lines (incl. parenthetical CPA), Page ID in table, currency after ad/annuncio,
+    # and user budget / comparative cadence phrasing must NOT produce false alarms
     clean = """
 - Cut rule: switch off at 2x CPA (126.22).
+- Cut rule: 2x CPA = 126.22 EUR (CPA 63.11).
 - Regola di spegnimento: 189,33 €.
+- Ogni annuncio 1432 EUR in prova; each ad 157.78 €.
+- Rispetto al concorrente, con un budget di 2.862 € copri l'intero mese.
+- Il concorrente spende 3 volte più video che immagini.
+| 1 | 365604620536 | Page ID in table |
 - Reference order number 123456789012 and ad 882123034940286.
 """
     res_clean = audit.check_report(folder, clean)
     assert res_clean["status"] == "ok" and res_clean["warning_count"] == 0
 
-    # Wrong single cut + wrong one-sided range + contextual 12-digit IDs (table cell, URL, prefixed id) + 15-digit bare ID
+    # Wrong single cut + wrong one-sided range + URL 12-digit ID + prefixed id + 15-digit bare ID
     bad = """
 - Cut rule: switch off at 2x CPA (500).
 - Cut rule: spend 126.22 to 999 before stopping.
-| 1 | 123456789012 | Video |
 - https://www.facebook.com/ads/library/?id=234567890123
 - Compare with id 345678901234 and 999888777666555.
 """
     res_bad = audit.check_report(folder, bad)
     assert res_bad["status"] == "warnings"
     unknown = {w["id"] for w in res_bad["warnings"] if w["code"] == "unknown_ad_id"}
-    assert unknown == {"123456789012", "234567890123", "345678901234", "999888777666555"}
+    assert unknown == {"234567890123", "345678901234", "999888777666555"}
     cut_fields = [w["field"] for w in res_bad["warnings"] if w["code"] == "project_number_mismatch"]
     assert "cut_rule" in cut_fields and "cut_high" in cut_fields and "cut_low" not in cut_fields
