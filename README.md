@@ -117,9 +117,9 @@ ad-library-insights app
 ## Connect to Claude Code, Google Antigravity, Codex CLI or Claude Desktop
 
 The program never calls an external LLM API. It works across three open layers:
-- **Universal Web App Copy (`brief.md`)**: one-click single-pass brief for any browser chat (ChatGPT, Gemini Web, Claude Web) with zero setup.
-- **Standard MCP server (`14` tools, including `check_report`) + 5 [`skills/`](skills)**: model-agnostic integration for Claude Code, Google Antigravity, Codex CLI, Cursor and Claude Desktop.
-- **Dedicated Claude Code sub-agents ([`.claude/agents/`](.claude/agents))**: 5 isolated `model: sonnet` agents (4 research analysts + Level 3 `ad-skeptical-jury`) where supported, falling back cleanly to `brief.md` elsewhere.
+- **Universal Web App Copy (`brief.md`)**: one-click single-pass brief for any browser chat (ChatGPT, Gemini Web, Claude Web) with zero setup; runs the four skeptical buyer profiles inline on one pass.
+- **Standard MCP server (`14` tools, including warning-only `check_report`) + 5 [`skills/`](skills)**: model-agnostic integration for Claude Code, Google Antigravity, Codex CLI, Cursor and Claude Desktop.
+- **Dedicated Claude Code sub-agents ([`.claude/agents/`](.claude/agents))**: isolated `model: sonnet` execution for the 4 research analysts and the Level 3 `ad-skeptical-jury` works natively only in Claude Code; on ChatGPT, Claude Web, Gemini Web and other clients, the same checklists run in a single pass via `brief.md`.
 
 ### 1. Claude Code (1-Click in the app or via CLI)
 
@@ -242,7 +242,7 @@ pip install -e ".[dev]"
 python -m pytest
 ```
 
-The 485-test suite runs entirely offline using recorded fixtures in `tests/fixtures/`, a scripted renderer and a deterministic fake clock.
+The 486-test suite runs entirely offline using recorded fixtures in `tests/fixtures/`, a scripted renderer and a deterministic fake clock.
 
 ## License
 

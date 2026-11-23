@@ -11,12 +11,14 @@ import json
 import re
 from pathlib import Path
 
-_BARE_ID_RE = re.compile(r"(?<!\d)(\d{12,18})(?!\d)")
+_BARE_ID_RE = re.compile(r"(?<!\d)(\d{15,18})(?!\d)")
+_CONTEXT_12_ID_RE = re.compile(r"(?:[?&]id=|\|\s*)(\d{12,18})(?=\s*\||[^\d]|$)")
 _PREFIXED_ID_RE = re.compile(
     r"(?i)(?:(?<!per\s)(?<!test\s)\b(?:ad|annuncio)\s+#?|(?:\bad\s*id|\blibrary[\s_]+id|\bid)\s*#?:?\s*)(\d{4,18})\b"
 )
 _SLICE_ID_RE = re.compile(r"(?<!\d)(\d{12,18})(?!\d)|\bid\s+(\d{3,18})\b", re.IGNORECASE)
 _NUMBER_RE = re.compile(r"\d[\d.,]*")
+_CUT_LINE_RE = re.compile(r"(?i)(?:\bcut\s*(?:an\s+ad|rule|:)|\bregola\s+di\s+spegnimento\b|\bspegni\s+un\s+annuncio\b)")
 
 _POSITIVE_RE = re.compile(
     r"(?i)\b(?:scaling|holding(?:\s+up)?|winner|vincente|tiene\s+bene|borrows\s+from|riprende\s+da|"
@@ -58,8 +60,6 @@ _PROJECT_LINE_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("cpa", re.compile(r"(?i)\b(?:break-even\s+cpa|cpa\s+di\s+pareggio)\b")),
     ("roas", re.compile(r"(?i)\b(?:break-even\s+roas|roas\s+di\s+pareggio)\b")),
     ("round_total", re.compile(r"(?i)(?:budget,?\s*first\s+test\s+round|\bfirst\s+(?:test\s+)?round\b|\bprimo\s+giro\b|\bround\s*1\s*[:|])")),
-    ("cut_low", re.compile(r"(?i)(?:\bcut\s*(?:an\s+ad|rule|:)|\bregola\s+di\s+spegnimento\b|\bspegni\s+un\s+annuncio\b)")),
-    ("cut_high", re.compile(r"(?i)(?:\bcut\s*(?:an\s+ad|rule|:)|\bregola\s+di\s+spegnimento\b|\bspegni\s+un\s+annuncio\b)")),
 )
 
 
@@ -121,6 +121,8 @@ def _slice_known_ids(folder: Path) -> set[str]:
 
 def _extract_cited_ids(text: str) -> set[str]:
     ids = {m.group(1) for m in _BARE_ID_RE.finditer(text)}
+    for m in _CONTEXT_12_ID_RE.finditer(text):
+        ids.add(m.group(1))
     for m in _PREFIXED_ID_RE.finditer(text):
         tok = m.group(1)
         if len(tok) == 4 and 1990 <= int(tok) <= 2100:
@@ -205,6 +207,39 @@ def check_report(pack_folder: str | Path, report_text: str = "",
                             "field": key,
                             "expected": proj_nums[key],
                             "message": f"Line mentions {key} (expected {proj_nums[key]} from project.md) with different figures {nums}.",
+                            "line": line.strip()[:180],
+                        })
+            if ("cut_low" in proj_nums or "cut_high" in proj_nums) and _CUT_LINE_RE.search(line):
+                nums = _extract_numbers(line)
+                if not nums:
+                    continue
+                low = proj_nums.get("cut_low")
+                high = proj_nums.get("cut_high")
+                per_ad = proj_nums.get("per_ad")
+                # Ignore 2x/3x rule multipliers when real monetary thresholds sit well above 4
+                monetary = [v for v in nums if v not in (2.0, 3.0)] if (low or 0) > 4.0 else nums
+                if not monetary:
+                    continue
+                if low is not None and high is not None and len(monetary) >= 2:
+                    for key, exp in (("cut_low", float(low)), ("cut_high", float(high))):
+                        if not _matches_expected(monetary, exp):
+                            warnings.append({
+                                "code": "project_number_mismatch",
+                                "severity": "warning",
+                                "field": key,
+                                "expected": proj_nums[key],
+                                "message": f"Line mentions {key} (expected {proj_nums[key]} from project.md) with different figures {monetary}.",
+                                "line": line.strip()[:180],
+                            })
+                else:
+                    valid_single = [float(x) for x in (low, per_ad, high) if x is not None]
+                    if not any(_matches_expected(monetary, exp) for exp in valid_single):
+                        warnings.append({
+                            "code": "project_number_mismatch",
+                            "severity": "warning",
+                            "field": "cut_rule",
+                            "expected": f"{low}–{high}" if (low is not None and high is not None) else (low or high),
+                            "message": f"Line mentions cut rule (expected {low} to {high} from project.md) with different figures {monetary}.",
                             "line": line.strip()[:180],
                         })
 

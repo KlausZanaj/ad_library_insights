@@ -177,3 +177,32 @@ def test_check_report_mcp_tool_supports_report_path_and_handles_missing_pack(tmp
     assert ok_res["ok"] is True and ok_res["blocking"] is False
     assert ok_res["warning_count"] == 1 and ok_res["warnings"][0]["id"] == "123456789012345"
     assert err_res["ok"] is False and "manifest.json" in err_res["error"]
+
+
+def test_audit_single_cut_threshold_and_contextual_12digit_id_rules(tmp_path):
+    pack = briefs.prepare("plan", _sample_result(), ads=1, project=_project_card(), lang="it", directory=tmp_path)
+    folder = Path(pack["folder"])
+
+    # Single-threshold cut lines + 12-digit non-ID order code must NOT produce false alarms
+    clean = """
+- Cut rule: switch off at 2x CPA (126.22).
+- Regola di spegnimento: 189,33 €.
+- Reference order number 123456789012 and ad 882123034940286.
+"""
+    res_clean = audit.check_report(folder, clean)
+    assert res_clean["status"] == "ok" and res_clean["warning_count"] == 0
+
+    # Wrong single cut + wrong one-sided range + contextual 12-digit IDs (table cell, URL, prefixed id) + 15-digit bare ID
+    bad = """
+- Cut rule: switch off at 2x CPA (500).
+- Cut rule: spend 126.22 to 999 before stopping.
+| 1 | 123456789012 | Video |
+- https://www.facebook.com/ads/library/?id=234567890123
+- Compare with id 345678901234 and 999888777666555.
+"""
+    res_bad = audit.check_report(folder, bad)
+    assert res_bad["status"] == "warnings"
+    unknown = {w["id"] for w in res_bad["warnings"] if w["code"] == "unknown_ad_id"}
+    assert unknown == {"123456789012", "234567890123", "345678901234", "999888777666555"}
+    cut_fields = [w["field"] for w in res_bad["warnings"] if w["code"] == "project_number_mismatch"]
+    assert "cut_rule" in cut_fields and "cut_high" in cut_fields and "cut_low" not in cut_fields
