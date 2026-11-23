@@ -8,7 +8,7 @@
 
 Ad Library Insights reads the public Meta Ad Library and turns it into structured, verifiable competitive research: a ranked list of the creative concepts an advertiser keeps on air, how many people each one reaches per day in your target country, how its copy and video stills are built, and a deterministic data pack your own AI assistant can turn into a four-lens diagnosis or a break-even CPA test plan.
 
-It runs as a **local web app** (`127.0.0.1`), a **command-line tool**, and a standard **MCP server** with ready-made skills and four specialist sub-agents. Everything runs on your computer.
+It runs as a **local web app** (`127.0.0.1`), a **command-line tool**, and a standard **MCP server** (14 tools, including warning-only `check_report`) with 5 skills and 5 specialized sub-agents (4 research analysts plus a Level 3 skeptical jury). Everything runs on your computer.
 
 ![Ranked concepts of one advertiser, with verdict, rating, days on air and people reached](docs/images/results-table.png)
 
@@ -35,7 +35,7 @@ The public Ad Library shows every active ad as an endless wall of cards, but it 
 |---|---|---|
 | **Level 1 · Market Map & Concept Ranking** | Ranked creative concepts (0-100), interactive table guide, days on air, country reach, audience demographics, **Durata** cohort survival (Kaplan-Meier / Weibull / Lindy), **Ritmo** (9-week STA/LTA launch pace, CUSUM format drift, Little's Law), **Su cosa si regge** (reach HHI/Gini, zlib NCD copy families, Shannon diversity) and **Annunci fuori schema** contradictions. | **Nothing:** 100% local Python code (pure stdlib quant modules), free, no AI. |
 | **Level 2 · Four-Lens Competitive Diagnosis** | A sliced data pack (`overview.md`, `copy.md`, `creative.md` + video stills at 2%/50%/97%, `reach.md`, `testing.md`) and a ready brief to explain *why* the top concepts hold up. Where supported, the four specialist sub-agents run on `model: sonnet` while the stronger coordinator model enforces strict ad-ID grounding and optional single neutral follow-ups on unresolved contradictions. | Your own AI assistant (Claude Code, Google Antigravity, Codex, ChatGPT or Claude). |
-| **Level 3 · Test Strategy & Break-Even CPA** | Pre-spend Pixel/CAPI check, **Test before spending (`Prova prima di spendere`)** with optional real costs (VAT, shipping, payment fees, returns, IT `+3%` Meta fee), reverse-breakeven max CPC vs EU benchmark and Poisson zero-sales odds, plus the 4-profile skeptical buyer jury, five ad scripts anchored to winning patterns, and a one-page report. | Your own AI assistant + your saved local product card. |
+| **Level 3 · Test Strategy & Break-Even CPA** | Pre-spend Pixel/CAPI check, **Test before spending (`Prova prima di spendere`)** with optional real costs (VAT, shipping, payment fees, returns, IT `+3%` Meta fee), reverse-breakeven max CPC vs EU benchmark and Poisson zero-sales odds, five ad scripts stress-tested by `ad-skeptical-jury` (with a `No blocker — ready to test` valve when already solid), and a one-page report audited by `check_report`. | Your own AI assistant + your saved local product card. |
 
 Before starting a Level 2 or Level 3 search, the app shows the exact number of concepts to open, the ceiling of detail views, and a token/image estimate, waiting for your confirmation.
 
@@ -107,7 +107,7 @@ ad-library-insights app
 1. **Pick a mode and a depth level (1, 2 or 3).** Clicking any level row expands its step-by-step workflow and interactive architecture card.
 2. **Choose how many concepts to read in depth (10, 20 or 50).** For each concept, the program opens its most shown ad first, retries on its second ad if needed, and then reads second and third ads up to a ceiling of two ads opened per concept requested.
 3. **Connect or export for Levels 2 and 3:**
-   - **1-Click Claude Code setup**: press **Connect now** on the page to register the local MCP server and copy all 5 skills (`~/.claude/skills`) and 4 specialist sub-agents (`~/.claude/agents`).
+   - **1-Click Claude Code setup**: press **Connect now** on the page to register the local MCP server and copy all 5 skills (`~/.claude/skills`) and 5 sub-agents (`~/.claude/agents`).
    - **Universal 1-Click Copy**: press **Copy for your assistant** to copy a self-contained single-pass brief for ChatGPT, Claude Web or Gemini, and **Open stills folder** to attach the extracted video frames.
 
 ![The text for your assistant is copied, never shown](docs/images/brief-dialog.png)
@@ -116,7 +116,10 @@ ad-library-insights app
 
 ## Connect to Claude Code, Google Antigravity, Codex CLI or Claude Desktop
 
-The program never calls an external LLM API. Instead, it exposes a standard MCP server (`python -m ad_library_insights`), 5 skills in [`skills/`](skills), and 4 specialist sub-agents in [`.claude/agents/`](.claude/agents).
+The program never calls an external LLM API. It works across three open layers:
+- **Universal Web App Copy (`brief.md`)**: one-click single-pass brief for any browser chat (ChatGPT, Gemini Web, Claude Web) with zero setup.
+- **Standard MCP server (`14` tools, including `check_report`) + 5 [`skills/`](skills)**: model-agnostic integration for Claude Code, Google Antigravity, Codex CLI, Cursor and Claude Desktop.
+- **Dedicated Claude Code sub-agents ([`.claude/agents/`](.claude/agents))**: 5 isolated `model: sonnet` agents (4 research analysts + Level 3 `ad-skeptical-jury`) where supported, falling back cleanly to `brief.md` elsewhere.
 
 ### 1. Claude Code (1-Click in the app or via CLI)
 
@@ -171,8 +174,9 @@ codex mcp add ad-library-insights -- /absolute/path/.venv/bin/python -m ad_libra
 | Skill / Agent | Role |
 |---|---|
 | `ad-library-research` | Map a market or advertiser and break down the hooks, promises, proof and CTAs of the top concepts. |
-| `competitor-analysis` | **Level 2 Coordinator:** runs the 4 `model: sonnet` specialist sub-agents in parallel (`ad-copy-analyst`, `ad-creative-analyst`, `ad-reach-analyst`, `ad-testing-analyst`), enforcing strict ad-ID grounding and optional single neutral follow-ups when core lenses clash. |
-| `competitor-plan` | **Level 3 Coordinator:** diagnoses your product card, enforces the Pixel/CAPI tracking check, integrates `Test before spending` (`Prova prima di spendere`) and the 4-profile skeptical buyer jury, writes 5 ad concepts and builds a 7-day test plan on deterministic break-even numbers. |
+| `competitor-analysis` | **Level 2 Coordinator:** runs the 4 `model: sonnet` specialist sub-agents in parallel (`ad-copy-analyst`, `ad-creative-analyst`, `ad-reach-analyst`, `ad-testing-analyst`), enforces strict ad-ID grounding and optional single neutral follow-ups, and verifies the draft with `check_report`. |
+| `competitor-plan` | **Level 3 Coordinator:** diagnoses your product card, enforces the Pixel/CAPI tracking check, integrates `Test before spending`, drafts 5 ad concepts, stress-tests them via `ad-skeptical-jury` (isolated 5th sub-agent with a `No blocker — ready to test` rule, or inline via `brief.md`), and audits the final plan with `check_report`. |
+| `ad-skeptical-jury` | **5th Sub-Agent (Level 3 red-team):** reads `project.md`, `overview.md` and `copy.md` in isolation to flag copy, proof or margin flaws on the 5 draft ideas — or clears solid ideas with `No blocker — ready to test` without inventing filler objections. |
 | `breakeven-cpa-check` | Computes break-even CPA from unit economics and flags underperforming ads from an Ads Manager CSV export. |
 | `weekly-competitor-report` | Tracks a fixed watchlist across saved searches and reports new, stopped and changed ads plus cohort survival and `Ritmo` launch/format alerts. |
 
@@ -192,6 +196,7 @@ codex mcp add ad-library-insights -- /absolute/path/.venv/bin/python -m ad_libra
 | `export_report(country, output_dir, query, advertiser, top_n, formats)` | Exports a Markdown brief and/or a 38-column CSV. |
 | `scrape_library_url(url, ...)` | Runs the same ranking pipeline on a pre-filtered Ad Library URL. |
 | `check_breakeven_cpa(price, product_cost, ..., ads \| csv_path)` | Break-even CPA calculation and cut list from unit economics. |
+| `check_report(pack_folder, report_text, report_path)` | Warning-only deterministic audit of a draft report against `manifest.json` (unknown ad IDs, too-recent winner slips, `project.md` number drift, unmeasured or banned claims). |
 
 ---
 
@@ -237,7 +242,7 @@ pip install -e ".[dev]"
 python -m pytest
 ```
 
-The 482-test suite runs entirely offline using recorded fixtures in `tests/fixtures/`, a scripted renderer and a deterministic fake clock.
+The 485-test suite runs entirely offline using recorded fixtures in `tests/fixtures/`, a scripted renderer and a deterministic fake clock.
 
 ## License
 
