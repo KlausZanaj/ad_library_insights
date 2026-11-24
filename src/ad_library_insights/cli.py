@@ -14,7 +14,7 @@ import asyncio
 import json
 import sys
 
-from . import breakeven, history, report, service
+from . import breakeven, history, report, service, video
 from .client import default_client
 
 
@@ -116,6 +116,28 @@ def _breakeven(args: argparse.Namespace) -> int:
     return 0
 
 
+def _video(args: argparse.Namespace) -> int:
+    result = asyncio.run(video.inspect_video(
+        args.ad_id,
+        pack_folder=args.pack or None,
+        transcribe=args.transcribe,
+        whisper_model=args.model,
+        language=args.language or None,
+        use_cache=not args.no_cache,
+    ))
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    return 0 if result.get("ok") else 1
+
+
+def _video_setup(args: argparse.Namespace) -> int:
+    result = video.setup_whisper_model(args.model)
+    if not result.get("ok"):
+        print(result.get("note", "Could not prepare Whisper model."), file=sys.stderr)
+        return 1
+    print(result.get("note", f"Model {args.model} ready."))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
@@ -171,6 +193,20 @@ def main(argv: list[str] | None = None) -> int:
     be.add_argument("--multiplier", type=float, default=2.5)
     be.add_argument("--csv", default="", help="Ads Manager CSV export")
 
+    vid = commands.add_parser("video", help="inspect a single video ad on demand")
+    vid.add_argument("--ad-id", required=True, help="numeric Ad Library ID")
+    vid.add_argument("--pack", default="", help="optional analysis or plan pack folder")
+    vid.add_argument("--transcribe", action="store_true",
+                     help="transcribe speech offline via optional .[video] extras")
+    vid.add_argument("--model", default=video.DEFAULT_WHISPER_MODEL, choices=video.WHISPER_MODELS,
+                     help="local Whisper model size")
+    vid.add_argument("--language", default="", help="optional ISO language hint (e.g. it, en)")
+    vid.add_argument("--no-cache", action="store_true", help="re-capture frames instead of using cache")
+
+    vsetup = commands.add_parser("video-setup", help="pre-download local Whisper model for offline transcription")
+    vsetup.add_argument("--model", default=video.DEFAULT_WHISPER_MODEL, choices=video.WHISPER_MODELS,
+                        help="Whisper model size to download locally")
+
     args = parser.parse_args(argv)
     try:
         if args.command == "report":
@@ -185,6 +221,10 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "company":
             return _company(args)
+        if args.command == "video":
+            return _video(args)
+        if args.command == "video-setup":
+            return _video_setup(args)
     except (ValueError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

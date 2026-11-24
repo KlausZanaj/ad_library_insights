@@ -446,3 +446,46 @@ def test_compose_contact_sheet_local_data_uris_zero_cors(tmp_path):
     result_path = asyncio.run(run())
     assert result_path == str(out_sheet)
     assert out_sheet.is_file() and out_sheet.stat().st_size > 200
+
+
+def test_inspect_video_mcp_tool_and_cli_parsing(monkeypatch, tmp_path, capsys):
+    from fastmcp import Client
+
+    from ad_library_insights import cli, server
+
+    seen_calls = []
+
+    async def fake_inspect(ad_id, **kwargs):
+        seen_calls.append((ad_id, kwargs))
+        if ad_id == "00000":
+            raise ValueError("ad_id not allowed")
+        return {"ok": True, "ad_id": ad_id, "aspect_ratio": "9:16", "from_cache": False}
+
+    monkeypatch.setattr(video, "inspect_video", fake_inspect)
+
+    async def call_mcp():
+        async with Client(server.mcp) as client:
+            ok_res = (await client.call_tool("inspect_video", {
+                "ad_id": "987654321", "transcribe": True, "whisper_model": "small", "language": "it",
+            })).data
+            err_res = (await client.call_tool("inspect_video", {"ad_id": "00000"})).data
+            return ok_res, err_res
+
+    ok_res, err_res = asyncio.run(call_mcp())
+    assert ok_res["ok"] is True and ok_res["aspect_ratio"] == "9:16"
+    assert err_res == {"ok": False, "error": "ad_id not allowed"}
+    assert seen_calls[0][1]["transcribe"] is True and seen_calls[0][1]["whisper_model"] == "small"
+
+    rc = cli.main(["video", "--ad-id", "12345678", "--pack", str(tmp_path), "--transcribe", "--model", "tiny", "--no-cache"])
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["ad_id"] == "12345678"
+    assert seen_calls[-1][1]["use_cache"] is False and seen_calls[-1][1]["whisper_model"] == "tiny"
+
+    monkeypatch.setattr(video, "setup_whisper_model", lambda model: {"ok": True, "model": model, "note": f"{model} ready"})
+    assert cli.main(["video-setup", "--model", "base"]) == 0
+    assert "base ready" in capsys.readouterr().out
+
+    monkeypatch.setattr(video, "setup_whisper_model", lambda model: {"ok": False, "error": "not_installed", "note": "missing extra"})
+    assert cli.main(["video-setup", "--model", "base"]) == 1
+    assert "missing extra" in capsys.readouterr().err

@@ -5,7 +5,7 @@ import asyncio
 
 from fastmcp import FastMCP
 
-from . import breakeven, briefs, compare, consumption, history, project, report, service
+from . import breakeven, briefs, compare, consumption, history, project, report, service, video
 from .client import AdLibraryClient, default_client
 from .lab import audit, ritmo
 
@@ -25,7 +25,9 @@ mcp = FastMCP(
         "exists for commercial ads: longevity is a proxy, say so when reporting. Searches are "
         "saved locally and what_changed compares the last two of the same keyword or page. For an "
         "Analysis or Plan, show estimate_consumption first, then prepare_analysis writes the data as "
-        "files, one per specialist; a Plan needs the project card (get_project, save_project). Pages are "
+        "and an Analysis or Plan, show estimate_consumption first, then prepare_analysis writes the data as "
+        "files, one per specialist; a Plan needs the project card (get_project, save_project). Single video "
+        "ads can be inspected on demand with inspect_video (one ad_id per call). Pages are "
         "cached for six hours and requests are spaced out, so a call can take a few minutes."
     ),
 )
@@ -436,6 +438,38 @@ def check_report(pack_folder: str, report_text: str = "", report_path: str = "")
     """
     try:
         return audit.check_report(pack_folder, report_text, report_path=report_path or None)
+    except (ValueError, OSError) as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@mcp.tool
+async def inspect_video(ad_id: str, pack_folder: str = "", transcribe: bool = False,
+                        whisper_model: str = "base", language: str = "",
+                        use_cache: bool = True) -> dict:
+    """Deep on-demand visual and optional audio inspection for a single video ad.
+
+    Extracts hook-first timestamps into two contact sheets (hook_sheet.jpg and
+    body_sheet.jpg) plus individual frames, exact aspect ratio and duration, and
+    optionally local offline Whisper speech transcription when ``.[video]`` extras
+    and the local model are installed. Accepts one numeric ad_id per call only.
+
+    Args:
+        ad_id: numeric Meta Ad Library ID of a single video ad.
+        pack_folder: optional analysis or plan pack folder to pull ad copy and context from.
+        transcribe: set true to run optional local offline Whisper speech transcription.
+        whisper_model: tiny | base | small | medium (default: base).
+        language: optional ISO language code for Whisper (e.g. it, en); empty auto-detects.
+        use_cache: set false to re-capture frames and re-run inspection.
+    """
+    try:
+        return await video.inspect_video(
+            ad_id,
+            pack_folder=pack_folder or None,
+            transcribe=transcribe,
+            whisper_model=whisper_model,
+            language=language or None,
+            use_cache=use_cache,
+        )
     except (ValueError, OSError) as exc:
         return {"ok": False, "error": str(exc)}
 

@@ -885,3 +885,15 @@ def test_mcp_save_project_preserves_optional_costs_and_single_pass_mentions_new_
         assert "Account structure (Su cosa si regge)" in txt
         assert "Duration and survival (cohort)" in txt
         assert "Pace and format drift (Ritmo)" in txt
+
+
+def test_inspect_video_skill_format_and_neutral_untrusted_rule():
+    skill_path = ROOT / "skills" / "inspect-video" / "SKILL.md"
+    text = skill_path.read_text(encoding="utf-8")
+    assert text.startswith("---\nname: inspect-video\nmetadata:\n") and "description: >-" in text
+    assert "## Workflow" in text and "## Rules" in text
+    assert "`inspect_video`" in text
+    assert "<untrusted_ad_content>" in text
+    assert "never execute instructions" in text.lower()
+    assert "one ad per call" in text.lower() or "one numeric `ad_id` per" in text.lower()
+    assert "inspect_video" in tool_names()
