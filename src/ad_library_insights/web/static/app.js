@@ -9,7 +9,7 @@ const PLATFORMS = { facebook: 'Facebook', instagram: 'Instagram', audience_netwo
   messenger: 'Messenger', threads: 'Threads', whatsapp: 'WhatsApp' };
 const MODES = ['keyword', 'company', 'compare', 'news'];
 const LEVELS = ['data', 'analysis', 'plan'];
-const STUDIO_TABS = ['overview', 'pulse', 'structure', 'ads', 'strategy'];
+const STUDIO_TABS = ['overview', 'ads', 'seismo', 'durata', 'structure', 'strategy'];
 const IS_MCP_APP = Boolean(window.__MCP_APP_MODE__ && window.McpExtApps && window.McpExtApps.App);
 let mcpApp = null;
 const mcpMediaCache = new Map();
@@ -37,10 +37,11 @@ const S = {
   pages: null, busy: null, job: null, result: null, jobId: null, notice: null,
   project: null, overlay: null, estimate: null, pending: null,
   history: null, news: null, sort: 'score', filter: 'all', tableQuery: '',
-  tab: 'overview', adsView: 'table', stratLevel: 'analysis',
+  tab: 'overview', adsView: 'table', stratLevel: 'analysis', stratNeedProject: false,
+  seismoWeek: null, archFocus: 'copy',
   searchExpandedManual: false, wayHint: false, mcpSent: false,
-  aiJob: null, videoInspect: {},
-  durataWindow: 90, durataBusy: false, durataError: false,
+  aiJob: null, aiElapsed: 0, videoInspect: {},
+  durataWindow: 90, durataBusy: false, durataError: false, durataCancelSeq: 0, durataElapsed: 0,
   simPrice: null, simCost: null, simVat: null, simShip: null, simFeePct: null, simRetPct: null, simItFee: null,
   cmpCopied: false,
   link: { quick: null, mcp: 'checking', running: false, result: null, error: null, test: null, copy: null, hint: false },
@@ -489,10 +490,10 @@ function levelVisual(level) {
   const { p, c, vat, ship, feePctPay, retPct, itFee, cpa, lowCut, highCut, round1, billed, roas, cpcs, oneIn, isEur } = simNumbers();
   const cpcHelp = `<span class="help-wrap"><button type="button" class="help-btn" data-action="help-toggle" aria-label="${esc(t('help.aria', { topic: t('pre.cpc.title') }))}" aria-expanded="false">?</button><div class="help-pop right" role="tooltip"><h4>${esc(t('pre.cpc.title'))}</h4><p>${esc(t('pre.cpc.help'))}</p></div></span>`;
   return `<div class="lvl-vis">
-    <div class="vis-top"><span class="vis-title">${esc(t('lv.v3.badge'))}</span><button class="linklike" data-action="lv-project" style="font-size:.78rem">${esc(t('lv.v3.sim.edit'))}</button></div>
+    <div class="vis-top"><span class="vis-title">${esc(t('lv.v3.badge'))}${simplePop('strat.calc.title', 'help.strat.calc.title', 'help.strat.calc.body')}</span><button class="linklike" data-action="lv-project" style="font-size:.78rem">${esc(t('lv.v3.sim.edit'))}</button></div>
     <div class="sim-inputs">
-      <label class="sim-field"><span>${esc(t('lv.v3.sim.price'))}</span><input type="number" min="1" step="1" data-sim="price" value="${esc(p)}"></label>
-      <label class="sim-field"><span>${esc(t('lv.v3.sim.cost'))}</span><input type="number" min="0" step="1" data-sim="cost" value="${esc(c)}"></label>
+      <label class="sim-field"><span>${esc(t('lv.v3.sim.price'))}${simplePop('lv.v3.sim.price', 'help.sim.price.title', 'help.sim.price.body')}</span><input type="number" min="1" step="1" data-sim="price" value="${esc(p)}"></label>
+      <label class="sim-field"><span>${esc(t('lv.v3.sim.cost'))}${simplePop('lv.v3.sim.cost', 'help.sim.cost.title', 'help.sim.cost.body', null, true)}</span><input type="number" min="0" step="1" data-sim="cost" value="${esc(c)}"></label>
     </div>
     <details class="sim-extra">
       <summary>${esc(t('lv.v3.sim.extra'))}</summary>
@@ -505,9 +506,9 @@ function levelVisual(level) {
       <label class="sim-check"><input type="checkbox" data-sim-check="itFee" ${itFee ? 'checked' : ''}><span>${esc(t('lv.v3.sim.itfee'))}</span></label>
     </details>
     <div class="vis-econ num">
-      <div class="vis-kpi"><span>${esc(t('lv.v3.cpa'))}</span><strong id="sim-cpa">${num(cpa)}</strong><small id="sim-roas">${esc(t('lv.v3.sim.roas', { roas }))}</small></div>
-      <div class="vis-kpi"><span>${esc(t('lv.v3.stop'))}</span><strong id="sim-stop">${num(lowCut)} - ${num(highCut)}</strong><small>${esc(t('lv.v3.stop.sub'))}</small></div>
-      <div class="vis-kpi"><span>${esc(t('lv.v3.budget'))}</span><strong id="sim-budget">${num(round1)}</strong><small>${esc(t('lv.v3.budget.sub'))}</small></div>
+      <div class="vis-kpi"><span>${esc(t('lv.v3.cpa'))}${simplePop('lv.v3.cpa', 'help.sim.cpa.title', 'help.sim.cpa.body')}</span><strong id="sim-cpa">${num(cpa)}</strong><small id="sim-roas">${esc(t('lv.v3.sim.roas', { roas }))}</small></div>
+      <div class="vis-kpi"><span>${esc(t('lv.v3.stop'))}${simplePop('lv.v3.stop', 'help.sim.stop.title', 'help.sim.stop.body')}</span><strong id="sim-stop">${num(lowCut)} - ${num(highCut)}</strong><small>${esc(t('lv.v3.stop.sub'))}</small></div>
+      <div class="vis-kpi"><span>${esc(t('lv.v3.budget'))}${simplePop('lv.v3.budget', 'help.sim.budget.title', 'help.sim.budget.body', null, true)}</span><strong id="sim-budget">${num(round1)}</strong><small>${esc(t('lv.v3.budget.sub'))}</small></div>
     </div>
     <div class="precheck-box">
       <div class="precheck-head"><span>${esc(t('pre.cpc.title'))}</span>${cpcHelp}</div>
@@ -801,13 +802,22 @@ function metricsSection(r) {
   const s = r.signals;
   const reach = s.reach.available ? s.reach.median_reach_per_day : null;
   const cells = [
-    [num(s.active_ads), t('m.active'), t(r.mode === 'company' ? 'm.active.x' : 'm.active.x.keyword')],
-    [pct(s.video_share), t('m.video'), t('m.video.x')],
-    [num(s.new_per_week), t('m.weekly'), t('m.weekly.x')],
-    [reach == null ? '—' : num(reach), t('m.reachday'), t(reach == null ? 'm.reachday.none' : 'm.reachday.x')],
-    [num(s.started_last_30_days), t('m.new30'), `${t('m.new30.x')} ${t('m.new30.share', { share: pct(s.share_started_last_30_days) })}.`],
+    [num(s.active_ads), t('m.active'), t(r.mode === 'company' ? 'm.active.x' : 'm.active.x.keyword'), 'help.m.active.body', false],
+    [pct(s.video_share), t('m.video'), t('m.video.x'), 'help.m.video.body', false],
+    [num(s.new_per_week), t('m.weekly'), t('m.weekly.x'), 'help.m.weekly.body', false],
+    [reach == null ? '—' : num(reach), t('m.reachday'), t(reach == null ? 'm.reachday.none' : 'm.reachday.x'), 'help.m.reachday.body', false],
+    [num(s.started_last_30_days), t('m.new30'), `${t('m.new30.x')} ${t('m.new30.share', { share: pct(s.share_started_last_30_days) })}.`, 'help.m.new30.body', true],
   ];
-  return `<section class="metrics">${cells.map(([value, label, why]) => `<div class="metric"><b>${esc(value)}</b><span>${esc(label)}</span><small>${esc(why)}</small></div>`).join('')}</section>`;
+  return `<section>
+    <div style="margin-bottom:14px">
+      <div class="sec-eyebrow">${esc(t('overview.kpis.eyebrow'))}</div>
+      <h2 class="sec-title-line">${esc(t('overview.kpis.title'))}${simplePop('overview.kpis.title', 'help.kpis.title', 'help.kpis.body')}</h2>
+    </div>
+    <div class="metrics">${cells.map(([value, label, why, bodyKey, right]) => `<div class="metric">
+      <div class="metric-head"><span class="metric-lbl">${esc(label)}</span>${helpPopover(label, '', `<p>${esc(t(bodyKey))}</p>`, right, label)}</div>
+      <b>${esc(value)}</b><small>${esc(why)}</small>
+    </div>`).join('')}</div>
+  </section>`;
 }
 /* The first few places, then "e altri N": `all` is the full count when the list was cut. */
 function placeNames(places, total, all, limit = 8) {
@@ -850,14 +860,20 @@ function factsSection(r) {
       <p class="note">${esc(t('f.reach.note', { n: reach.ads_with_market_reach, country: region(r.country) }))}</p>`;
   const reused = s.copy_patterns.reused_texts.slice(0, 4).map((row) => `<li><span>${esc(row.opening)}</span><span>${esc(oneOrMore('f.reused.n', row.creatives))}</span></li>`).join('');
   return `<section class="facts">
-    <div class="fact wide"><h2>${esc(t('f.places'))}</h2>${places}</div>
-    <div class="fact"><h2>${esc(t('f.audience'))}</h2>${who}</div>
-    <div class="fact"><h2>${esc(t('f.reach'))}</h2>${coverage}</div>
-    <div class="fact"><h2>${esc(t('f.langs'))}</h2>${shareRows(s.languages, (row) => named('language', row.language))}</div>
-    <div class="fact"><h2>${esc(t('f.platforms'))}</h2>${shareRows(s.platforms, (row) => PLATFORMS[row.platform] || row.platform)}</div>
-    <div class="fact"><h2>${esc(t('f.buttons'))}</h2>${shareRows(s.buttons, (row) => row.button)}</div>
-    <div class="fact"><h2>${esc(t('f.dest'))}</h2>${shareRows(s.destinations, (row) => row.domain)}</div>
-    <div class="fact"><h2>${esc(t('f.reused'))}</h2><ul class="rows">${reused || '<li><span class="dim">—</span></li>'}</ul></div>
+    <div style="margin-bottom:16px">
+      <div class="sec-eyebrow">${esc(t('overview.facts.eyebrow'))}</div>
+      <h2 class="sec-title-line">${esc(t('overview.facts.title'))}${simplePop('overview.facts.title', 'help.facts.title', 'help.facts.body')}</h2>
+    </div>
+    <div class="facts-grid">
+      <div class="fact wide"><h2>${esc(t('f.places'))}${simplePop('f.places', 'f.places', 'help.f.places.body')}</h2>${places}</div>
+      <div class="fact"><h2>${esc(t('f.audience'))}${simplePop('f.audience', 'f.audience', 'help.f.audience.body', null, true)}</h2>${who}</div>
+      <div class="fact"><h2>${esc(t('f.reach'))}${simplePop('f.reach', 'f.reach', 'help.f.reach.body')}</h2>${coverage}</div>
+      <div class="fact"><h2>${esc(t('f.langs'))}${simplePop('f.langs', 'f.langs', 'help.f.langs.body')}</h2>${shareRows(s.languages, (row) => named('language', row.language))}</div>
+      <div class="fact"><h2>${esc(t('f.platforms'))}${simplePop('f.platforms', 'f.platforms', 'help.f.platforms.body', null, true)}</h2>${shareRows(s.platforms, (row) => PLATFORMS[row.platform] || row.platform)}</div>
+      <div class="fact"><h2>${esc(t('f.buttons'))}${simplePop('f.buttons', 'f.buttons', 'help.f.buttons.body')}</h2>${shareRows(s.buttons, (row) => row.button)}</div>
+      <div class="fact"><h2>${esc(t('f.dest'))}${simplePop('f.dest', 'f.dest', 'help.f.dest.body')}</h2>${shareRows(s.destinations, (row) => row.domain)}</div>
+      <div class="fact"><h2>${esc(t('f.reused'))}${simplePop('f.reused', 'f.reused', 'help.f.reused.body', null, true)}</h2><ul class="rows">${reused || '<li><span class="dim">—</span></li>'}</ul></div>
+    </div>
   </section>`;
 }
 /* "k of m ads read" for a concept whose reach was summed over some of its ads. */
@@ -953,8 +969,17 @@ function cardsGridHtml(r) {
     </button>`;
   }).join('');
 }
-function helpPopover(topic, titleKey, bodyHtml, alignRight = false) {
-  return `<span class="help-wrap"><button type="button" class="help-btn" data-action="help-toggle" aria-label="${esc(t('help.aria', { topic }))}" aria-expanded="false">?</button><div class="help-pop${alignRight ? ' right' : ''}" role="tooltip"><h4>${esc(t(titleKey))}</h4>${bodyHtml}</div></span>`;
+function helpPopover(topic, titleKey, bodyHtml, alignRight = false, rawTitle = null) {
+  const heading = rawTitle || (titleKey ? t(titleKey) : topic);
+  return `<span class="help-wrap"><button type="button" class="help-btn" data-action="help-toggle" aria-label="${esc(t('help.aria', { topic }))}" aria-expanded="false">?</button><div class="help-pop${alignRight ? ' right' : ''}" role="tooltip"><h4>${esc(heading)}</h4>${bodyHtml}</div></span>`;
+}
+function simplePop(topicKey, titleKey, bodyKey, howKey = null, alignRight = false) {
+  const topic = hasT(topicKey) ? t(topicKey) : topicKey;
+  const howHtml = howKey ? `<p class="hp-how">${esc(t(howKey))}</p>` : '';
+  return helpPopover(topic, titleKey, `<p>${esc(t(bodyKey))}</p>${howHtml}`, alignRight);
+}
+function adColPop() {
+  return simplePop('t.ad', 'help.col.ad.title', 'help.col.ad.body');
 }
 function tierScalePop() {
   const rows = [
@@ -969,6 +994,16 @@ function tierScalePop() {
 function scoreScalePop(alignRight = true) {
   const bands = [1, 2, 3, 4].map((n) => `<li>${esc(t(`help.score.b${n}`))}</li>`).join('');
   return helpPopover(t('t.score'), 'help.score.title', `<p>${esc(t('help.score.formula'))}</p><ul class="help-scale">${bands}</ul>`, alignRight);
+}
+function daysColPop(alignRight = true) {
+  return simplePop('t.days', 'help.col.days.title', 'help.col.days.body', null, alignRight);
+}
+function creativesColPop(alignRight = true) {
+  return simplePop('t.creatives', 'help.col.creatives.title', 'help.col.creatives.body', null, alignRight);
+}
+function reachedColPop(countryName, alignRight = true) {
+  const label = t('t.reached', { country: countryName });
+  return helpPopover(label, 'help.col.reached.title', `<p>${esc(t('help.col.reached.body'))}</p>`, alignRight);
 }
 function perdayPop(alignRight = true) {
   return helpPopover(t('t.perday'), 'help.perday.title', `<p>${esc(t('help.perday.body'))}</p>`, alignRight);
@@ -1055,10 +1090,62 @@ function tldrSection(r) {
     const anomN = r.anomalie.items.length;
     sub += anomN === 1 ? t('tldr.anomalie.flagged.one') : t('tldr.anomalie.flagged', { n: num(anomN) });
   }
+
+  let overviewExtras = '';
+  if (S.tab === 'overview') {
+    const st = (r.ritmo && r.ritmo.available && r.ritmo.sta_lta && r.ritmo.sta_lta.state) || 'steady';
+    const stLbl = hasT(`rit.state.${st}`) ? t(`rit.state.${st}`) : st;
+    const p1Val = t('tldr.p1.v', { scaling: num(v.scaling || 0), concepts });
+    const p1Sub = reach != null
+      ? t('tldr.p1.s', { reach: num(reach), country: region(r.country), active: num(s.active_ads) })
+      : t('tldr.p1.empty', { country: region(r.country) });
+    const p2Val = t('tldr.p2.v.ritmo', { state: stLbl, weekly: num(s.new_per_week) });
+    const p2Sub = (r.durata && r.durata.available && r.durata.median_reached)
+      ? t('tldr.p2.s.dur', { median: num(r.durata.median_days) })
+      : t('tldr.p2.s.nodur', { video: pct(s.video_share), holding: num(v.holding || 0) });
+    const cf = r.struttura && r.struttura.copy_families;
+    const anomCount = (r.anomalie && r.anomalie.available && (r.anomalie.items || []).length) || 0;
+    const anomStr = anomCount === 1 ? t('tldr.p3.anom.one') : t('tldr.p3.anom.many', { n: num(anomCount) });
+    const p3Val = (cf && cf.measurable) ? t('tldr.p3.v', { fam: num(cf.families_count), anom: anomStr }) : t('tldr.p3.fallback', { concepts, video: pct(s.video_share) });
+    const p3Sub = t('tldr.p3.s');
+
+    overviewExtras = `<div class="tldr-pillars">
+        <div class="tldr-pillar">
+          <div class="tldr-pillar-k">${esc(t('tldr.p1.k'))}${simplePop('tldr.p1.k', 'help.p1.title', 'help.p1.body')}</div>
+          <div class="tldr-pillar-v">${esc(p1Val)}</div>
+          <div class="tldr-pillar-s">${esc(p1Sub)}</div>
+        </div>
+        <div class="tldr-pillar">
+          <div class="tldr-pillar-k">${esc(t('tldr.p2.k'))}${simplePop('tldr.p2.k', 'help.p2.title', 'help.p2.body')}</div>
+          <div class="tldr-pillar-v">${esc(p2Val)}</div>
+          <div class="tldr-pillar-s">${esc(p2Sub)}</div>
+        </div>
+        <div class="tldr-pillar">
+          <div class="tldr-pillar-k">${esc(t('tldr.p3.k'))}${simplePop('tldr.p3.k', 'help.p3.title', 'help.p3.body', null, true)}</div>
+          <div class="tldr-pillar-v">${esc(p3Val)}</div>
+          <div class="tldr-pillar-s">${esc(p3Sub)}</div>
+        </div>
+      </div>
+      <div class="verdict-mini-legend">
+        <strong>${esc(t('leg.mini.label'))}</strong>
+        <span class="vleg-item"><span class="v-scaling">${esc(t('verdict.scaling'))}</span><span>${esc(t('leg.mini.scaling'))}</span></span>
+        <span class="vleg-item"><span class="v-holding">${esc(t('verdict.holding'))}</span><span>${esc(t('leg.mini.holding'))}</span></span>
+        <span class="vleg-item"><span class="v-testing">${esc(t('verdict.testing'))}</span><span>${esc(t('leg.mini.testing'))}</span></span>
+        <span class="vleg-item"><span class="v-review">${esc(t('verdict.review'))}</span><span>${esc(t('leg.mini.review'))}</span></span>
+        <button type="button" class="linklike" data-action="rtab" data-value="ads" style="margin-left:auto">${esc(t('leg.mini.more'))}</button>
+      </div>`;
+  }
+
   return `<section class="tldr" aria-label="${esc(t('tldr.label'))}">
-    <span class="tldr-label">${esc(t('tldr.label'))}</span>
+    <div class="tldr-head">
+      <div class="tldr-title-group">
+        <div class="tldr-eyebrow-row"><span class="tldr-label">${esc(t('tldr.label'))}</span></div>
+        <h2 class="tldr-hero-title">${esc(t(r.mode === 'company' ? 'tldr.hero.company' : 'tldr.hero.keyword'))}${simplePop('tldr.label', 'help.quadro.title', 'help.quadro.body', 'help.quadro.how')}</h2>
+      </div>
+      <div class="tldr-act"><button class="linklike" data-action="guide">${esc(t('tldr.help'))}</button></div>
+    </div>
     <div class="tldr-lines"><strong>${esc(main)}</strong><span>${esc(sub)}</span></div>
-    <div class="tldr-act"><button class="linklike" data-action="guide">${esc(t('tldr.help'))}</button></div>
+    ${overviewExtras}
   </section>`;
 }
 function renderKmSvg(d) {
@@ -1131,6 +1218,51 @@ function durataUnavailableText(d) {
   if (d.reason === 'too_few_ended') return t('dur.unavail.too_few_ended', { ended: num(d.ended_in_window), found: num(d.concepts_in_window), window: num(d.window_days || 90) });
   return t('dur.unavail.other', { reason: d.reason || '—' });
 }
+function durFunnelHtml(d) {
+  const raw = d.milestones || {};
+  const entries = [7, 14, 30, 60, 90]
+    .filter((age) => raw[String(age)] != null)
+    .map((age) => ({ age, surv: Number(raw[String(age)]), isMedian: false }));
+  if (d.median_reached && d.median_days != null) {
+    const medAge = Math.max(1, Math.round(Number(d.median_days)));
+    const match = entries.find((row) => row.age === medAge);
+    if (match) match.isMedian = true;
+    else entries.push({ age: medAge, surv: 0.5, isMedian: true });
+  }
+  if (!entries.length) return '';
+  entries.sort((a, b) => a.age - b.age);
+
+  const metaFor = (row) => {
+    if (row.isMedian) return { phase: t('dur.funnel.pmed'), cls: 'warn', text: t('dur.funnel.mmed', { d: num(row.age) }), stage: t('dur.funnel.stage.med', { d: num(row.age) }) };
+    if (row.age <= 7) return { phase: t('dur.funnel.p7'), cls: '', text: t('dur.funnel.m7'), stage: t('dur.funnel.stage.d', { d: num(row.age) }) };
+    if (row.age <= 14) return { phase: t('dur.funnel.p14'), cls: '', text: t('dur.funnel.m14'), stage: t('dur.funnel.stage.d', { d: num(row.age) }) };
+    if (row.age <= 30) return { phase: t('dur.funnel.p30'), cls: 'accent', text: t('dur.funnel.m30'), stage: t('dur.funnel.stage.d', { d: num(row.age) }) };
+    if (row.age <= 60) return { phase: t('dur.funnel.p60'), cls: 'accent', text: t('dur.funnel.m60'), stage: t('dur.funnel.stage.d', { d: num(row.age) }) };
+    return { phase: t('dur.funnel.p90'), cls: 'ok', text: t('dur.funnel.m90'), stage: t('dur.funnel.stage.d', { d: num(row.age) }) };
+  };
+
+  const rowsHtml = entries.map((row) => {
+    const m = metaFor(row);
+    const activePct = Math.max(0, Math.min(100, Math.round(row.surv * 100)));
+    const endedPct = `${100 - activePct}%`;
+    return `<tr${row.isMedian ? ' class="is-median"' : ''}>
+      <td><strong>${esc(m.stage)}</strong></td>
+      <td><div class="surv-bar-wrap"><div class="surv-track"><div class="surv-fill" style="width:${activePct}%"></div></div><strong class="num">${activePct}%</strong></div></td>
+      <td class="num muted">${esc(t('dur.funnel.ended.val', { pct: endedPct }))}</td>
+      <td><span class="phase-badge ${m.cls}">${esc(m.phase)}</span></td>
+      <td class="muted">${esc(m.text)}</td>
+    </tr>`;
+  }).join('');
+
+  return `<div class="lifecycle-card">
+    <div class="sec-eyebrow">${esc(t('dur.funnel.eyebrow'))}${simplePop('dur.funnel.eyebrow', 'help.funnel.title', 'help.funnel.body')}</div>
+    <h3 style="font-size:1rem;font-weight:660;margin-top:2px">${esc(t('dur.funnel.title'))}</h3>
+    <div class="table-scroll"><table class="lifecycle-table">
+      <thead><tr><th>${esc(t('dur.funnel.col.stage'))}</th><th>${esc(t('dur.funnel.col.active'))}</th><th>${esc(t('dur.funnel.col.ended'))}</th><th>${esc(t('dur.funnel.col.phase'))}</th><th>${esc(t('dur.funnel.col.meaning'))}</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table></div>
+  </div>`;
+}
 function durataSection(r) {
   if (r.mode !== 'company') {
     return `<section class="durata-locked"><p class="muted">${esc(t('dur.locked'))}</p></section>`;
@@ -1141,7 +1273,16 @@ function durataSection(r) {
   const busy = S.durataBusy || Boolean(S.job || S.busy);
   let body = '';
   if (S.durataBusy) {
-    body = `<div class="progress" style="margin-top:16px;padding-top:16px"><p><span>${esc(t('dur.loading', { window: activeWin }))}</span></p><div class="bar open"><i></i></div></div>`;
+    body = `<div class="durata-busy-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div>
+          <strong>${esc(t('dur.loading', { window: activeWin }))}</strong>
+          <small id="durata-elapsed" style="display:block;color:var(--muted);margin-top:3px">${esc(t('dur.elapsed', { sec: S.durataElapsed || 0 }))}</small>
+        </div>
+        <button type="button" class="btn quiet small" data-action="durata-cancel">${esc(t('dur.cancel'))}</button>
+      </div>
+      <div class="bar open" style="margin-top:12px"><i></i></div>
+    </div>`;
   } else if (S.durataError) {
     body = `<p class="notice err" style="margin-top:14px">${esc(t('dur.err'))}</p>`;
   } else if (d && d.available) {
@@ -1156,8 +1297,8 @@ function durataSection(r) {
     const lindyHtml = (d.lindy && d.lindy.length)
       ? `<ul class="durata-lindy">${d.lindy.map((row) => `<li>${esc(t('dur.kpi.lindy.row', { age: num(row.after_days), share: pct(row.still_active_share), risk: num(row.at_risk) }))}</li>`).join('')}</ul>`
       : `<strong>${esc(t('dur.kpi.lindy.none'))}</strong><small>${esc(t('dur.kpi.lindy.none.sub'))}</small>`;
-    const milestones = Object.entries(d.milestones || {}).filter(([, val]) => val != null)
-      .map(([age, val]) => `<span><strong>${esc(t('dur.days.short', { n: age }))}</strong>: ${pct(val)}</span>`).join('');
+    const longItem = (d.longest_active || [])[0];
+    const fastItem = (d.fastest_ended || [])[0];
     const exLong = (d.longest_active || []).slice(0, 2).map((x) => `${x.library_id} (${t('dur.days.short', { n: x.days })})`).join(', ');
     const exFast = (d.fastest_ended || []).slice(0, 2).map((x) => `${x.library_id} (${t('dur.days.short', { n: x.days })})`).join(', ');
     const smallNote = (d.small_sample || Number(d.ended_in_window || 0) < 20)
@@ -1166,18 +1307,29 @@ function durataSection(r) {
     body = `<p class="durata-lead">${esc(lead)}</p>
       ${smallNote}
       <div class="durata-kpis">
-        <div class="durata-kpi"><span class="durata-kpi-label">${esc(t('dur.kpi.median'))}</span>
+        <div class="durata-kpi"><span class="durata-kpi-label">${esc(t('dur.kpi.median'))}${simplePop('dur.kpi.median', 'help.dur.median.title', 'help.dur.median.body')}</span>
           <strong>${esc(d.median_reached ? days(d.median_days) : t('dur.kpi.open'))}</strong>
           <small>${esc(t('dur.kpi.rmst', { tau: num(d.tau_days || d.max_observed_days), days: num(d.rmst_days) }))}</small></div>
         <div class="durata-kpi"><span class="durata-kpi-label">${esc(t('dur.kpi.weibull'))}${weibullPop()}</span>${weibullHtml}</div>
         <div class="durata-kpi"><span class="durata-kpi-label">${esc(t('dur.kpi.lindy'))}${lindyPop(true)}</span>${lindyHtml}</div>
       </div>
-      <div class="durata-chart">
-        <div class="durata-chart-head"><span>${esc(t('dur.chart.title'))}</span>${d.median_reached ? `<strong>${esc(t('dur.chart.median', { n: num(d.median_days) }))}</strong>` : ''}</div>
-        ${renderKmSvg(d)}
-        ${milestones ? `<div class="durata-milestones"><span>${esc(t('dur.milestones'))}:</span>${milestones}</div>` : ''}
-        ${(exLong || exFast) ? `<div class="durata-examples">${exLong ? `<span>${esc(t('dur.examples.long'))}: ${esc(exLong)}</span>` : ''}${exFast ? `<span>${esc(t('dur.examples.fast'))}: ${esc(exFast)}</span>` : ''}</div>` : ''}
+      <div class="km-layout">
+        <div class="durata-chart">
+          <div class="durata-chart-head"><span>${esc(t('dur.chart.prob'))}${simplePop('dur.chart.prob', 'help.km.chart.title', 'help.km.chart.body')}</span>${d.median_reached ? `<strong>${esc(t('dur.chart.median', { n: num(d.median_days) }))}</strong>` : ''}</div>
+          ${renderKmSvg(d)}
+        </div>
+        <div class="km-extremes-box">
+          <div class="sec-eyebrow">${esc(t('dur.extremes.eyebrow'))}${simplePop('dur.extremes.eyebrow', 'help.extremes.title', 'help.extremes.body', null, true)}</div>
+          <h3 style="font-size:1rem;font-weight:660;margin-top:2px">${esc(t('dur.extremes.title'))}</h3>
+          <div class="km-extremes-rows">
+            <div class="km-extreme-row"><span>${esc(t('dur.extremes.active_max'))}</span><strong class="num">${esc(longItem ? days(longItem.days) : '—')}</strong></div>
+            <div class="km-extreme-row"><span>${esc(t('dur.extremes.fast_cut'))}</span><strong class="num">${esc(fastItem ? days(fastItem.days) : '—')}</strong></div>
+            <div class="km-extreme-row"><span>${esc(t('dur.extremes.cohort', { window: num(d.window_days || activeWin) }))}</span><strong class="num">${esc(t('dur.extremes.cohort.val', { total: num(d.concepts_in_window), active: num(d.active_in_window), ended: num(d.ended_in_window) }))}</strong></div>
+          </div>
+          ${(exLong || exFast) ? `<div class="durata-examples">${exLong ? `<span>${esc(t('dur.examples.long'))}: ${esc(exLong)}</span>` : ''}${exFast ? `<span>${esc(t('dur.examples.fast'))}: ${esc(exFast)}</span>` : ''}</div>` : ''}
+        </div>
       </div>
+      ${durFunnelHtml(d)}
       <p class="tablenote">${esc(t('dur.note'))}</p>`;
   } else if (d && !d.available) {
     body = `<p class="notice" style="margin-top:14px">${esc(durataUnavailableText(d))}</p><p class="tablenote">${esc(t('dur.note'))}</p>`;
@@ -1186,7 +1338,11 @@ function durataSection(r) {
   }
   return `<section class="durata-sec">
     <div class="durata-head">
-      <div class="durata-head-title"><h2>${esc(t('dur.title'))}${durataPop()}</h2><p>${esc(t('dur.sub'))}</p></div>
+      <div class="durata-head-title">
+        <div class="sec-eyebrow">${esc(t('dur.eyebrow'))}</div>
+        <h2>${esc(t('dur.title'))}${durataPop()}</h2>
+        <p>${esc(t('dur.sub'))}</p>
+      </div>
       <div class="durata-controls">
         <span>${esc(t('dur.window'))}</span>${windows}
         <button class="btn small${d ? ' quiet' : ''}" data-action="durata-run" ${busy ? 'disabled' : ''}>${esc(t(d ? 'dur.rerun' : 'dur.run'))}</button>
@@ -1199,7 +1355,9 @@ function renderRitmoSvg(m) {
   const st = m.sta_lta || {};
   const weeks = st.weeks || [];
   if (!weeks.length) return '';
-  const W = 640, H = 148, padL = 34, padR = 14, padT = 16, padB = 24;
+  const selIdx = S.seismoWeek != null && S.seismoWeek >= 0 && S.seismoWeek < weeks.length
+    ? S.seismoWeek : weeks.length - 1;
+  const W = 640, H = 152, padL = 34, padR = 14, padT = 18, padB = 24;
   const plotW = W - padL - padR, plotH = H - padT - padB;
   const maxY = Math.max(1, Number(st.lta_mean || 0), ...weeks.map((w) => Number(w.concepts || 0)));
   const slot = plotW / weeks.length;
@@ -1211,13 +1369,17 @@ function renderRitmoSvg(m) {
     const x = +(cx - barW / 2).toFixed(1);
     const countVal = Number(w.concepts || 0);
     const rawH = Math.round((countVal / maxY) * plotH);
-    const bh = Math.max(2, rawH);
+    const bh = Math.max(4, rawH);
     const y = +(padT + plotH - bh).toFixed(1);
     const fill = w.is_sta ? (m.trigger_ai ? 'var(--warn)' : 'var(--accent)') : 'var(--line)';
     const lbl = (w.week_start || '').slice(5);
-    return `<rect x="${x}" y="${y}" width="${barW}" height="${bh}" rx="3" fill="${fill}" fill-opacity="${w.is_sta ? '0.9' : '0.85'}"/>
-      <text x="${cx.toFixed(1)}" y="${Math.max(11, y - 4).toFixed(1)}" text-anchor="middle" fill="var(--muted)" font-size="10">${countVal}</text>
-      <text x="${cx.toFixed(1)}" y="${H - 6}" text-anchor="middle" fill="var(--muted)" font-size="10">${esc(lbl)}</text>`;
+    const isSel = idx === selIdx;
+    const strokeAttr = isSel ? ' stroke="var(--text)" stroke-width="2"' : '';
+    return `<g class="ritmo-bar-hit" data-action="seismo-week" data-value="${idx}">
+      <rect x="${x}" y="${y}" width="${barW}" height="${bh}" rx="3" fill="${fill}" fill-opacity="${w.is_sta ? '0.92' : '0.86'}"${strokeAttr}/>
+      <text x="${cx.toFixed(1)}" y="${Math.max(11, y - 4).toFixed(1)}" text-anchor="middle" fill="${isSel ? 'var(--text)' : 'var(--muted)'}" font-size="10" font-weight="${isSel ? '700' : '500'}">${countVal}</text>
+      <text x="${cx.toFixed(1)}" y="${H - 6}" text-anchor="middle" fill="${isSel ? 'var(--text)' : 'var(--muted)'}" font-size="10" font-weight="${isSel ? '700' : '500'}">${esc(lbl)}</text>
+    </g>`;
   }).join('');
 
   const meanVal = Number(st.lta_mean || 0);
@@ -1229,6 +1391,31 @@ function renderRitmoSvg(m) {
     ${baseLine}${meanLine}${bars}
   </svg>`;
 }
+function ritWeekInspectorHtml(m, st) {
+  const weeks = st.weeks || [];
+  if (!weeks.length) return '';
+  const idx = S.seismoWeek != null && S.seismoWeek >= 0 && S.seismoWeek < weeks.length
+    ? S.seismoWeek : weeks.length - 1;
+  const w = weeks[idx];
+  const baseMean = Number(st.lta_mean || 0);
+  const ratioVal = baseMean > 0 ? Math.round((Number(w.concepts || 0) / baseMean) * 100) / 100 : 0;
+  const dateLbl = w.week_start ? day(w.week_start) : `W${idx + 1}`;
+  let desc = '';
+  if (Number(w.concepts || 0) === 0) desc = t('rit.week.desc.zero');
+  else if (ratioVal >= 2.5) desc = t('rit.week.desc.spike', { lta: num(st.lta_mean || 0) });
+  else desc = t('rit.week.desc.norm', { lta: num(st.lta_mean || 0) });
+
+  return `<aside class="week-detail-card">
+    <div class="sec-eyebrow">${esc(t('rit.week.eyebrow', { idx: idx + 1, tot: weeks.length }))}</div>
+    <h3 style="font-size:1rem;font-weight:660;margin-top:2px">${esc(t('rit.week.title', { date: dateLbl, n: num(w.concepts || 0) }))}</h3>
+    <div style="margin:10px 0">
+      <div class="week-stat"><span class="muted">${esc(t('rit.week.ratio'))}</span><strong class="num">${esc(t('rit.week.ratio.val', { ratio: num(ratioVal) }))}</strong></div>
+      <div class="week-stat"><span class="muted">${esc((t('rit.chart.baseline', { n: num(st.lta_mean || 0) }).split(':')[0] || '').trim())}</span><strong class="num">${esc((t('rit.chart.baseline', { n: num(st.lta_mean || 0) }).split(':')[1] || '').trim())}</strong></div>
+    </div>
+    <p style="font-size:.86rem;color:var(--muted);line-height:1.48">${esc(desc)}</p>
+    <p style="font-size:.78rem;color:var(--muted);margin-top:10px">${esc(t('rit.week.hint'))}</p>
+  </aside>`;
+}
 function ritmoUnavailableText(m) {
   const share = m.loaded_share != null ? pct(m.loaded_share) : '—';
   if (m.reason === 'partial_list') return t('rit.unavail.partial_list', { share });
@@ -1236,7 +1423,11 @@ function ritmoUnavailableText(m) {
   return t('rit.unavail.other', { reason: m.reason || '—' });
 }
 function ritmoSection(r, inNews = false) {
-  if (!r || r.mode !== 'company' || !r.ritmo) return '';
+  if (!r) return '';
+  if (r.mode !== 'company') {
+    return !inNews ? `<section class="ritmo-locked"><p class="muted">${esc(t('rit.locked'))}</p></section>` : '';
+  }
+  if (!r.ritmo) return '';
   const m = r.ritmo;
   const busy = S.durataBusy || Boolean(S.job || S.busy);
   const refreshBtn = !inNews && r.page && r.page.page_id
@@ -1310,9 +1501,17 @@ function ritmoSection(r, inNews = false) {
     }
 
     const chartHtml = st.weeks && st.weeks.length
-      ? `<div class="ritmo-chart">
-          <div class="ritmo-chart-head"><span>${esc(t('rit.chart.title'))}</span><span>${esc(t('rit.chart.baseline', { n: num(st.lta_mean || 0) }))} · <strong>${esc(t('rit.chart.sta', { n: num(st.sta_count || 0) }))}</strong></span></div>
-          ${renderRitmoSvg(m)}
+      ? `<div class="ritmo-inspector-grid">
+          <div class="ritmo-chart">
+            <div class="chart-legend">
+              <span><i class="leg-dot" style="background:var(--warn)"></i>${esc(t('rit.leg.spike'))}</span>
+              <span><i class="leg-dot" style="background:var(--accent)"></i>${esc(t('rit.leg.current'))}</span>
+              <span><i class="leg-dot" style="background:var(--line)"></i>${esc(t('rit.leg.normal'))}</span>
+            </div>
+            <div class="ritmo-chart-head"><span>${esc(t('rit.chart.title'))}</span><span>${esc(t('rit.chart.baseline', { n: num(st.lta_mean || 0) }))} · <strong>${esc(t('rit.chart.sta', { n: num(st.sta_count || 0) }))}</strong></span></div>
+            ${renderRitmoSvg(m)}
+          </div>
+          ${ritWeekInspectorHtml(m, st)}
         </div>` : '';
 
     body = `${alertHtml}
@@ -1327,7 +1526,11 @@ function ritmoSection(r, inNews = false) {
 
   return `<section class="ritmo-sec">
     <div class="ritmo-head">
-      <div class="ritmo-head-title"><h2>${esc(t('rit.title'))}${ritmoPop()}</h2><p>${esc(t('rit.sub'))}</p></div>
+      <div class="ritmo-head-title">
+        <div class="sec-eyebrow">${esc(t('rit.eyebrow'))}${simplePop('rit.eyebrow', 'help.ritmo.eyebrow.title', 'help.ritmo.eyebrow.body')}</div>
+        <h2>${esc(t('rit.title'))}${ritmoPop()}</h2>
+        <p>${esc(t('rit.sub'))}</p>
+      </div>
       ${refreshBtn}
     </div>
     ${body}
@@ -1385,7 +1588,7 @@ function strutturaSection(r) {
     </button>`;
     }).join('');
     famHtml = `<div class="struttura-families">
-      <div class="struttura-families-head">${esc(t('str.families.title'))}</div>
+      <div class="struttura-families-head">${esc(t('str.families.title'))}${simplePop('str.families.title', 'help.families.title', 'help.families.body')}</div>
       <div class="fam-chips">${chips}</div>
     </div>`;
   }
@@ -1393,7 +1596,11 @@ function strutturaSection(r) {
   const noteText = rc.measurable ? t('str.note', { n: num(rc.concepts_with_reach) }) : t('str.note.noreach');
   return `<section class="struttura-sec">
     <div class="struttura-head">
-      <div class="struttura-head-title"><h2>${esc(t('str.title'))}${strutturaPop()}</h2><p>${esc(t(subKey))}</p></div>
+      <div class="struttura-head-title">
+        <div class="sec-eyebrow">${esc(t('str.eyebrow'))}</div>
+        <h2>${esc(t('str.title'))}${strutturaPop()}</h2>
+        <p>${esc(t(subKey))}</p>
+      </div>
     </div>
     <div class="struttura-kpis">
       <div class="struttura-kpi"><span class="struttura-kpi-label">${esc(t('str.kpi.conc'))}${concPop()}</span>${concHtml}</div>
@@ -1467,24 +1674,63 @@ function anomalieSection(r) {
   }
   return `<section class="anomalie-sec">
     <div class="anomalie-head">
-      <div class="anomalie-head-title"><h2>${esc(t('anom.title'))}${anomaliePop()}</h2><p>${esc(t(subKey))}</p></div>
+      <div class="anomalie-head-title">
+        <div class="sec-eyebrow">${esc(t('anom.eyebrow'))}</div>
+        <h2>${esc(t('anom.title'))}${anomaliePop()}</h2>
+        <p>${esc(t(subKey))}</p>
+      </div>
     </div>
     ${body}
     <p class="anomalie-note">${esc(t('anom.note'))}</p>
   </section>`;
 }
+function tierPanelHtml() {
+  const tiers = [
+    ['v-scaling', 'tier.s.tag', 'tier.s.desc'],
+    ['v-holding', 'tier.a.tag', 'tier.a.desc'],
+    ['v-average', 'tier.b.tag', 'tier.b.desc'],
+    ['v-testing', 'tier.t.tag', 'tier.t.desc'],
+    ['v-review', 'tier.r.tag', 'tier.r.desc'],
+  ].map(([cls, tag, desc]) => `<div class="tier-item">
+    <span class="${cls}">${esc(t(tag))}</span>
+    <p>${esc(t(desc))}</p>
+  </div>`).join('');
+  return `<div class="tier-panel">
+    <div class="tier-panel-head">
+      <span class="sec-eyebrow" style="margin-bottom:0">${esc(t('tier.panel.title'))}${tierScalePop()}</span>
+      <span class="muted" style="font-size:.78rem">${esc(t('tier.panel.sub'))}</span>
+    </div>
+    <div class="tier-legend-grid">${tiers}</div>
+    <div class="rel-strip">
+      <strong>${esc(t('tier.rel.title'))}</strong>
+      <span><strong>${esc(t('reliability.high'))}:</strong> ${esc(t('leg.r.high'))}</span>
+      <span><strong>${esc(t('reliability.medium'))}:</strong> ${esc(t('leg.r.medium'))}</span>
+      <span><strong>${esc(t('reliability.low'))}:</strong> ${esc(t('leg.r.low'))}</span>
+    </div>
+  </div>`;
+}
 function tableSection(r) {
   const company = r.mode === 'company';
   const isCards = S.adsView === 'cards';
+  const countryName = region(r.country);
   const bodyHtml = isCards
     ? `<div class="ads-grid" id="ads-grid">${cardsGridHtml(r)}</div>`
-    : `<div class="table-scroll"><table class="ads${company ? '' : ' mixed'}"><thead><tr><th></th><th>${esc(t('t.ad'))}</th><th>${esc(t('t.tier'))}${tierScalePop()}</th>
-    <th class="r">${esc(t('t.score'))}${scoreScalePop(true)}</th><th class="r">${esc(t('t.days'))}</th><th class="r">${esc(t('t.creatives'))}</th>
-    ${company ? '' : `<th>${esc(t('t.format'))}</th>`}<th class="r">${esc(t('t.reached', { country: region(r.country) }))}</th><th class="r">${esc(t('t.perday'))}${perdayPop(true)}</th></tr></thead>
+    : `<div class="table-scroll"><table class="ads${company ? '' : ' mixed'}"><thead><tr><th></th><th>${esc(t('t.ad'))}${adColPop()}</th><th>${esc(t('t.tier'))}${tierScalePop()}</th>
+    <th class="r">${esc(t('t.score'))}${scoreScalePop(true)}</th><th class="r">${esc(t('t.days'))}${daysColPop(true)}</th><th class="r">${esc(t('t.creatives'))}${creativesColPop(true)}</th>
+    ${company ? '' : `<th>${esc(t('t.format'))}</th>`}<th class="r">${esc(t('t.reached', { country: countryName }))}${reachedColPop(countryName, true)}</th><th class="r">${esc(t('t.perday'))}${perdayPop(true)}</th></tr></thead>
     <tbody id="ads-tbody">${tableRowsHtml(r)}</tbody></table></div>`;
   const opened = r.deep ? r.deep.read : r.ads.reduce((sum, ad) => sum + (ad.reach ? 1 : 0) + Object.keys(ad.card_reach || {}).length, 0);
   const concepts = r.deep ? r.deep.concepts : r.ads.filter((ad) => ad.reach).length;
-  return `<section><div class="sortbar">
+  return `<section>
+    <div class="sec-eyebrow">${esc(t('ads.eyebrow'))}</div>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px">
+      <div>
+        <h2 class="sec-title-line">${esc(t('ads.title', { country: countryName }))}${simplePop('ads.eyebrow', 'help.ads.sec.title', 'help.ads.sec.body')}</h2>
+        <p class="muted" style="font-size:.9rem;margin-top:3px">${esc(t('ads.sub'))}</p>
+      </div>
+    </div>
+    ${tierPanelHtml()}
+    <div class="sortbar">
       <span>${esc(t('sort.by'))}</span><div class="switch" role="group">${toggle('sort', ['score', 'perday', 'days'], S.sort, (v) => t(`sort.${v}`))}</div>
       <div class="switch" role="group">${toggle('tfilter', ['all', 'scaling', 'video', 'high'], S.filter, (v) => t(`filter.${v}`))}</div>
       <div class="switch" role="group">${toggle('ads-view', ['table', 'cards'], S.adsView, (v) => t(`ads.view.${v}`))}</div>
@@ -1505,13 +1751,16 @@ function liveStepperHtml() {
   </div>`;
 }
 function studioTabBadge(r, tab) {
-  if (tab === 'pulse' && r.ritmo && r.ritmo.sta_lta && r.ritmo.sta_lta.state === 'spike' && r.ritmo.sta_lta.ratio != null) {
+  if (tab === 'ads') return num((r.ads || []).length);
+  if (tab === 'seismo' && r.ritmo && r.ritmo.sta_lta && r.ritmo.sta_lta.state === 'spike' && r.ritmo.sta_lta.ratio != null) {
     return `${num(r.ritmo.sta_lta.ratio)}x`;
+  }
+  if (tab === 'durata' && r.durata && r.durata.available && r.durata.median_reached && r.durata.median_days != null) {
+    return t('dur.days.short', { n: num(r.durata.median_days) });
   }
   if (tab === 'structure' && r.anomalie && (r.anomalie.items || []).length) {
     return num(r.anomalie.items.length);
   }
-  if (tab === 'ads') return num((r.ads || []).length);
   if (tab === 'strategy') return t(`level.${S.stratLevel === 'plan' ? 'plan' : 'analysis'}`);
   return null;
 }
@@ -1519,7 +1768,7 @@ function studioTabsHtml(r) {
   const btns = STUDIO_TABS.map((tab, idx) => {
     const badge = studioTabBadge(r, tab);
     return `<button type="button" class="studio-tab" role="tab" data-action="rtab" data-value="${tab}" aria-selected="${S.tab === tab}">
-      <span>${idx + 1}. ${esc(t(`tab.${tab}`))}</span>${badge != null ? `<span class="tab-badge">${esc(badge)}</span>` : ''}
+      <span class="tab-num">${idx + 1}.</span><span>${esc(t(`tab.${tab}`))}</span>${badge != null ? `<span class="tab-badge">${esc(badge)}</span>` : ''}
     </button>`;
   }).join('');
   return `<nav class="studio-tabs" role="tablist">${btns}<span class="tab-hint">${esc(t('tab.hint'))}</span></nav>`;
@@ -1539,7 +1788,8 @@ function topPreviewSection(r) {
     </button>`;
   }).join('');
   return `<section class="top-preview">
-    <div class="top-preview-head"><h2>${esc(t('top.title'))}</h2><button type="button" class="linklike" data-action="rtab" data-value="ads">${esc(t('top.all', { n: num((r.ads || []).length) }))}</button></div>
+    <div class="sec-eyebrow">${esc(t('top.eyebrow'))}</div>
+    <div class="top-preview-head"><h2>${esc(t('top.title'))}${simplePop('top.title', 'help.top.title', 'help.top.body')}</h2><button type="button" class="linklike" data-action="rtab" data-value="ads">${esc(t('top.all', { n: num((r.ads || []).length) }))}</button></div>
     <div class="top-cards">${cards}</div>
   </section>`;
 }
@@ -1575,6 +1825,118 @@ function renderMarkdownSafe(md) {
   closeList();
   return out.join('');
 }
+const ARCH_ICONS = {
+  root: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M8 9h8M8 13h5M8 17h3"/></svg>',
+  copy: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+  video: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2.5"/><path d="m10 9 5 3-5 3V9Z"/></svg>',
+  reach: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3.6 9h16.8M3.6 15h16.8"/><path d="M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>',
+  cadence: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg>',
+  jury: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 7v5c0 5 3.4 8.3 8 9 4.6-.7 8-4 8-9V7l-8-4Z"/><path d="m9 12 2 2 4-4"/></svg>',
+  audit: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
+};
+const ARROW_DOWN_SVG = '<svg width="14" height="10" viewBox="0 0 14 10" fill="currentColor" aria-hidden="true"><polygon points="7,9 1,2 13,2"/></svg>';
+function archSchemaHtml(lvl) {
+  const focus = S.archFocus || 'copy';
+  const specs = [
+    { key: 'copy', file: 'copy.md', right: false },
+    { key: 'video', file: 'creative.md + frames/', right: false },
+    { key: 'reach', file: 'reach.md', right: true },
+    { key: 'cadence', file: 'testing.md', right: true },
+  ];
+  const nodeMeta = {
+    root: { title: t('arch.root.title'), desc: t('arch.root.desc') },
+    copy: { title: t('arch.copy.name'), desc: t('arch.copy.desc') },
+    video: { title: t('arch.video.name'), desc: t('arch.video.desc') },
+    reach: { title: t('arch.reach.name'), desc: t('arch.reach.desc') },
+    cadence: { title: t('arch.cadence.name'), desc: t('arch.cadence.desc') },
+    jury: { title: t('arch.jury.name'), desc: t('arch.jury.desc') },
+    audit: { title: t('arch.audit.name'), desc: t('arch.audit.desc') },
+  };
+  const cur = nodeMeta[focus] || nodeMeta.copy;
+
+  const specCards = specs.map((sp) => `<div class="arch-node${focus === sp.key ? ' active' : ''}" data-action="arch-focus" data-value="${sp.key}">
+    <div class="arch-node-top">
+      <span class="arch-icon">${ARCH_ICONS[sp.key]}</span>
+      ${simplePop(`arch.${sp.key}.name`, `help.arch.${sp.key}.title`, `help.arch.${sp.key}.body`, `help.arch.${sp.key}.how`, sp.right)}
+    </div>
+    <div>
+      <h4>${esc(t(`arch.${sp.key}.name`))}</h4>
+      <p>${esc(t(`arch.${sp.key}.desc`))}</p>
+    </div>
+    <div class="arch-io">${esc(sp.file)}</div>
+  </div>`).join('');
+
+  const juryDimmed = lvl === 'analysis';
+  const gateX = juryDimmed ? 762 : 238;
+  return `<div class="arch-card">
+    <div class="arch-head">
+      <div>
+        <div class="sec-eyebrow">${esc(t('arch.eyebrow'))}</div>
+        <h3>${esc(t('arch.title'))}${simplePop('arch.eyebrow', 'help.arch.main.title', 'help.arch.main.body')}</h3>
+      </div>
+    </div>
+    <div class="arch-schema">
+      <div class="arch-root-wrap">
+        <div class="arch-root" data-action="arch-focus" data-value="root" style="cursor:pointer">
+          <span class="arch-icon">${ARCH_ICONS.root}</span>
+          <div class="arch-root-body">
+            <div class="arch-root-top">
+              <h4>${esc(t('arch.root.title'))}</h4>
+              ${simplePop('arch.root.title', 'help.arch.root.title', 'help.arch.root.body', 'help.arch.root.how')}
+            </div>
+            <p>${esc(t('arch.root.desc'))}</p>
+          </div>
+        </div>
+      </div>
+
+      <svg class="arch-tree-svg" viewBox="0 0 1000 34" aria-hidden="true">
+        <path d="M500,0 V14 M125,14 H875 M125,14 V29 M375,14 V29 M625,14 V29 M875,14 V29 M120,23 L125,30 L130,23 M370,23 L375,30 L380,23 M620,23 L625,30 L630,23 M870,23 L875,30 L880,23" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div class="arch-mobile-arrow">${ARROW_DOWN_SVG}</div>
+
+      <div class="arch-specialists">${specCards}</div>
+
+      <svg class="arch-tree-svg" viewBox="0 0 1000 34" aria-hidden="true">
+        <path d="M125,2 V16 M375,2 V16 M625,2 V16 M875,2 V16 M125,16 H875 M${gateX},16 V30 M${gateX - 5},24 L${gateX},31 L${gateX + 5},24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div class="arch-mobile-arrow">${ARROW_DOWN_SVG}</div>
+
+      <div class="arch-gate-row">
+        <div class="arch-node${focus === 'jury' ? ' active' : ''}${juryDimmed ? ' dimmed' : ''}" data-action="arch-focus" data-value="jury">
+          <div class="arch-node-top">
+            <span class="arch-icon">${ARCH_ICONS.jury}</span>
+            ${simplePop('arch.jury.name', 'help.arch.jury.title', 'help.arch.jury.body', 'help.arch.jury.how')}
+          </div>
+          <div>
+            <h4><span>${esc(t('arch.jury.name'))}</span>${juryDimmed ? `<span class="phase-badge">${esc(t('arch.l3only'))}</span>` : ''}</h4>
+            <p>${esc(t('arch.jury.desc'))}</p>
+          </div>
+          <div class="arch-io">project.md + 5 script</div>
+        </div>
+
+        <div class="arch-arrow-mid" aria-hidden="true">
+          <svg viewBox="0 0 42 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9h35"/><path d="m32 4 6 5-6 5"/></svg>
+        </div>
+
+        <div class="arch-node${focus === 'audit' ? ' active' : ''}" data-action="arch-focus" data-value="audit">
+          <div class="arch-node-top">
+            <span class="arch-icon">${ARCH_ICONS.audit}</span>
+            ${simplePop('arch.audit.name', 'help.arch.audit.title', 'help.arch.audit.body', 'help.arch.audit.how', true)}
+          </div>
+          <div>
+            <h4>${esc(t('arch.audit.name'))}</h4>
+            <p>${esc(t('arch.audit.desc'))}</p>
+          </div>
+          <div class="arch-io">manifest.json · check_report</div>
+        </div>
+      </div>
+    </div>
+    <div class="arch-foot-bar">
+      <span><strong>${esc(t('arch.focus.lbl'))} ${esc(cur.title)}</strong> · ${esc(cur.desc)}</span>
+      <span class="code-pill">${esc(t('arch.verify.pill'))}</span>
+    </div>
+  </div>`;
+}
 function strategyTabSection(r) {
   const lvl = S.stratLevel === 'plan' ? 'plan' : 'analysis';
   const subj = (r.page && r.page.name) || r.query || t(`mode.${r.mode}`);
@@ -1596,7 +1958,7 @@ function strategyTabSection(r) {
     outputHtml = `<p class="audit-pill ok">${esc(t('strat.ai.mcp_sent'))}</p>`;
   } else if (S.aiJob) {
     if (S.aiJob.status === 'running') {
-      outputHtml = `<div class="progress" style="margin-top:4px;padding-top:4px"><p><span>${esc(t('strat.ai.running', { folder: S.aiJob.folder_name || 'pack' }))}</span></p><div class="bar open"><i></i></div></div>`;
+      outputHtml = `<div class="progress" style="margin-top:4px;padding-top:8px"><p><span>${esc(t('strat.ai.running', { folder: S.aiJob.folder_name || 'pack' }))}</span><span class="muted num" id="ai-elapsed">${S.aiElapsed ? `${S.aiElapsed} s` : ''}</span></p><div class="bar open"><i></i></div></div>`;
     } else if (S.aiJob.status === 'error') {
       outputHtml = `<p class="notice err">${esc(t('strat.ai.err'))}: ${esc(S.aiJob.detail || S.aiJob.error || '')}</p>`;
     } else if (S.aiJob.markdown) {
@@ -1609,13 +1971,41 @@ function strategyTabSection(r) {
     }
   }
   const exportBtn = IS_MCP_APP ? '' : `<button type="button" class="btn quiet small" data-action="brief">${esc(t('strat.ai.export'))}</button>`;
-  return `<section class="strategy-grid">
-    <div><h2 style="margin-bottom:12px">${esc(t('strat.calc.title'))}</h2>${levelVisual('plan')}</div>
-    <div class="ai-studio-card">
-      <div class="ai-studio-head"><h2>${esc(t('strat.ai.title'))}</h2><p>${esc(t('strat.ai.sub'))}</p></div>
-      <div class="switch" role="group" style="margin-left:0;width:fit-content">${toggle('strat-level', ['analysis', 'plan'], lvl, (v) => t(`strat.lvl.${v === 'plan' ? 3 : 2}`))}</div>
-      <div class="ai-actions">${primaryBtn}${exportBtn}</div>
-      ${outputHtml}
+  const modeBar = `<div class="strat-mode-bar" role="group" aria-label="${esc(t('strat.ai.title'))}">
+    <button type="button" class="strat-mode-btn${lvl === 'analysis' ? ' active' : ''}" data-action="strat-level" data-value="analysis">
+      <div><strong>${esc(t('strat.lvl2.title'))}</strong><span>${esc(t('strat.lvl2.sub'))}</span></div>
+      <span class="code-pill">${esc(t('strat.lvl2.tag'))}</span>
+    </button>
+    <button type="button" class="strat-mode-btn${lvl === 'plan' ? ' active' : ''}" data-action="strat-level" data-value="plan">
+      <div><strong>${esc(t('strat.lvl3.title'))}</strong><span>${esc(t('strat.lvl3.sub'))}</span></div>
+      <span class="code-pill">${esc(t('strat.lvl3.tag'))}</span>
+    </button>
+  </div>`;
+
+  const calcCol = lvl === 'plan'
+    ? `<div><h2 class="sec-title-line" style="margin-bottom:12px">${esc(t('strat.calc.title'))}${simplePop('strat.calc.title', 'help.strat.calc.title', 'help.strat.calc.body')}</h2>${levelVisual('plan')}</div>`
+    : '';
+  const runTitle = t(lvl === 'plan' ? 'strat.run.title.l3' : 'strat.run.title.l2');
+  const runSub = t(lvl === 'plan' ? 'strat.ai.sub.l3' : 'strat.ai.sub.l2');
+
+  return `<section class="strat-stack">
+    <div>
+      <div class="sec-eyebrow">${esc(t('strat.eyebrow'))}</div>
+      <h2 class="sec-title-line">${esc(t('strat.ai.title'))}${simplePop('strat.ai.title', 'help.arch.main.title', 'help.arch.main.body')}</h2>
+    </div>
+    ${modeBar}
+    ${archSchemaHtml(lvl)}
+    <div class="strategy-grid${lvl === 'analysis' ? ' single' : ''}">
+      ${calcCol}
+      <div class="ai-studio-card">
+        <div class="ai-studio-head">
+          <div class="sec-eyebrow">${esc(t('strat.run.eyebrow'))}</div>
+          <h2>${esc(runTitle)}</h2>
+          <p>${esc(runSub)}</p>
+        </div>
+        <div class="ai-actions">${primaryBtn}${exportBtn}</div>
+        <div id="ai-job-region">${outputHtml}</div>
+      </div>
     </div>
   </section>`;
 }
@@ -1638,9 +2028,10 @@ function renderResults() {
   if (!STUDIO_TABS.includes(S.tab)) S.tab = 'overview';
   let tabBody = '';
   if (S.tab === 'overview') tabBody = `${cappedSection(r)}${changesSection(r)}${metricsSection(r)}${topPreviewSection(r)}${factsSection(r)}`;
-  else if (S.tab === 'pulse') tabBody = `${ritmoSection(r)}${durataSection(r)}${keywordJumpSection(r)}`;
-  else if (S.tab === 'structure') tabBody = `${strutturaSection(r)}${anomalieSection(r)}`;
   else if (S.tab === 'ads') tabBody = `${tableSection(r)}`;
+  else if (S.tab === 'seismo') tabBody = `${ritmoSection(r)}${keywordJumpSection(r)}`;
+  else if (S.tab === 'durata') tabBody = `${durataSection(r)}${keywordJumpSection(r)}`;
+  else if (S.tab === 'structure') tabBody = `${strutturaSection(r)}${anomalieSection(r)}`;
   else if (S.tab === 'strategy') tabBody = `${strategyTabSection(r)}`;
   el.innerHTML = `<div class="sheet">${headSection(r)}${tldrSection(r)}${readySection(r)}${studioTabsHtml(r)}${tabBody}</div>`;
   hydrateMcpImages();
@@ -2191,10 +2582,6 @@ function setTab(tab) {
   if (!STUDIO_TABS.includes(tab) || !S.result) return;
   S.tab = tab; S.stratNeedProject = false;
   renderResults();
-  if (tab === 'pulse' && S.result._live && S.result.mode === 'company' && !S.result.durata && !S.durataBusy && !S.durataError && !S.result._durataAuto) {
-    S.result._durataAuto = true;
-    runDurata(false);
-  }
 }
 function stepAd(delta) {
   if (!S.overlay || S.overlay.type !== 'ad' || !S.result) return;
@@ -2222,7 +2609,8 @@ async function runAi() {
   if (!r || !S.jobId) return;
   const level = S.stratLevel === 'plan' ? 'plan' : 'analysis';
   if (level === 'plan' && !S.project) { S.stratNeedProject = true; renderResults(); return; }
-  S.stratNeedProject = false;
+  S.stratNeedProject = false; S.aiElapsed = 0;
+  const t0 = performance.now();
   const token = newToken();
   const adsCount = (r.request && r.request.deep) || S.deep;
   const useFrames = Boolean(r.request && r.request.frames);
@@ -2242,7 +2630,11 @@ async function runAi() {
   while (S.aiJob && S.aiJob.status === 'running') {
     await sleep(700);
     try { S.aiJob = await api(`/api/ai/jobs/${S.aiJob.id}`); } catch { break; }
-    if (S.tab === 'strategy') renderResults();
+    if (S.aiJob && S.aiJob.status === 'running') {
+      S.aiElapsed = Math.round((performance.now() - t0) / 1000);
+      const el = $('#ai-elapsed');
+      if (el) el.textContent = `${S.aiElapsed} s`;
+    }
   }
   if (S.tab === 'strategy') renderResults();
 }
@@ -2281,7 +2673,7 @@ async function reopenHistory(key) {
       const saved = await api(`/api/history/latest?key=${encodeURIComponent(key)}`);
       if (saved && saved.available && saved.result) {
         S.result = saved.result; S.resultMode = saved.result.mode; S.jobId = saved.job_id || null;
-        S.tab = 'overview'; S.searchExpandedManual = false; render(); return;
+        S.tab = 'overview'; S.seismoWeek = null; S.searchExpandedManual = false; render(); return;
       }
     } catch { /* fall back to fresh search */ }
   }
@@ -2291,26 +2683,40 @@ async function reopenHistory(key) {
 async function runDurata(fresh = false) {
   const r = S.result;
   if (!r || r.mode !== 'company' || !(r.page && r.page.page_id) || S.durataBusy) return;
-  S.durataBusy = true; S.durataError = false; renderResults();
+  const seq = ++S.durataCancelSeq;
+  const t0 = performance.now();
+  S.durataBusy = true; S.durataError = false; S.durataElapsed = 0; renderResults();
   try {
     let job = await api('/api/durata', {
       method: 'POST',
       body: { page_id: r.page.page_id, country: r.country, window_days: S.durataWindow, fresh },
     });
-    while (job && job.status === 'running') {
+    while (job && job.status === 'running' && S.durataCancelSeq === seq) {
       await sleep(700);
+      if (S.durataCancelSeq !== seq) break;
       job = await api(`/api/jobs/${job.id}`);
+      if (job && job.status === 'running') {
+        S.durataElapsed = Math.round((performance.now() - t0) / 1000);
+        const el = $('#durata-elapsed');
+        if (el) el.textContent = t('dur.elapsed', { sec: S.durataElapsed });
+      }
     }
+    if (S.durataCancelSeq !== seq) return;
     if (!job || job.status !== 'done' || !job.result || !job.result.durata) throw new Error('durata_failed');
     if (S.result === r) {
       S.result.durata = job.result.durata;
-      if (job.result.ritmo) S.result.ritmo = job.result.ritmo;
+      const hadValidRitmo = Boolean(r.ritmo && r.ritmo.available);
+      if (job.result.ritmo && (!hadValidRitmo || job.result.ritmo.available)) {
+        S.result.ritmo = job.result.ritmo;
+      }
     }
   } catch {
-    if (S.result === r) S.durataError = true;
+    if (S.result === r && S.durataCancelSeq === seq) S.durataError = true;
   } finally {
-    S.durataBusy = false;
-    renderResults();
+    if (S.durataCancelSeq === seq) {
+      S.durataBusy = false;
+      renderResults();
+    }
   }
 }
 function openProject(thenSearch) {
@@ -2382,6 +2788,9 @@ const ACTIONS = {
   },
   'durata-window'(value) { S.durataWindow = Number(value); S.durataError = false; renderResults(); },
   'durata-run'() { runDurata(false); },
+  'durata-cancel'() { S.durataCancelSeq++; S.durataBusy = false; renderResults(); },
+  'seismo-week'(value) { S.seismoWeek = Number(value); renderResults(); },
+  'arch-focus'(value) { if (value) { S.archFocus = value; renderResults(); } },
   'ritmo-refresh'() {
     const r = S.result;
     if (r && r.mode === 'company' && r.page && r.page.page_id) {
@@ -2468,22 +2877,33 @@ function positionHelpPop(wrap, btn) {
   if (!pop || !btn) return;
   pop.style.position = 'fixed';
   pop.style.right = 'auto';
-  pop.style.zIndex = '40';
+  pop.style.zIndex = '60';
   const vw = window.innerWidth;
-  const w = Math.min(pop.offsetWidth || 280, vw - 24);
+  const vh = window.innerHeight;
+  pop.style.width = `${Math.min(350, vw - 24)}px`;
+  const rect = pop.getBoundingClientRect();
+  const w = Math.min(rect.width || pop.offsetWidth || 300, vw - 24);
+  const h = Math.min(rect.height || pop.offsetHeight || 160, vh - 24);
   const b = btn.getBoundingClientRect();
   _helpAnchor = { btn, left: b.left, top: b.top, at: performance.now() };
+  const topbar = $('.topbar');
+  const topMin = (topbar && getComputedStyle(topbar).position === 'sticky')
+    ? Math.max(12, Math.round(topbar.getBoundingClientRect().bottom) + 8)
+    : 12;
   const preferRight = pop.classList.contains('right');
   const rawLeft = preferRight ? b.right - w : b.left;
   const left = Math.max(12, Math.min(rawLeft, vw - w - 12));
   pop.style.width = `${w}px`;
   pop.style.left = `${left}px`;
-  const h = pop.offsetHeight || 160;
   let top = b.bottom + 8;
-  if (top + h > window.innerHeight - 12 && b.top - h - 8 >= 12) {
-    top = b.top - h - 8;
+  if (top + h > vh - 12) {
+    const aboveTop = b.top - h - 8;
+    if (aboveTop >= topMin) top = aboveTop;
+    else top = Math.max(topMin, Math.min(top, vh - h - 12));
+  } else {
+    top = Math.max(topMin, top);
   }
-  pop.style.top = `${Math.max(12, top)}px`;
+  pop.style.top = `${top}px`;
 }
 function closeHelp() {
   _helpAnchor = null;
@@ -2593,7 +3013,7 @@ document.addEventListener('keydown', (event) => {
     const idx = STUDIO_TABS.indexOf(S.tab);
     if (event.key === 'ArrowRight') { event.preventDefault(); setTab(STUDIO_TABS[(idx + 1) % STUDIO_TABS.length]); return; }
     if (event.key === 'ArrowLeft') { event.preventDefault(); setTab(STUDIO_TABS[(idx - 1 + STUDIO_TABS.length) % STUDIO_TABS.length]); return; }
-    if (/^[1-5]$/.test(event.key)) { event.preventDefault(); setTab(STUDIO_TABS[Number(event.key) - 1]); return; }
+    if (/^[1-6]$/.test(event.key)) { event.preventDefault(); setTab(STUDIO_TABS[Number(event.key) - 1]); return; }
     if (event.key === '/') { event.preventDefault(); ACTIONS['search-expand'](); }
   }
 });

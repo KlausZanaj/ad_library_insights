@@ -184,12 +184,25 @@ class Workspace:
                                 and (source.params.get("page_id") == params["page_id"]
                                      or (source.raw.get("page") or {}).get("page_id") == params["page_id"])):
                             source.raw["durata"] = found["durata"]
-                            if found.get("ritmo"):
-                                source.raw["ritmo"] = found["ritmo"]
+                            had_valid_ritmo = bool((source.raw.get("ritmo") or {}).get("available"))
+                            enriched_ritmo = None
+                            if had_valid_ritmo:
+                                if (found.get("durata") or {}).get("available"):
+                                    enriched_ritmo = ritmo.analyze(
+                                        source.raw["ads"],
+                                        mode="company",
+                                        loaded_share=service._loaded_share(source.raw),
+                                        snapshots=snaps,
+                                        durata_report=found["durata"],
+                                    )
+                            elif found.get("ritmo"):
+                                enriched_ritmo = found["ritmo"]
+                            if enriched_ritmo is not None:
+                                source.raw["ritmo"] = enriched_ritmo
                             if isinstance(source.result, dict):
                                 source.result["durata"] = found["durata"]
-                                if found.get("ritmo"):
-                                    source.result["ritmo"] = found["ritmo"]
+                                if enriched_ritmo is not None:
+                                    source.result["ritmo"] = enriched_ritmo
                             break
                 else:
                     result = await self._collect(

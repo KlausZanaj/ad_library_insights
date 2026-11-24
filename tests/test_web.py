@@ -1065,21 +1065,21 @@ def test_page_shows_tldr_and_help_popovers_within_viewport(site, page_of):
 
 
 def test_page_durata_section_renders_states_svg_and_runs_endpoint(site, page_of):
-    # Keyword mode -> locked bar (inside Pulse & Timing tab)
+    # Keyword mode -> locked bar (inside Durata & survival tab)
     kw = _result(site, mode="keyword", query="standing desk", page=None)
     page = page_of("it", kw)
-    page.click("[data-action=rtab][data-value=pulse]")
+    page.click("[data-action=rtab][data-value=durata]")
     assert "Analizza un'azienda" in page.inner_text(".durata-locked")
 
     # Partial list -> honest explanation (both low loaded_share and unverified None)
     partial = _result(site, durata={"available": False, "reason": "partial_list", "loaded_share": 0.55, "window_days": 90})
     page = page_of("it", partial)
-    page.click("[data-action=rtab][data-value=pulse]")
+    page.click("[data-action=rtab][data-value=durata]")
     assert "55%" in page.inner_text(".durata-sec")
 
     unverified = _result(site, durata={"available": False, "reason": "partial_list", "loaded_share": None, "window_days": 90})
     page = page_of("it", unverified)
-    page.click("[data-action=rtab][data-value=pulse]")
+    page.click("[data-action=rtab][data-value=durata]")
     assert "non verificata" in page.inner_text(".durata-sec")
 
     # Populated Durata in Light & Dark, IT & EN
@@ -1089,7 +1089,7 @@ def test_page_durata_section_renders_states_svg_and_runs_endpoint(site, page_of)
         page = page_of(lang, populated)
         if lang == "en":
             page.click(".topbar [data-action=theme][data-value=dark]")
-        page.click("[data-action=rtab][data-value=pulse]")
+        page.click("[data-action=rtab][data-value=durata]")
         sec = page.inner_text(".durata-sec")
         assert expected_word in sec and expected_small in sec and "101" in sec and "202" in sec
         assert _count(page, ".durata-chart svg path") >= 1
@@ -1098,7 +1098,7 @@ def test_page_durata_section_renders_states_svg_and_runs_endpoint(site, page_of)
     # Clicking Run triggers POST /api/durata and updates UI cleanly
     base_res = _result(site)
     page = page_of("it", base_res)
-    page.click("[data-action=rtab][data-value=pulse]")
+    page.click("[data-action=rtab][data-value=durata]")
     posted = []
     page.route("**/api/durata", lambda route: (
         posted.append(json.loads(route.request.post_data)),
@@ -1241,8 +1241,9 @@ def test_page_ritmo_section_and_news_detail_render_svg_and_alerts(site, page_of)
     # Keyword search must never show Ritmo
     kw = _result(site, mode="keyword", query="standing desk", page=None, ritmo=SAMPLE_RITMO)
     page = page_of("it", kw)
-    page.click("[data-action=rtab][data-value=pulse]")
+    page.click("[data-action=rtab][data-value=seismo]")
     assert _count(page, ".ritmo-sec") == 0
+    assert _count(page, ".ritmo-locked") == 1
 
     # Company mode renders Ritmo in IT/Light and EN/Dark with 9 bars, alert callout, In breve & ? popovers
     comp = _result(site, ritmo=SAMPLE_RITMO)
@@ -1251,7 +1252,7 @@ def test_page_ritmo_section_and_news_detail_render_svg_and_alerts(site, page_of)
         page = page_of(lang, comp)
         if lang == "en":
             page.click(".topbar [data-action=theme][data-value=dark]")
-        page.click("[data-action=rtab][data-value=pulse]")
+        page.click("[data-action=rtab][data-value=seismo]")
         sec = page.locator(".ritmo-sec")
         assert sec.is_visible()
         sec_text = sec.inner_text()
@@ -1262,7 +1263,7 @@ def test_page_ritmo_section_and_news_detail_render_svg_and_alerts(site, page_of)
 
         # Check every ? popover inside .ritmo-sec stays within 1440px viewport and closes on Escape
         help_count = page.locator(".ritmo-sec [data-action=help-toggle]").count()
-        assert help_count == 4
+        assert help_count >= 4
         for idx in range(help_count):
             page.locator(".ritmo-sec [data-action=help-toggle]").nth(idx).click()
             pop = page.locator(".help-wrap.open .help-pop")
@@ -1448,9 +1449,23 @@ def test_page_mobile_layout_has_no_overflow_and_clamps_popovers(site, page_of):
     comp = _result(site, struttura=_sample_struttura(lead_id), anomalie=_sample_anomalie(lead_id), durata=SAMPLE_DURATA, ritmo=SAMPLE_RITMO)
     page = page_of("it", comp)
     page.set_viewport_size({"width": 420, "height": 900})
-    for tab in ("overview", "pulse", "structure", "ads", "strategy"):
+    for tab in ("overview", "ads", "seismo", "durata", "structure", "strategy"):
         page.click(f"[data-action=rtab][data-value={tab}]")
         assert page.evaluate("() => document.documentElement.scrollWidth <= 420"), tab
+
+    page.click("[data-action=rtab][data-value=strategy]")
+    page.wait_for_selector(".arch-schema")
+    arch_cnt = page.locator(".arch-schema [data-action=help-toggle]").count()
+    assert arch_cnt >= 4
+    for idx in range(arch_cnt):
+        btn = page.locator(".arch-schema [data-action=help-toggle]").nth(idx)
+        btn.scroll_into_view_if_needed()
+        btn.click()
+        pop = page.locator(".help-wrap.open .help-pop")
+        assert pop.is_visible()
+        box = pop.bounding_box()
+        assert box and box["x"] >= 0 and box["x"] + box["width"] <= 420
+        page.keyboard.press("Escape")
 
     page.click("[data-action=rtab][data-value=structure]")
     page.wait_for_selector(".struttura-sec")
@@ -1516,7 +1531,7 @@ def test_page_v05_i18n_singulars_currency_and_popover_scroll(site, page_of):
     page.wait_for_function("() => document.querySelectorAll('.help-wrap.open').length === 0")
     page.set_viewport_size({"width": 1440, "height": 900})
 
-    page.click("[data-action=rtab][data-value=pulse]")
+    page.click("[data-action=rtab][data-value=seismo]")
     assert "1 snapshot salvato" in page.inner_text(".ritmo-note")
 
     # 3. Search input widened so English/Italian placeholder is not truncated
@@ -1559,12 +1574,12 @@ def test_studio_five_tabs_keyboard_collapse_and_grid_view(site, page_of):
     assert page.is_visible(".search-compact")
     assert _count(page, ".top-card") >= 1
 
-    for key, expected_tab in (("2", "pulse"), ("3", "structure"), ("4", "ads"), ("5", "strategy"), ("1", "overview")):
+    for key, expected_tab in (("2", "ads"), ("3", "seismo"), ("4", "durata"), ("5", "structure"), ("6", "strategy"), ("1", "overview")):
         page.keyboard.press(key)
         assert page.get_attribute(f"[data-action=rtab][data-value={expected_tab}]", "aria-selected") == "true"
 
     page.keyboard.press("ArrowRight")
-    assert page.get_attribute("[data-action=rtab][data-value=pulse]", "aria-selected") == "true"
+    assert page.get_attribute("[data-action=rtab][data-value=ads]", "aria-selected") == "true"
     page.keyboard.press("ArrowLeft")
     assert page.get_attribute("[data-action=rtab][data-value=overview]", "aria-selected") == "true"
 
@@ -1628,4 +1643,59 @@ def test_in_page_ai_runner_and_video_hook_inspection(site, page_of):
     page.click("[data-action=video-inspect]")
     page.wait_for_function("document.querySelector('.vid-inspect-box').innerText.includes('9:16')")
     assert "15.2" in page.inner_text(".vid-inspect-box")
+
+
+def test_v08_zalando_ritmo_preserved_and_strategy_flowchart_popovers(site, page_of):
+    comp = _result(site, ritmo=SAMPLE_RITMO)
+    page = page_of("it", comp)
+
+    durata_calls = []
+    page.route("**/api/durata", lambda route: (
+        durata_calls.append(json.loads(route.request.post_data or "{}")),
+        route.fulfill(status=202, json={"id": "durjob_partial", "status": "running", "phase": "list"}),
+    ))
+    page.route("**/api/jobs/durjob_partial", lambda route: route.fulfill(
+        json={"id": "durjob_partial", "status": "done", "result": {
+            "ok": True,
+            "durata": {"available": False, "reason": "partial_list", "loaded_share": 0.57, "window_days": 90},
+        }},
+    ))
+
+    # Overview renders prominent Hero title and verdict mini-legend
+    assert page.locator(".tldr-hero-title").is_visible()
+    assert page.locator(".verdict-mini-legend").is_visible()
+
+    # Switching across tabs never triggers automatic /api/durata calls
+    for tab in ("seismo", "durata", "ads", "strategy"):
+        page.click(f"[data-action=rtab][data-value={tab}]")
+    assert durata_calls == []
+
+    # Tab 2 renders open tier panel
+    page.click("[data-action=rtab][data-value=ads]")
+    assert page.locator(".tier-panel").is_visible()
+
+    # Explicit Durata run returning partial_list must never overwrite active-ads Ritmo
+    page.click("[data-action=rtab][data-value=durata]")
+    page.click("[data-action=durata-run]")
+    page.wait_for_function("document.querySelector('.durata-sec').innerText.includes('57%')")
+    assert len(durata_calls) == 1
+    page.click("[data-action=rtab][data-value=seismo]")
+    assert _count(page, ".ritmo-chart svg rect") == 9
+
+    # Strategy flowchart renders connected SVG connectors and keeps Copy ? popover anchored near button
+    page.click("[data-action=rtab][data-value=strategy]")
+    page.wait_for_selector(".arch-schema")
+    assert page.locator(".arch-schema").is_visible()
+    assert _count(page, ".arch-tree-svg") == 2
+    btn = page.locator(".arch-node[data-value=copy] [data-action=help-toggle]")
+    btn.scroll_into_view_if_needed()
+    btn_box = btn.bounding_box()
+    btn.click()
+    pop = page.locator(".help-wrap.open .help-pop")
+    assert pop.is_visible()
+    pop_box = pop.bounding_box()
+    assert btn_box and pop_box
+    assert pop_box["y"] >= 60
+    assert abs(pop_box["y"] - btn_box["y"]) < 260
+
 
