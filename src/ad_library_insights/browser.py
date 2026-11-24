@@ -17,6 +17,7 @@ regardless of the machine or of the country being researched.
 """
 from __future__ import annotations
 
+import base64
 import json
 import math
 import re
@@ -98,11 +99,76 @@ _LOAD_VIDEO_JS = """async (src) => {
 }"""
 _SEEK_JS = """async (t) => {
   const v = document.getElementById('v');
+  if (Math.abs(v.currentTime - t) < 0.01) return;
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('seek timeout')), 10000);
     v.addEventListener('seeked', () => { clearTimeout(timer); resolve(); }, { once: true });
     v.currentTime = t;
   });
+}"""
+
+_CONTACT_SHEET_HTML = (
+    '<html><body style="margin:0;background:#0f172a">'
+    '<canvas id="sheet" style="display:block"></canvas></body></html>'
+)
+_DRAW_SHEET_JS = """async ({tiles, cols}) => {
+  const canvas = document.getElementById('sheet');
+  const ctx = canvas.getContext('2d');
+  if (!tiles || !tiles.length) return {width: 0, height: 0};
+  const imgs = await Promise.all(tiles.map((t) => new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve({img, label: t.label || ''});
+    img.onerror = () => reject(new Error('tile image failed to load'));
+    img.src = t.src;
+  })));
+  const first = imgs[0].img;
+  const nw = first.naturalWidth || 360;
+  const nh = first.naturalHeight || 640;
+  const tileW = 360;
+  const tileH = Math.max(90, Math.min(720, Math.round(tileW * nh / nw)));
+  const gutter = 8;
+  const pad = 8;
+  const nCols = Math.max(1, Math.min(cols || 2, imgs.length));
+  const nRows = Math.ceil(imgs.length / nCols);
+  const totalW = pad * 2 + nCols * tileW + (nCols - 1) * gutter;
+  const totalH = pad * 2 + nRows * tileH + (nRows - 1) * gutter;
+  canvas.width = totalW;
+  canvas.height = totalH;
+  canvas.style.width = totalW + 'px';
+  canvas.style.height = totalH + 'px';
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(0, 0, totalW, totalH);
+  ctx.font = 'bold 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i < imgs.length; i++) {
+    const r = Math.floor(i / nCols);
+    const c = i % nCols;
+    const x = pad + c * (tileW + gutter);
+    const y = pad + r * (tileH + gutter);
+    ctx.drawImage(imgs[i].img, x, y, tileW, tileH);
+    const label = imgs[i].label;
+    if (label) {
+      const tw = Math.ceil(ctx.measureText(label).width);
+      const bw = tw + 14;
+      const bh = 24;
+      const bx = x + 8;
+      const by = y + 8;
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.86)';
+      ctx.fillRect(bx, by, bw, bh);
+      ctx.strokeStyle = 'rgba(248, 250, 252, 0.35)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillText(label, bx + 7, by + bh / 2);
+    }
+  }
+  return {width: totalW, height: totalH};
+}"""
+_ANY_JSON_SCRIPTS_JS = """() => [...document.querySelectorAll('script[type="application/json"]')]
+    .map((s) => s.textContent).filter(Boolean)"""
+_DOM_VIDEO_SRC_JS = """() => {
+  const v = document.querySelector('video');
+  return v ? (v.currentSrc || v.src || null) : null;
 }"""
 
 
@@ -409,3 +475,157 @@ class DetailSession:
         except PlaywrightError:
             pass  # a video that will not play gives fewer frames, never a failed ad
         return saved
+
+
+def _sheet_ts(seconds: float) -> str:
+    tenths = round(max(0.0, float(seconds)) * 10)
+    mins, rem = divmod(tenths, 600)
+    return f"{mins:02d}:{rem / 10.0:04.1f}"
+
+
+async def compose_contact_sheet(page, tiles: list[dict], output_path: Path, cols: int = 2) -> str | None:
+    """Render local JPEG frames onto a same-origin canvas grid with timestamp labels."""
+    if not tiles:
+        return None
+    encoded = []
+    for tile in tiles:
+        raw = Path(tile["path"]).read_bytes()
+        b64 = base64.b64encode(raw).decode("ascii")
+        encoded.append({"src": f"data:image/jpeg;base64,{b64}", "label": tile.get("label", "")})
+    await page.set_content(_CONTACT_SHEET_HTML)
+    await page.evaluate(_DRAW_SHEET_JS, {"tiles": encoded, "cols": max(1, int(cols))})
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    await page.locator("#sheet").screenshot(path=str(output_path), type="jpeg", quality=82)
+    return str(output_path)
+
+
+async def fetch_ad_video(ad_id: str, timeout_ms: int = 60_000) -> dict:
+    """Open one ad's public Library URL to read a fresh video address and copy."""
+    from playwright.async_api import TimeoutError as PlaywrightTimeout
+
+    ad_id = str(ad_id)
+    url = records.AD_URL.format(ad_id)
+    chosen: dict | None = None
+    dom_video: str | None = None
+    async with _chromium() as context:
+        page = await context.new_page()
+        await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+        try:
+            await page.wait_for_function(
+                "() => document.body && (document.body.innerText.includes('Library ID:') || !!document.querySelector('video'))",
+                timeout=8_000,
+            )
+        except PlaywrightTimeout:
+            pass
+        await page.wait_for_timeout(1200)
+
+        for text in await page.evaluate(_EMBEDDED_JS):
+            connection = records.connection_from_text(text)
+            if not connection:
+                continue
+            ads = records.ads_from_edges(connection.get("edges") or [])
+            match = next(
+                (ad for ad in ads if ad.get("library_id") == ad_id or ad_id in (ad.get("collation_ids") or [])),
+                ads[0] if ads else None,
+            )
+            if match:
+                chosen = match
+                break
+
+        if chosen is None or not chosen.get("video_url"):
+            for text in await page.evaluate(_ANY_JSON_SCRIPTS_JS):
+                if ad_id not in text and '"snapshot"' not in text:
+                    continue
+                payload = records.load_payload(text)
+                if not payload:
+                    continue
+                snap = records.find_key(payload, "snapshot")
+                if isinstance(snap, dict):
+                    candidate = records.ad_from_record({"ad_archive_id": ad_id, "snapshot": snap})
+                    if candidate:
+                        if chosen is None:
+                            chosen = candidate
+                        elif candidate.get("video_url") and not chosen.get("video_url"):
+                            chosen["video_url"] = candidate["video_url"]
+                if chosen and not chosen.get("video_url"):
+                    fallback_url = records.find_key(payload, "video_hd_url") or records.find_key(payload, "video_sd_url")
+                    if isinstance(fallback_url, str) and fallback_url.startswith("https://"):
+                        chosen["video_url"] = fallback_url
+                if chosen and chosen.get("video_url"):
+                    break
+
+        dom_video = await page.evaluate(_DOM_VIDEO_SRC_JS)
+
+    video_url = (chosen or {}).get("video_url") or (dom_video if isinstance(dom_video, str) and dom_video.startswith("https://") else None)
+    media_type = (chosen or {}).get("media_type") or ("video" if video_url else None)
+    return {
+        "found": bool(chosen or video_url),
+        "ad_id": ad_id,
+        "media_type": media_type,
+        "video_url": video_url,
+        "body": (chosen or {}).get("body") or "",
+        "headline": (chosen or {}).get("headline"),
+        "cta": (chosen or {}).get("cta"),
+        "advertiser": (chosen or {}).get("advertiser"),
+        "started": (chosen or {}).get("started"),
+    }
+
+
+async def capture_video_frames(video_url: str, frames_dir: Path, timestamps_fn, sheets_dir: Path) -> dict:
+    """Seek a Meta video URL in Chromium, screenshot frames without CORS taint, and compose contact sheets."""
+    from playwright.async_api import Error as PlaywrightError
+
+    frames_dir = Path(frames_dir)
+    sheets_dir = Path(sheets_dir)
+    async with _chromium() as context:
+        page = await context.new_page()
+        try:
+            await page.set_content(_VIDEO_PAGE)
+            meta = await page.evaluate(_LOAD_VIDEO_JS, video_url)
+            duration = float(meta.get("duration") or 0)
+            if not math.isfinite(duration) or duration <= 0:
+                raise RuntimeError("video duration is invalid")
+            raw_w, raw_h = meta.get("width") or 0, meta.get("height") or 0
+            clean_w = int(raw_w) if raw_w > 0 else None
+            clean_h = int(raw_h) if raw_h > 0 else None
+            hook_times, body_times = timestamps_fn(duration)
+
+            frames_dir.mkdir(parents=True, exist_ok=True)
+            for stale in frames_dir.glob("*.jpg"):
+                stale.unlink(missing_ok=True)
+
+            video = page.locator("#v")
+            captured: list[dict] = []
+            plan = [("hook", float(t)) for t in hook_times] + [("body", float(t)) for t in body_times]
+            for idx, (zone, ts) in enumerate(plan, start=1):
+                await page.evaluate(_SEEK_JS, ts)
+                await page.wait_for_timeout(180)
+                frame_path = frames_dir / f"{idx:02d}_{ts:04.1f}s.jpg"
+                await video.screenshot(path=str(frame_path), type="jpeg", quality=78)
+                label = f"#{idx} · {_sheet_ts(ts)}"
+                captured.append({"index": idx, "timestamp": round(ts, 2), "label": label,
+                                 "zone": zone, "path": str(frame_path)})
+
+            sheets: list[dict] = []
+            hook_tiles = [f for f in captured if f["zone"] == "hook"]
+            if hook_tiles:
+                hook_sheet = await compose_contact_sheet(page, hook_tiles, sheets_dir / "hook_sheet.jpg", cols=2)
+                if hook_sheet:
+                    sheets.append({"zone": "hook", "path": hook_sheet, "frames": len(hook_tiles)})
+            body_tiles = [f for f in captured if f["zone"] == "body"]
+            if body_tiles:
+                body_sheet = await compose_contact_sheet(page, body_tiles, sheets_dir / "body_sheet.jpg", cols=3)
+                if body_sheet:
+                    sheets.append({"zone": "body", "path": body_sheet, "frames": len(body_tiles)})
+        except PlaywrightError as exc:
+            raise RuntimeError(f"video frame capture failed: {exc}") from exc
+
+    return {
+        "ok": True,
+        "duration": round(duration, 2),
+        "width": clean_w,
+        "height": clean_h,
+        "frames": captured,
+        "contact_sheets": sheets,
+    }

@@ -19,6 +19,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "httpx>=0.27"]
+video = ["faster-whisper>=1.1", "av>=12"]
 
 [project.scripts]
 ad-library-insights = "ad_library_insights.cli:main"
