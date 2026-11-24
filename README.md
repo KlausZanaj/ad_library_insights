@@ -8,7 +8,7 @@
 
 Ad Library Insights reads the public Meta Ad Library and turns it into structured, verifiable competitive research: a ranked list of the creative concepts an advertiser keeps on air, how many people each one reaches per day in your target country, how its copy and video stills are built, and a deterministic data pack your own AI assistant can turn into a four-lens diagnosis or a break-even CPA test plan.
 
-It runs as a **local web app** (`127.0.0.1`), a **command-line tool**, and a standard **MCP server** (14 tools, including warning-only `check_report`) with 5 skills and 5 specialized sub-agents (4 research analysts plus a Level 3 skeptical jury). Everything runs on your computer.
+It runs as a **local web app** (`127.0.0.1`), a **command-line tool**, and a standard **MCP server** (15 tools, including warning-only `check_report` and on-demand `inspect_video`) with 6 skills and 5 specialized sub-agents (4 research analysts plus a Level 3 skeptical jury). Everything runs on your computer.
 
 ![Ranked concepts of one advertiser, with verdict, rating, days on air and people reached](docs/images/results-table.png)
 
@@ -94,6 +94,13 @@ python -m playwright install chromium
 
 If PowerShell refuses to run the activation script, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once, or call `.venv\Scripts\python.exe -m ad_library_insights` directly.
 
+*(Optional local speech transcription for `inspect_video`: install the `.[video]` extra and pre-download a local Whisper model once in your terminal so MCP calls never wait on model downloads:)*
+
+```bash
+pip install -e ".[video]"
+ad-library-insights video-setup --model base
+```
+
 ---
 
 ## Quick start: Web App (`avvia.bat`)
@@ -107,7 +114,7 @@ ad-library-insights app
 1. **Pick a mode and a depth level (1, 2 or 3).** Clicking any level row expands its step-by-step workflow and interactive architecture card.
 2. **Choose how many concepts to read in depth (10, 20 or 50).** For each concept, the program opens its most shown ad first, retries on its second ad if needed, and then reads second and third ads up to a ceiling of two ads opened per concept requested.
 3. **Connect or export for Levels 2 and 3:**
-   - **1-Click Claude Code setup**: press **Connect now** on the page to register the local MCP server and copy all 5 skills (`~/.claude/skills`) and 5 sub-agents (`~/.claude/agents`).
+   - **1-Click Claude Code setup**: press **Connect now** on the page to register the local MCP server and copy all 6 skills (`~/.claude/skills`) and 5 sub-agents (`~/.claude/agents`).
    - **Universal 1-Click Copy**: press **Copy for your assistant** to copy a self-contained single-pass brief for ChatGPT, Claude Web or Gemini, and **Open stills folder** to attach the extracted video frames.
 
 ![The text for your assistant is copied, never shown](docs/images/brief-dialog.png)
@@ -118,7 +125,7 @@ ad-library-insights app
 
 The program never calls an external LLM API. It works across three open layers:
 - **Universal Web App Copy (`brief.md`)**: one-click single-pass brief for any browser chat (ChatGPT, Gemini Web, Claude Web) with zero setup; runs the four skeptical buyer profiles inline on one pass.
-- **Standard MCP server (`14` tools, including warning-only `check_report`) + 5 [`skills/`](skills)**: model-agnostic integration for Claude Code, Google Antigravity, Codex CLI, Cursor and Claude Desktop.
+- **Standard MCP server (`15` tools, including warning-only `check_report` and `inspect_video`) + 6 [`skills/`](skills)**: model-agnostic integration for Claude Code, Google Antigravity, Codex CLI, Cursor and Claude Desktop.
 - **Dedicated Claude Code sub-agents ([`.claude/agents/`](.claude/agents))**: isolated `model: sonnet` execution for the 4 research analysts and the Level 3 `ad-skeptical-jury` works natively only in Claude Code; on ChatGPT, Claude Web, Gemini Web and other clients, the same checklists run in a single pass via `brief.md`.
 
 ### 1. Claude Code (1-Click in the app or via CLI)
@@ -177,6 +184,7 @@ codex mcp add ad-library-insights -- /absolute/path/.venv/bin/python -m ad_libra
 | `competitor-analysis` | **Level 2 Coordinator:** runs the 4 `model: sonnet` specialist sub-agents in parallel (`ad-copy-analyst`, `ad-creative-analyst`, `ad-reach-analyst`, `ad-testing-analyst`), enforces strict ad-ID grounding and optional single neutral follow-ups, and verifies the draft with `check_report`. |
 | `competitor-plan` | **Level 3 Coordinator:** diagnoses your product card, enforces the Pixel/CAPI tracking check, integrates `Test before spending`, drafts 5 ad concepts, stress-tests them via `ad-skeptical-jury` (isolated 5th sub-agent with a `No blocker — ready to test` rule, or inline via `brief.md`), and audits the final plan with `check_report`. |
 | `ad-skeptical-jury` | **5th Sub-Agent (Level 3 red-team):** reads `project.md`, `overview.md` and `copy.md` in isolation to flag copy, proof or margin flaws on the 5 draft ideas — or clears solid ideas with `No blocker — ready to test` without inventing filler objections. |
+| `inspect-video` | On-demand deep breakdown of one single video ad: hook-first contact sheets (`hook_sheet.jpg`, `body_sheet.jpg`) with timestamps, aspect ratio, duration and optional local offline Whisper speech transcription (`.[video]`). |
 | `breakeven-cpa-check` | Computes break-even CPA from unit economics and flags underperforming ads from an Ads Manager CSV export. |
 | `weekly-competitor-report` | Tracks a fixed watchlist across saved searches and reports new, stopped and changed ads plus cohort survival and `Ritmo` launch/format alerts. |
 
@@ -197,6 +205,7 @@ codex mcp add ad-library-insights -- /absolute/path/.venv/bin/python -m ad_libra
 | `scrape_library_url(url, ...)` | Runs the same ranking pipeline on a pre-filtered Ad Library URL. |
 | `check_breakeven_cpa(price, product_cost, ..., ads \| csv_path)` | Break-even CPA calculation and cut list from unit economics. |
 | `check_report(pack_folder, report_text, report_path)` | Warning-only deterministic audit of a draft report against `manifest.json` (unknown ad IDs, too-recent winner slips, `project.md` number drift, unmeasured or banned claims). |
+| `inspect_video(ad_id, pack_folder, transcribe, ...)` | On-demand single-ad video inspection: builds hook-first contact sheets (`hook_sheet.jpg`, `body_sheet.jpg`), detects aspect ratio/duration and optionally transcribes speech locally offline via `.[video]` (one `ad_id` per call). |
 
 ---
 
@@ -207,6 +216,7 @@ ad-library-insights report --country DE --query "<keyword>" --top 10 --out repor
 ad-library-insights pages --country US --name "<advertiser>"
 ad-library-insights company --country US --page-id <page id> --deep 20 --out reports
 ad-library-insights breakeven --price 60 --product-cost 20 --shipping-cost 5 --fee-pct 3 --csv export.csv
+ad-library-insights video --ad-id <ad id>
 ```
 
 ---
@@ -242,7 +252,7 @@ pip install -e ".[dev]"
 python -m pytest
 ```
 
-The 486-test suite runs entirely offline using recorded fixtures in `tests/fixtures/`, a scripted renderer and a deterministic fake clock.
+The 498-test suite runs entirely offline using recorded fixtures in `tests/fixtures/`, a scripted renderer and a deterministic fake clock.
 
 ## License
 
