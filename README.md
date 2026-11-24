@@ -199,7 +199,7 @@ claude mcp add ad-library-insights --scope user -- /absolute/path/.venv/bin/pyth
 
 ### 2. Google Antigravity
 
-Add the server to `~/.gemini/antigravity/mcp_config.json`:
+`ad-library-insights connect --antigravity` writes `~/.gemini/config/mcp_config.json` and copies `skills/` to `~/.gemini/config/skills/` automatically. Manual entry:
 
 ```json
 {
@@ -212,7 +212,7 @@ Add the server to `~/.gemini/antigravity/mcp_config.json`:
 }
 ```
 
-And copy the folders inside `skills/` into `~/.gemini/antigravity/skills/` (or `.agent/skills/` inside your workspace).
+Or copy the folders inside `skills/` into `.agents/skills/` inside your workspace.
 
 ### 3. ChatGPT Codex CLI
 

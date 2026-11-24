@@ -2504,6 +2504,14 @@ function closeHelp() {
   if (document.activeElement && document.activeElement.closest('.help-wrap')) document.activeElement.blur();
 }
 document.addEventListener('click', (event) => {
+  if (IS_MCP_APP && mcpApp) {
+    const extLink = event.target.closest('a[href^="http://"], a[href^="https://"]');
+    if (extLink) {
+      event.preventDefault();
+      if (mcpApp.openLink) mcpApp.openLink({ url: extLink.href }).catch(() => {});
+      return;
+    }
+  }
   const helpBtn = event.target.closest('[data-action="help-toggle"]');
   if (helpBtn) {
     event.preventDefault();

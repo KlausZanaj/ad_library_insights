@@ -118,9 +118,14 @@ def test_mcp_app_resource_and_open_studio(monkeypatch, tmp_path):
     assert state["ok"] is True and isinstance(state["deep_choices"], list)
 
 
-def test_cli_connect_prints_antigravity_config(monkeypatch, capsys):
-    monkeypatch.setattr(link, "install_to_folder", lambda overwrite=False: {"copied": 0, "kept": [], "folder": "ag-skills"})
+def test_cli_connect_prints_antigravity_config(monkeypatch, tmp_path, capsys):
+    (tmp_path / "mcp_config.json").write_text("", encoding="utf-8")
+    monkeypatch.setattr(link, "_antigravity_root", lambda: tmp_path)
     rc = cli.main(["connect", "--antigravity"])
     assert rc == 0
     out = json.loads(capsys.readouterr().out)
+    assert out["antigravity"]["ok"] is True
     assert out["antigravity"]["mcp_config"]["ad-library-insights"]["args"] == ["-m", "ad_library_insights"]
+    saved = json.loads((tmp_path / "mcp_config.json").read_text(encoding="utf-8"))
+    assert saved["mcpServers"]["ad-library-insights"]["args"] == ["-m", "ad_library_insights"]
+    assert (tmp_path / "skills" / "competitor-analysis" / "SKILL.md").is_file()

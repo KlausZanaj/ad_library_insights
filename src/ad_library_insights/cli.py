@@ -146,11 +146,9 @@ def _connect(args: argparse.Namespace) -> int:
         out["claude"] = res
         ok = ok and bool(res.get("ok"))
     if args.antigravity:
-        ag = link.install_to_folder(overwrite=args.overwrite)
-        out["antigravity"] = {
-            "skills": ag,
-            "mcp_config": link.antigravity_mcp_entry(),
-        }
+        ag = link.connect_antigravity(overwrite=args.overwrite)
+        out["antigravity"] = ag
+        ok = ok and bool(ag.get("ok"))
     print(json.dumps(out, indent=2, ensure_ascii=False))
     return 0 if ok else 1
 
@@ -226,7 +224,7 @@ def main(argv: list[str] | None = None) -> int:
 
     con = commands.add_parser("connect", help="register the MCP server and copy skills/sub-agents")
     con.add_argument("--claude", action="store_true", help="configure Claude Code MCP server and skills/agents")
-    con.add_argument("--antigravity", action="store_true", help="install skills for Google Antigravity and print MCP entry")
+    con.add_argument("--antigravity", action="store_true", help="configure Google Antigravity MCP server and skills")
     con.add_argument("--overwrite", action="store_true", help="overwrite modified skill/agent files")
 
     args = parser.parse_args(argv)

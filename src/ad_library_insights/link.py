@@ -243,14 +243,58 @@ def codex_shown_command(python: str | None = None) -> str:
     return shlex.join(args)
 
 
+def _antigravity_root() -> Path:
+    """Google Antigravity global configuration directory."""
+    return Path.home() / ".gemini" / "config"
+
+
 def antigravity_mcp_entry(python: str | None = None) -> dict:
-    """The ``mcpServers`` entry for Google Antigravity (``~/.gemini/antigravity/mcp_config.json``)."""
+    """The ``mcpServers`` entry for Google Antigravity (``~/.gemini/config/mcp_config.json``)."""
     return {NAME: {"command": python or sys.executable, "args": ["-m", "ad_library_insights"]}}
 
 
 def install_to_folder(source: Path | None = None, target: Path | None = None, overwrite: bool = False) -> dict:
     """Copy the program's skills to an assistant skills folder (e.g. Antigravity or Codex)."""
     src = source or default_skills_source()
-    dst = target or (Path.home() / ".gemini" / "antigravity" / "skills")
+    dst = target or (_antigravity_root() / "skills")
     return install_skills(src, dst, overwrite=overwrite)
+
+
+def connect_antigravity(
+    overwrite: bool = False,
+    config_root: Path | None = None,
+    python: str | None = None,
+) -> dict:
+    """Register the MCP server in ``~/.gemini/config/mcp_config.json`` and install skills."""
+    root = Path(config_root) if config_root else _antigravity_root()
+    root.mkdir(parents=True, exist_ok=True)
+    mcp_file = root / "mcp_config.json"
+
+    cfg: dict = {}
+    if mcp_file.is_file():
+        raw = mcp_file.read_text(encoding="utf-8")
+        if raw.strip():
+            try:
+                loaded = json.loads(raw)
+            except json.JSONDecodeError:
+                return {"ok": False, "error": "invalid_json", "mcp_config_path": str(mcp_file)}
+            if not isinstance(loaded, dict):
+                return {"ok": False, "error": "invalid_json", "mcp_config_path": str(mcp_file)}
+            cfg = loaded
+
+    entry = antigravity_mcp_entry(python)
+    servers = cfg.get("mcpServers")
+    if not isinstance(servers, dict):
+        servers = {}
+        cfg["mcpServers"] = servers
+    servers[NAME] = entry[NAME]
+    mcp_file.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    skills = install_skills(default_skills_source(), root / "skills", overwrite=overwrite)
+    return {
+        "ok": True,
+        "mcp_config_path": str(mcp_file),
+        "mcp_config": entry,
+        "skills": skills,
+    }
 

@@ -29,10 +29,10 @@ mcp = FastMCP(
         "exists for commercial ads: longevity is a proxy, say so when reporting. Searches are "
         "saved locally and what_changed compares the last two of the same keyword or page. For an "
         "Analysis or Plan, show estimate_consumption first, then prepare_analysis writes the data as "
-        "and an Analysis or Plan, show estimate_consumption first, then prepare_analysis writes the data as "
         "files, one per specialist; a Plan needs the project card (get_project, save_project). Single video "
         "ads can be inspected on demand with inspect_video (one ad_id per call). Pages are "
-        "cached for six hours and requests are spaced out, so a call can take a few minutes."
+        "cached for six hours and requests are spaced out, so a call can take a few minutes. "
+        "Call open_studio to open the interactive 5-tab Ad Library Studio UI."
     ),
 )
 
