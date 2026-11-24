@@ -29,7 +29,7 @@ DEFAULT_WHISPER_MODEL = "base"
 UNTRUSTED_OPEN = "<untrusted_ad_content>"
 UNTRUSTED_CLOSE = "</untrusted_ad_content>"
 
-_CLOSING_TAG_RE = re.compile(r"</\s*untrusted_ad_content\s*>", re.IGNORECASE)
+_UNTRUSTED_TAG_RE = re.compile(r"<(/?)\s*untrusted_ad_content\s*>", re.IGNORECASE)
 _STANDARD_RATIOS = (
     ("9:16", 9 / 16),
     ("4:5", 4 / 5),
@@ -125,7 +125,8 @@ def plan_timestamps(duration: float) -> tuple[list[float], list[float]]:
     hook = _dedup_points(raw_hook, 0.05, d - 0.1)
 
     close_2 = round(min(d - 0.05, d * 0.97), 2)
-    close_1 = round(max(hook[-1] + 0.4, min(d - 2.0, close_2 - 1.5)), 2)
+    close_gap = min(4.0, max(1.5, d * 0.09))
+    close_1 = round(max(hook[-1] + 0.4, close_2 - close_gap), 2)
     interior = [hook[-1] + (close_1 - hook[-1]) * k / 5 for k in range(1, 5)]
 
     body: list[float] = []
@@ -148,7 +149,10 @@ def wrap_untrusted(text: str | None) -> str | None:
     """Wrap raw competitor ad text/transcript in untrusted delimiters without filtering phrasing."""
     if not text or not str(text).strip():
         return None
-    safe = _CLOSING_TAG_RE.sub(r"<\/untrusted_ad_content>", str(text).strip())
+    safe = _UNTRUSTED_TAG_RE.sub(
+        lambda m: r"<\/untrusted_ad_content>" if m.group(1) else "&lt;untrusted_ad_content&gt;",
+        str(text).strip(),
+    )
     return f"{UNTRUSTED_OPEN}\n{safe}\n{UNTRUSTED_CLOSE}"
 
 
@@ -303,6 +307,59 @@ def setup_whisper_model(model_size: str = DEFAULT_WHISPER_MODEL, *, model_loader
     return {"ok": True, "model": model_size, "note": f"Local Whisper model '{model_size}' is ready."}
 
 
+def check_transcribe_ready(
+    model_size: str = DEFAULT_WHISPER_MODEL,
+    *,
+    model_loader=None,
+    av_opener=None,
+) -> tuple[object | None, object | None, dict | None]:
+    """Check ``.[video]`` packages and local Whisper cache before any download or browser launch."""
+    model_size = validate_whisper_model(model_size)
+    if model_loader is None:
+        try:
+            from faster_whisper import WhisperModel
+        except ImportError:
+            return None, None, {
+                "status": "not_installed",
+                "has_audio": None,
+                "language": None,
+                "text": None,
+                "segments": [],
+                "note": "Optional local audio transcription is not installed. Run: pip install -e \".[video]\"",
+            }
+        model_loader = WhisperModel
+
+    if av_opener is None:
+        try:
+            import av
+        except ImportError:
+            return None, None, {
+                "status": "not_installed",
+                "has_audio": None,
+                "language": None,
+                "text": None,
+                "segments": [],
+                "note": "Optional local audio transcription is not installed. Run: pip install -e \".[video]\"",
+            }
+        av_opener = av.open
+
+    try:
+        model = model_loader(model_size, device="cpu", compute_type="int8", local_files_only=True)
+    except Exception:
+        return None, None, {
+            "status": "model_not_downloaded",
+            "has_audio": None,
+            "language": None,
+            "text": None,
+            "segments": [],
+            "note": (
+                f"Local Whisper model '{model_size}' is not downloaded yet. "
+                f"Run once in your terminal: ad-library-insights video-setup --model {model_size}"
+            ),
+        }
+    return model, av_opener, None
+
+
 def transcribe_video_url(
     video_url: str,
     model_size: str = DEFAULT_WHISPER_MODEL,
@@ -317,56 +374,18 @@ def transcribe_video_url(
     if not is_allowed_video_url(video_url):
         raise ValueError("video URL is not an allowed Meta CDN address")
 
-    if model_loader is None:
-        try:
-            from faster_whisper import WhisperModel
-        except ImportError:
-            return {
-                "status": "not_installed",
-                "has_audio": None,
-                "language": None,
-                "text": None,
-                "segments": [],
-                "note": "Optional local audio transcription is not installed. Run: pip install -e \".[video]\"",
-            }
-        model_loader = WhisperModel
-
-    if av_opener is None:
-        try:
-            import av
-        except ImportError:
-            return {
-                "status": "not_installed",
-                "has_audio": None,
-                "language": None,
-                "text": None,
-                "segments": [],
-                "note": "Optional local audio transcription is not installed. Run: pip install -e \".[video]\"",
-            }
-        av_opener = av.open
-
-    # Check local cache BEFORE downloading the MP4 so MCP calls never block on model download.
-    try:
-        model = model_loader(model_size, device="cpu", compute_type="int8", local_files_only=True)
-    except Exception:
-        return {
-            "status": "model_not_downloaded",
-            "has_audio": None,
-            "language": None,
-            "text": None,
-            "segments": [],
-            "note": (
-                f"Local Whisper model '{model_size}' is not downloaded yet. "
-                f"Run once in your terminal: ad-library-insights video-setup --model {model_size}"
-            ),
-        }
+    model, av_open, early = check_transcribe_ready(
+        model_size, model_loader=model_loader, av_opener=av_opener,
+    )
+    if early is not None:
+        return early
 
     handle = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
     tmp_path = Path(handle.name)
     handle.close()
     try:
         (downloader or download_video_checked)(video_url, tmp_path)
-        container = av_opener(str(tmp_path))
+        container = av_open(str(tmp_path))
         try:
             has_audio = bool(getattr(container.streams, "audio", None))
         finally:
@@ -498,7 +517,9 @@ def _format_transcript_block(segments: list[dict], plain_text: str | None) -> st
 
 def _build_response(meta: dict, out_dir: Path, summary_path: Path, pack_ctx: dict | None, from_cache: bool) -> dict:
     ad_copy_raw = meta.get("ad_copy_raw")
-    tx_raw = _format_transcript_block(meta.get("transcript_segments") or [], meta.get("transcript_text"))
+    segments = meta.get("transcript_segments") or []
+    tx_raw = _format_transcript_block(segments, meta.get("transcript_text"))
+    safe_pack = {k: v for k, v in pack_ctx.items() if k != "copy_excerpt"} if pack_ctx else None
     return {
         "ok": True,
         "ad_id": meta["ad_id"],
@@ -514,10 +535,10 @@ def _build_response(meta: dict, out_dir: Path, summary_path: Path, pack_ctx: dic
         "transcript_status": meta.get("transcript_status"),
         "transcript_language": meta.get("transcript_language"),
         "transcript": wrap_untrusted(tx_raw),
-        "transcript_segments": meta.get("transcript_segments") or [],
+        "transcript_segment_count": len(segments),
         "transcript_note": meta.get("transcript_note"),
         "ad_copy": wrap_untrusted(ad_copy_raw),
-        "pack_context": pack_ctx,
+        "pack_context": safe_pack,
         "from_cache": from_cache,
     }
 
@@ -568,17 +589,20 @@ async def inspect_video(
             cached_meta = None
 
     if cached_meta is not None:
+        need_rewrite = not summary_path.is_file()
         if pack_ctx is not None:
             cached_meta["pack_context"] = pack_ctx
             if pack_ctx.get("copy_excerpt") and not cached_meta.get("ad_copy_raw"):
                 cached_meta["ad_copy_raw"] = pack_ctx["copy_excerpt"]
+            need_rewrite = True
         tx_done = cached_meta.get("transcript_status") in ("ok", "no_audio")
         if not transcribe or tx_done:
-            summary_path = _write_summary(
-                out_dir, cached_meta, cached_meta.get("ad_copy_raw"),
-                _format_transcript_block(cached_meta.get("transcript_segments") or [], cached_meta.get("transcript_text")),
-            )
-            meta_path.write_text(json.dumps(cached_meta, ensure_ascii=False, indent=2), encoding="utf-8")
+            if need_rewrite:
+                summary_path = _write_summary(
+                    out_dir, cached_meta, cached_meta.get("ad_copy_raw"),
+                    _format_transcript_block(cached_meta.get("transcript_segments") or [], cached_meta.get("transcript_text")),
+                )
+                meta_path.write_text(json.dumps(cached_meta, ensure_ascii=False, indent=2), encoding="utf-8")
             return _build_response(cached_meta, out_dir, summary_path, pack_ctx, from_cache=True)
 
     cached_ad = find_cached_ad(ad_id, cache_dir)
@@ -602,7 +626,14 @@ async def inspect_video(
                 capture = None
 
         if capture is None:
-            fresh = await fetch_fn(ad_id)
+            cap_err: str | None = None
+            if fetcher is None and capturer is None:
+                fresh, capture, cap_err = await browser.fetch_and_capture_ad_video(
+                    ad_id, frames_dir, plan_timestamps, out_dir, url_validator=is_allowed_video_url,
+                )
+            else:
+                fresh = await fetch_fn(ad_id)
+
             if fresh:
                 merged = dict(ad_meta or {})
                 for k, v in fresh.items():
@@ -627,15 +658,23 @@ async def inspect_video(
                     "note": "Could not retrieve a playable Meta video URL for this ad.",
                 }
             active_url = fresh_url
-            try:
-                capture = await capture_fn(active_url, frames_dir, plan_timestamps, out_dir)
-            except (RuntimeError, OSError) as exc:
-                return {
-                    "ok": False,
-                    "outcome": "capture_failed",
-                    "ad_id": ad_id,
-                    "note": f"Could not capture video frames: {exc}",
-                }
+            if capture is None:
+                if cap_err is not None:
+                    return {
+                        "ok": False,
+                        "outcome": "capture_failed",
+                        "ad_id": ad_id,
+                        "note": f"Could not capture video frames: {cap_err}",
+                    }
+                try:
+                    capture = await capture_fn(active_url, frames_dir, plan_timestamps, out_dir)
+                except (RuntimeError, OSError) as exc:
+                    return {
+                        "ok": False,
+                        "outcome": "capture_failed",
+                        "ad_id": ad_id,
+                        "note": f"Could not capture video frames: {exc}",
+                    }
 
     tx = {
         "status": cached_meta.get("transcript_status", "not_requested") if cached_meta else "not_requested",
@@ -651,53 +690,59 @@ async def inspect_video(
     }
 
     if transcribe:
-        if not is_allowed_video_url(active_url):
-            fresh = await fetch_fn(ad_id)
-            if fresh:
-                merged = dict(ad_meta or {})
-                for k, v in fresh.items():
-                    if v is not None and v != "":
-                        merged[k] = v
-                ad_meta = merged
-            active_url = (fresh or {}).get("video_url")
-
-        if not is_allowed_video_url(active_url):
-            tx = {
-                "status": "unavailable",
-                "has_audio": None,
-                "language": None,
-                "text": None,
-                "segments": [],
-                "note": "Could not retrieve a playable Meta video URL for audio transcription.",
-            }
+        early_tx: dict | None = None
+        if transcriber is None:
+            _, _, early_tx = check_transcribe_ready(whisper_model)
+        if early_tx is not None:
+            tx = early_tx
         else:
-            try:
-                tx = await asyncio.to_thread(transcribe_fn, active_url, whisper_model, language or None)
-            except (OSError, urllib.error.URLError, ValueError, RuntimeError) as first_exc:
-                # Cached signed CDN URL may have expired between visual capture and transcription.
+            if not is_allowed_video_url(active_url):
                 fresh = await fetch_fn(ad_id)
-                fresh_url = (fresh or {}).get("video_url")
-                if is_allowed_video_url(fresh_url) and fresh_url != active_url:
-                    try:
-                        tx = await asyncio.to_thread(transcribe_fn, fresh_url, whisper_model, language or None)
-                    except (OSError, urllib.error.URLError, ValueError, RuntimeError) as retry_exc:
+                if fresh:
+                    merged = dict(ad_meta or {})
+                    for k, v in fresh.items():
+                        if v is not None and v != "":
+                            merged[k] = v
+                    ad_meta = merged
+                active_url = (fresh or {}).get("video_url")
+
+            if not is_allowed_video_url(active_url):
+                tx = {
+                    "status": "unavailable",
+                    "has_audio": None,
+                    "language": None,
+                    "text": None,
+                    "segments": [],
+                    "note": "Could not retrieve a playable Meta video URL for audio transcription.",
+                }
+            else:
+                try:
+                    tx = await asyncio.to_thread(transcribe_fn, active_url, whisper_model, language or None)
+                except (OSError, urllib.error.URLError, ValueError, RuntimeError) as first_exc:
+                    # Cached signed CDN URL may have expired between visual capture and transcription.
+                    fresh = await fetch_fn(ad_id)
+                    fresh_url = (fresh or {}).get("video_url")
+                    if is_allowed_video_url(fresh_url) and fresh_url != active_url:
+                        try:
+                            tx = await asyncio.to_thread(transcribe_fn, fresh_url, whisper_model, language or None)
+                        except (OSError, urllib.error.URLError, ValueError, RuntimeError) as retry_exc:
+                            tx = {
+                                "status": "error",
+                                "has_audio": None,
+                                "language": None,
+                                "text": None,
+                                "segments": [],
+                                "note": f"Audio transcription failed: {retry_exc}",
+                            }
+                    else:
                         tx = {
                             "status": "error",
                             "has_audio": None,
                             "language": None,
                             "text": None,
                             "segments": [],
-                            "note": f"Audio transcription failed: {retry_exc}",
+                            "note": f"Audio transcription failed: {first_exc}",
                         }
-                else:
-                    tx = {
-                        "status": "error",
-                        "has_audio": None,
-                        "language": None,
-                        "text": None,
-                        "segments": [],
-                        "note": f"Audio transcription failed: {first_exc}",
-                    }
 
     ad_copy_raw = _format_ad_copy(ad_meta, pack_ctx) or (cached_meta or {}).get("ad_copy_raw")
     out_dir.mkdir(parents=True, exist_ok=True)

@@ -502,62 +502,84 @@ async def compose_contact_sheet(page, tiles: list[dict], output_path: Path, cols
 
 async def fetch_ad_video(ad_id: str, timeout_ms: int = 60_000) -> dict:
     """Open one ad's public Library URL to read a fresh video address and copy."""
+    async with _chromium() as context:
+        page = await context.new_page()
+        return await _fetch_ad_video_on_page(page, ad_id, timeout_ms)
+
+
+def _find_record_by_ad_id(obj, ad_id: str) -> dict | None:
+    """Find a structured record dict matching ``ad_id`` explicitly before falling back."""
+    stack = [obj]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, dict):
+            if str(current.get("ad_archive_id") or "") == ad_id and isinstance(current.get("snapshot"), dict):
+                return current
+            stack.extend(current.values())
+        elif isinstance(current, list):
+            stack.extend(current)
+    return None
+
+
+async def _fetch_ad_video_on_page(page, ad_id: str, timeout_ms: int = 60_000) -> dict:
     from playwright.async_api import TimeoutError as PlaywrightTimeout
 
     ad_id = str(ad_id)
     url = records.AD_URL.format(ad_id)
     chosen: dict | None = None
-    dom_video: str | None = None
-    async with _chromium() as context:
-        page = await context.new_page()
-        await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
-        try:
-            await page.wait_for_function(
-                "() => document.body && (document.body.innerText.includes('Library ID:') || !!document.querySelector('video'))",
-                timeout=8_000,
-            )
-        except PlaywrightTimeout:
-            pass
-        await page.wait_for_timeout(1200)
+    await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+    try:
+        await page.wait_for_function(
+            "() => document.body && (document.body.innerText.includes('Library ID:') || !!document.querySelector('video'))",
+            timeout=8_000,
+        )
+    except PlaywrightTimeout:
+        pass
+    await page.wait_for_timeout(1200)
 
-        for text in await page.evaluate(_EMBEDDED_JS):
-            connection = records.connection_from_text(text)
-            if not connection:
+    for text in await page.evaluate(_EMBEDDED_JS):
+        connection = records.connection_from_text(text)
+        if not connection:
+            continue
+        ads = records.ads_from_edges(connection.get("edges") or [])
+        match = next(
+            (ad for ad in ads if ad.get("library_id") == ad_id or ad_id in (ad.get("collation_ids") or [])),
+            ads[0] if ads else None,
+        )
+        if match:
+            chosen = match
+            break
+
+    if chosen is None or not chosen.get("video_url"):
+        for text in await page.evaluate(_ANY_JSON_SCRIPTS_JS):
+            if ad_id not in text and '"snapshot"' not in text:
                 continue
-            ads = records.ads_from_edges(connection.get("edges") or [])
-            match = next(
-                (ad for ad in ads if ad.get("library_id") == ad_id or ad_id in (ad.get("collation_ids") or [])),
-                ads[0] if ads else None,
-            )
-            if match:
-                chosen = match
+            payload = records.load_payload(text)
+            if not payload:
+                continue
+            exact = _find_record_by_ad_id(payload, ad_id)
+            snap = exact.get("snapshot") if exact else records.find_key(payload, "snapshot")
+            if isinstance(snap, dict):
+                candidate = records.ad_from_record({"ad_archive_id": ad_id, "snapshot": snap})
+                if candidate:
+                    if chosen is None:
+                        chosen = candidate
+                    elif candidate.get("video_url") and not chosen.get("video_url"):
+                        chosen["video_url"] = candidate["video_url"]
+            if chosen and not chosen.get("video_url"):
+                fallback_url = records.find_key(exact or payload, "video_hd_url") or records.find_key(
+                    exact or payload, "video_sd_url"
+                )
+                if isinstance(fallback_url, str) and fallback_url.startswith("https://"):
+                    chosen["video_url"] = fallback_url
+            if chosen and chosen.get("video_url"):
                 break
 
-        if chosen is None or not chosen.get("video_url"):
-            for text in await page.evaluate(_ANY_JSON_SCRIPTS_JS):
-                if ad_id not in text and '"snapshot"' not in text:
-                    continue
-                payload = records.load_payload(text)
-                if not payload:
-                    continue
-                snap = records.find_key(payload, "snapshot")
-                if isinstance(snap, dict):
-                    candidate = records.ad_from_record({"ad_archive_id": ad_id, "snapshot": snap})
-                    if candidate:
-                        if chosen is None:
-                            chosen = candidate
-                        elif candidate.get("video_url") and not chosen.get("video_url"):
-                            chosen["video_url"] = candidate["video_url"]
-                if chosen and not chosen.get("video_url"):
-                    fallback_url = records.find_key(payload, "video_hd_url") or records.find_key(payload, "video_sd_url")
-                    if isinstance(fallback_url, str) and fallback_url.startswith("https://"):
-                        chosen["video_url"] = fallback_url
-                if chosen and chosen.get("video_url"):
-                    break
+    dom_video = await page.evaluate(_DOM_VIDEO_SRC_JS)
 
-        dom_video = await page.evaluate(_DOM_VIDEO_SRC_JS)
-
-    video_url = (chosen or {}).get("video_url") or (dom_video if isinstance(dom_video, str) and dom_video.startswith("https://") else None)
+    video_url = (chosen or {}).get("video_url") or (
+        dom_video if isinstance(dom_video, str) and dom_video.startswith("https://") else None
+    )
     media_type = (chosen or {}).get("media_type") or ("video" if video_url else None)
     return {
         "found": bool(chosen or video_url),
@@ -572,54 +594,53 @@ async def fetch_ad_video(ad_id: str, timeout_ms: int = 60_000) -> dict:
     }
 
 
-async def capture_video_frames(video_url: str, frames_dir: Path, timestamps_fn, sheets_dir: Path) -> dict:
-    """Seek a Meta video URL in Chromium, screenshot frames without CORS taint, and compose contact sheets."""
+async def _capture_video_on_page(page, video_url: str, frames_dir: Path, timestamps_fn, sheets_dir: Path) -> dict:
     from playwright.async_api import Error as PlaywrightError
 
     frames_dir = Path(frames_dir)
     sheets_dir = Path(sheets_dir)
-    async with _chromium() as context:
-        page = await context.new_page()
-        try:
-            await page.set_content(_VIDEO_PAGE)
-            meta = await page.evaluate(_LOAD_VIDEO_JS, video_url)
-            duration = float(meta.get("duration") or 0)
-            if not math.isfinite(duration) or duration <= 0:
-                raise RuntimeError("video duration is invalid")
-            raw_w, raw_h = meta.get("width") or 0, meta.get("height") or 0
-            clean_w = int(raw_w) if raw_w > 0 else None
-            clean_h = int(raw_h) if raw_h > 0 else None
-            hook_times, body_times = timestamps_fn(duration)
+    try:
+        await page.set_content(_VIDEO_PAGE)
+        meta = await page.evaluate(_LOAD_VIDEO_JS, video_url)
+        duration = float(meta.get("duration") or 0)
+        if not math.isfinite(duration) or duration <= 0:
+            raise RuntimeError("video duration is invalid")
+        raw_w, raw_h = meta.get("width") or 0, meta.get("height") or 0
+        clean_w = int(raw_w) if raw_w > 0 else None
+        clean_h = int(raw_h) if raw_h > 0 else None
+        hook_times, body_times = timestamps_fn(duration)
 
-            frames_dir.mkdir(parents=True, exist_ok=True)
-            for stale in frames_dir.glob("*.jpg"):
-                stale.unlink(missing_ok=True)
+        frames_dir.mkdir(parents=True, exist_ok=True)
+        for stale in frames_dir.glob("*.jpg"):
+            stale.unlink(missing_ok=True)
+        for stale_sheet in ("hook_sheet.jpg", "body_sheet.jpg"):
+            (sheets_dir / stale_sheet).unlink(missing_ok=True)
 
-            video = page.locator("#v")
-            captured: list[dict] = []
-            plan = [("hook", float(t)) for t in hook_times] + [("body", float(t)) for t in body_times]
-            for idx, (zone, ts) in enumerate(plan, start=1):
-                await page.evaluate(_SEEK_JS, ts)
-                await page.wait_for_timeout(180)
-                frame_path = frames_dir / f"{idx:02d}_{ts:04.1f}s.jpg"
-                await video.screenshot(path=str(frame_path), type="jpeg", quality=78)
-                label = f"#{idx} · {_sheet_ts(ts)}"
-                captured.append({"index": idx, "timestamp": round(ts, 2), "label": label,
-                                 "zone": zone, "path": str(frame_path)})
+        video = page.locator("#v")
+        captured: list[dict] = []
+        plan = [("hook", float(t)) for t in hook_times] + [("body", float(t)) for t in body_times]
+        for idx, (zone, ts) in enumerate(plan, start=1):
+            await page.evaluate(_SEEK_JS, ts)
+            await page.wait_for_timeout(180)
+            frame_path = frames_dir / f"{idx:02d}_{ts:04.1f}s.jpg"
+            await video.screenshot(path=str(frame_path), type="jpeg", quality=78)
+            label = f"#{idx} · {_sheet_ts(ts)}"
+            captured.append({"index": idx, "timestamp": round(ts, 2), "label": label,
+                             "zone": zone, "path": str(frame_path)})
 
-            sheets: list[dict] = []
-            hook_tiles = [f for f in captured if f["zone"] == "hook"]
-            if hook_tiles:
-                hook_sheet = await compose_contact_sheet(page, hook_tiles, sheets_dir / "hook_sheet.jpg", cols=2)
-                if hook_sheet:
-                    sheets.append({"zone": "hook", "path": hook_sheet, "frames": len(hook_tiles)})
-            body_tiles = [f for f in captured if f["zone"] == "body"]
-            if body_tiles:
-                body_sheet = await compose_contact_sheet(page, body_tiles, sheets_dir / "body_sheet.jpg", cols=3)
-                if body_sheet:
-                    sheets.append({"zone": "body", "path": body_sheet, "frames": len(body_tiles)})
-        except PlaywrightError as exc:
-            raise RuntimeError(f"video frame capture failed: {exc}") from exc
+        sheets: list[dict] = []
+        hook_tiles = [f for f in captured if f["zone"] == "hook"]
+        if hook_tiles:
+            hook_sheet = await compose_contact_sheet(page, hook_tiles, sheets_dir / "hook_sheet.jpg", cols=2)
+            if hook_sheet:
+                sheets.append({"zone": "hook", "path": hook_sheet, "frames": len(hook_tiles)})
+        body_tiles = [f for f in captured if f["zone"] == "body"]
+        if body_tiles:
+            body_sheet = await compose_contact_sheet(page, body_tiles, sheets_dir / "body_sheet.jpg", cols=3)
+            if body_sheet:
+                sheets.append({"zone": "body", "path": body_sheet, "frames": len(body_tiles)})
+    except PlaywrightError as exc:
+        raise RuntimeError(f"video frame capture failed: {exc}") from exc
 
     return {
         "ok": True,
@@ -629,3 +650,33 @@ async def capture_video_frames(video_url: str, frames_dir: Path, timestamps_fn, 
         "frames": captured,
         "contact_sheets": sheets,
     }
+
+
+async def capture_video_frames(video_url: str, frames_dir: Path, timestamps_fn, sheets_dir: Path) -> dict:
+    """Seek a Meta video URL in Chromium, screenshot frames without CORS taint, and compose contact sheets."""
+    async with _chromium() as context:
+        page = await context.new_page()
+        return await _capture_video_on_page(page, video_url, frames_dir, timestamps_fn, sheets_dir)
+
+
+async def fetch_and_capture_ad_video(
+    ad_id: str,
+    frames_dir: Path,
+    timestamps_fn,
+    sheets_dir: Path,
+    *,
+    url_validator=None,
+    timeout_ms: int = 60_000,
+) -> tuple[dict, dict | None, str | None]:
+    """Fetch a single ad's video metadata and capture its contact sheets in one Chromium session."""
+    async with _chromium() as context:
+        page = await context.new_page()
+        fresh = await _fetch_ad_video_on_page(page, ad_id, timeout_ms)
+        video_url = fresh.get("video_url")
+        if not video_url or (url_validator and not url_validator(video_url)):
+            return fresh, None, None
+        try:
+            capture = await _capture_video_on_page(page, video_url, frames_dir, timestamps_fn, sheets_dir)
+            return fresh, capture, None
+        except (RuntimeError, OSError) as exc:
+            return fresh, None, str(exc)
