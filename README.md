@@ -24,7 +24,22 @@ It runs as a **local web app** (`127.0.0.1`), a **command-line tool**, and a sta
 
 ![Level 3 Test strategy with live deterministic Unit Economics simulator, reverse-breakeven max CPC and Skeptical Jury](docs/images/levels.png)
 
-![Quantitative competitor dashboard: Kaplan-Meier Durata survival curve, 9-week STA/LTA Ritmo seismograph, account concentration and out-of-pattern ads](docs/images/results-summary.png)
+![Quantitative Lab: Kaplan-Meier Durata survival curve, 9-week STA/LTA Ritmo seismograph, account concentration and out-of-pattern ads](docs/images/quant-seismograph.png)
+
+---
+
+## Why pure math before AI (The Quantitative Lab)
+
+Raw Meta Ad Library scraping breaks on survivor bias, launch spikes, duplicated copy feeds, and LLM hallucination. Every quantitative signal below is computed locally in deterministic Python (`0` external ML/vector dependencies) before any AI sees the data:
+
+| Ad Library failure mode | Field | Deterministic implementation (pure Python stdlib) | What it prevents |
+|---|---|---|---|
+| **Right-censored active ads (survivor bias)** | Biostatistics / Survival analysis | [`lab/durata.py`](src/ad_library_insights/lab/durata.py): Kaplan-Meier with Greenwood SE & 95% log-log CI, Weibull MLE shape `k` (`early_cut` vs `fatigue`), conditional Lindy survival | Stops treating the oldest active ad as a winner when early-cut losers are hidden. |
+| **Single-ad launch noise & gradual format shifts** | Seismology & statistical process control | [`lab/ritmo.py`](src/ad_library_insights/lab/ritmo.py): STA/LTA launch cadence (1w vs 8w exact binomial test), bivariate Page CUSUM on format share, Little's Law (`L = λW`) | Flags real launch spikes and sustained format pivots while ignoring isolated launches. |
+| **Copy duplication & demographic drift without embeddings** | Information theory & ecology | [`lab/struttura.py`](src/ad_library_insights/lab/struttura.py): `zlib` raw DEFLATE Normalized Compression Distance (NCD), HHI/Gini reach concentration, Shannon diversity, Pianka niche overlap, Jensen-Shannon drift | Quantifies concentration, copy families and audience overlap/drift locally with zero GPU or vector DB. |
+| **LLM confirmation bias & hallucinated ad math** | Intelligence analysis (ACH & red-teaming) | [`skills/`](skills) + [`.claude/agents/`](.claude/agents) + [`lab/audit.py`](src/ad_library_insights/lab/audit.py): 4 isolated specialist slices, Analysis of Competing Hypotheses, independent Level 3 `ad-skeptical-jury`, deterministic `check_report` | Separates evidence collection from synthesis and catches ungrounded IDs, impossible claims or drifted budget math before delivery. |
+
+Every formula lives in readable standard-library Python under [`src/ad_library_insights/lab/`](src/ad_library_insights/lab) and is verified by the 504-test offline suite — zero black-box scores.
 
 ---
 
@@ -76,6 +91,8 @@ The public Ad Library shows every active ad as an unsorted wall of cards, hiding
 | **Level 3 · Test Strategy & Break-Even CPA** | Pre-spend Pixel/CAPI check, **Test before spending (`Prova prima di spendere`)** with optional real costs, reverse-breakeven max CPC vs EU benchmark, Poisson zero-sales odds, five ad concepts stress-tested by `ad-skeptical-jury`, and a one-page plan audited by `check_report`. | Your own AI assistant + your saved local product card. |
 
 Before starting any Level 2 or Level 3 collection, the app displays the exact number of concepts to open, the detail-view ceiling, and a token/image estimate, waiting for confirmation.
+
+![Executive summary banner, active ad count, video share, daily reach, audience locations and platforms](docs/images/results-summary.png)
 
 ![Ranked concepts table with verdict, rating, reliability grade, days on air and daily country reach](docs/images/results-table.png)
 
