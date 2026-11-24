@@ -2,12 +2,16 @@
 from __future__ import annotations
 
 import asyncio
+import socket
+import threading
+import webbrowser
+from pathlib import Path
 
 from fastmcp import FastMCP
 
-from . import breakeven, briefs, compare, consumption, history, project, report, service, video
-from .client import AdLibraryClient, default_client
-from .lab import audit, ritmo
+from . import breakeven, briefs, compare, consumption, history, mcp_app, media, project, report, service, video
+from .client import AdLibraryClient, default_client, normalise_country
+from .lab import audit, precheck, ritmo
 
 mcp = FastMCP(
     name="Ad Library Insights",
@@ -33,6 +37,90 @@ mcp = FastMCP(
 )
 
 _client: AdLibraryClient | None = None
+_web_url: str | None = None
+_web_lock = threading.Lock()
+
+
+def _ensure_web_url(preferred_port: int = 8765) -> str:
+    """Start the local web Studio server once on 127.0.0.1 and return its URL."""
+    global _web_url
+    with _web_lock:
+        if _web_url is not None:
+            return _web_url
+        import uvicorn
+        from .web.app import create_app
+
+        port = preferred_port
+        for candidate in range(preferred_port, preferred_port + 20):
+            with socket.socket() as probe:
+                if probe.connect_ex(("127.0.0.1", candidate)) != 0:
+                    port = candidate
+                    break
+        server_obj = uvicorn.Server(uvicorn.Config(create_app(_get_client()), host="127.0.0.1", port=port, log_level="warning"))
+        threading.Thread(target=server_obj.run, daemon=True).start()
+        _web_url = f"http://127.0.0.1:{port}/"
+        return _web_url
+
+
+@mcp.resource(
+    mcp_app.APP_URI,
+    name="Ad Library Studio",
+    mime_type="text/html;profile=mcp-app",
+    meta={"ui": {"prefersBorder": False}},
+)
+def studio_app_html() -> str:
+    """Self-contained interactive 5-tab Studio HTML rendered inside MCP App hosts."""
+    return mcp_app.build_studio_html()
+
+
+async def _collect_for_studio(
+    *,
+    country: str,
+    page_id: str = "",
+    name: str = "",
+    query: str = "",
+    deep_ads: int = 10,
+    use_cache: bool = True,
+) -> dict:
+    """Run company or keyword research and return a path-free Studio payload."""
+    clean_country = normalise_country(country or "IT")
+    clean_deep = max(0, min(int(deep_ads), max(consumption.DEEP_CHOICES)))
+    client = _get_client()
+
+    if page_id or name:
+        result = await service.research_company(
+            client, clean_country, page_id=page_id, name=name, use_cache=use_cache,
+        )
+        if result.get("outcome") == "choose_page" and result.get("pages"):
+            logos = await asyncio.to_thread(
+                lambda: [client.media.save(p.get("logo_url"), f"page_{p['page_id']}_logo") for p in result["pages"][:12]]
+            )
+            pages_out = []
+            for p, logo in zip(result["pages"], logos):
+                row = {k: v for k, v in p.items() if k != "logo_url"}
+                row["logo"] = Path(logo).name if logo else None
+                pages_out.append(row)
+            return {
+                "ok": False,
+                "view": "pages",
+                "outcome": "choose_page",
+                "country": clean_country,
+                "name": name,
+                "pages": pages_out,
+                "suggested_page_id": result.get("suggested_page_id"),
+            }
+        mode = "company"
+    else:
+        result = await service.research(client, query, clean_country, use_cache=use_cache)
+        mode = "keyword"
+
+    if not result.get("ads"):
+        return {"ok": False, "view": "empty", **{k: v for k, v in result.items() if k != "ads"}}
+
+    await _deepen(result, clean_deep, False, use_cache)
+    await asyncio.to_thread(media.save_ad_media, result["ads"][:50], client.media)
+    params = {"mode": mode, "country": clean_country, "level": "data", "deep": clean_deep, "frames": False}
+    return {"ok": True, "view": "result", "result": mcp_app.compact_result(result, params, url_prefix="")}
 
 
 def _get_client() -> AdLibraryClient:
@@ -85,7 +173,7 @@ async def _deepen(result: dict, deep_ads: int, frames: bool, use_cache: bool) ->
     return result
 
 
-@mcp.tool
+@mcp.tool(meta=mcp_app.INLINE_META)
 async def search_ads(country: str, query: str = "", advertiser: str = "",
                      active_status: str = "active", media_type: str = "all",
                      max_results: int = 25, scroll_rounds: int = 6, wait_seconds: int = 8,
@@ -117,7 +205,7 @@ async def search_ads(country: str, query: str = "", advertiser: str = "",
     return _trim(result, max_results)
 
 
-@mcp.tool
+@mcp.tool(meta=mcp_app.MODEL_AND_APP_META)
 async def find_advertiser_pages(name: str, country: str, use_cache: bool = True) -> dict:
     """List the advertiser pages the Ad Library suggests for a name.
 
@@ -131,7 +219,7 @@ async def find_advertiser_pages(name: str, country: str, use_cache: bool = True)
         return {"ok": False, "error": str(exc)}
 
 
-@mcp.tool
+@mcp.tool(meta=mcp_app.INLINE_META)
 async def analyze_company(country: str, page_id: str = "", name: str = "", deep_ads: int = 10,
                           frames: bool = False, max_results: int = 25,
                           active_status: str = "active", scroll_rounds: int = 40,
@@ -166,7 +254,7 @@ async def analyze_company(country: str, page_id: str = "", name: str = "", deep_
     return _trim(result, max_results)
 
 
-@mcp.tool
+@mcp.tool(meta=mcp_app.INLINE_META)
 async def compare_companies(country: str, page_id_a: str, page_id_b: str, deep_ads: int = 10,
                             top_ads: int = 5, use_cache: bool = True) -> dict:
     """Two advertiser pages side by side on the same numbers, computed by code.
@@ -196,7 +284,7 @@ async def compare_companies(country: str, page_id_a: str, page_id_b: str, deep_a
             "top_ads": {key: side["ads"][:max(1, top_ads)] for key, side in zip("ab", sides)}}
 
 
-@mcp.tool
+@mcp.tool(meta=mcp_app.MODEL_AND_APP_META)
 def estimate_consumption(level: str, ads: int = 10, frames: bool = False) -> dict:
     """Rough size of an Analysis or Plan before any data is collected.
 
@@ -215,7 +303,7 @@ def estimate_consumption(level: str, ads: int = 10, frames: bool = False) -> dic
         return {"ok": False, "error": str(exc)}
 
 
-@mcp.tool
+@mcp.tool(meta=mcp_app.MODEL_AND_APP_META)
 def get_project() -> dict:
     """The user's saved project card (product, price, cost, market, goal, main problem).
 
@@ -225,7 +313,7 @@ def get_project() -> dict:
     return {"ok": True, "project": project.load()}
 
 
-@mcp.tool
+@mcp.tool(meta=mcp_app.MODEL_AND_APP_META)
 def save_project(product: str, price: float, product_cost: float, market: str, goal: str,
                  main_problem: str, vat_pct: float | None = None,
                  shipping_cost: float | None = None, payment_fee_pct: float | None = None,
@@ -331,7 +419,7 @@ async def prepare_analysis(country: str, level: str = "analysis", page_id: str =
             "reach_read": result.get("deep", {}).get("with_reach", 0)}
 
 
-@mcp.tool
+@mcp.tool(meta=mcp_app.MODEL_AND_APP_META)
 def what_changed(country: str = "", query: str = "", page_id: str = "") -> dict:
     """New, stopped and changed ads since the previous search of a keyword or company.
 
@@ -402,7 +490,7 @@ async def export_report(country: str, output_dir: str, query: str = "", advertis
             "advertisers": len(result["advertisers"])}
 
 
-@mcp.tool
+@mcp.tool(meta=mcp_app.MODEL_AND_APP_META)
 def check_breakeven_cpa(price: float, product_cost: float = 0, shipping_cost: float = 0,
                         payment_fee_pct: float = 0, payment_fee_fixed: float = 0,
                         other_costs: float = 0, multiplier: float = 2.5,
@@ -442,7 +530,7 @@ def check_report(pack_folder: str, report_text: str = "", report_path: str = "")
         return {"ok": False, "error": str(exc)}
 
 
-@mcp.tool
+@mcp.tool(meta=mcp_app.MODEL_AND_APP_META)
 async def inspect_video(ad_id: str, pack_folder: str = "", transcribe: bool = False,
                         whisper_model: str = "base", language: str = "",
                         use_cache: bool = True) -> dict:
@@ -472,6 +560,143 @@ async def inspect_video(ad_id: str, pack_folder: str = "", transcribe: bool = Fa
         )
     except (ValueError, OSError, RuntimeError) as exc:
         return {"ok": False, "error": str(exc)}
+
+
+@mcp.tool(meta=mcp_app.PANE_META)
+async def open_studio(
+    country: str = "IT",
+    name: str = "",
+    page_id: str = "",
+    query: str = "",
+    deep_ads: int = 10,
+    open_browser: bool = False,
+) -> dict:
+    """Open the interactive 5-tab Ad Library Studio inside the assistant or local browser.
+
+    Called with empty arguments, returns saved subjects, product card and defaults for the
+    home screen. With ``page_id``, ``name`` or ``query``, collects data and preloads the
+    5-tab Studio directly. With ``open_browser=True``, opens the local browser Studio URL.
+    """
+    try:
+        clean_country = normalise_country(country or "IT")
+        if open_browser:
+            url = _ensure_web_url()
+            webbrowser.open(url)
+            return {"ok": True, "view": "browser", "studio_url": url}
+        if page_id or name or query:
+            return await _collect_for_studio(
+                country=clean_country, page_id=page_id, name=name, query=query, deep_ads=deep_ads,
+            )
+    except ValueError as exc:
+        return {"ok": False, "error": str(exc)}
+    return {
+        "ok": True,
+        "view": "home",
+        "country": clean_country,
+        "project": project.load(),
+        "deep_choices": list(consumption.DEEP_CHOICES),
+        "subjects": history.History().subjects()[:12],
+    }
+
+
+@mcp.tool(meta=mcp_app.APP_ONLY_META)
+async def app_studio_action(action: str, payload: dict | None = None) -> dict:
+    """App-only backend endpoint called by the embedded ui:// Studio iframe."""
+    data = payload if isinstance(payload, dict) else {}
+    client = _get_client()
+    try:
+        if action == "state":
+            return {
+                "ok": True,
+                "project": project.load(),
+                "deep_choices": list(consumption.DEEP_CHOICES),
+                "subjects": history.History().subjects()[:12],
+            }
+        if action == "pages":
+            clean_name = (data.get("name") or "").strip()
+            clean_country = normalise_country(data.get("country") or "IT")
+            if not clean_name:
+                raise ValueError("name must not be empty")
+            found = await service.find_pages(client, clean_name, clean_country)
+            logos = await asyncio.to_thread(
+                lambda: [client.media.save(p.get("logo_url"), f"page_{p['page_id']}_logo") for p in found["pages"][:12]]
+            )
+            pages_out = []
+            for p, logo in zip(found["pages"], logos):
+                row = {k: v for k, v in p.items() if k != "logo_url"}
+                row["logo"] = Path(logo).name if logo else None
+                pages_out.append(row)
+            return {**found, "pages": pages_out}
+        if action in ("company", "keyword"):
+            return await _collect_for_studio(
+                country=data.get("country") or "IT",
+                page_id=str(data.get("page_id") or "") if action == "company" else "",
+                name=str(data.get("name") or "") if action == "company" else "",
+                query=str(data.get("query") or "") if action == "keyword" else "",
+                deep_ads=int(data.get("deep", 10)),
+                use_cache=not bool(data.get("fresh")),
+            )
+        if action == "durata":
+            clean_country = normalise_country(data.get("country") or "IT")
+            page_id = str(data.get("page_id") or "").strip()
+            window_days = int(data.get("window_days", 90))
+            snaps = history.History().snapshots(f"company:{clean_country}:{page_id}")
+            return await service.analyze_durata(
+                client, clean_country, page_id, window_days=window_days,
+                use_cache=not bool(data.get("fresh")), snapshots=snaps,
+            )
+        if action == "precheck":
+            return {"ok": True, **precheck.analyze(
+                price=float(data["price"]),
+                product_cost=float(data.get("product_cost") or 0),
+                market=str(data.get("market") or ""),
+                vat_pct=float(data.get("vat_pct") or 0),
+                shipping_cost=float(data.get("shipping_cost") or 0),
+                payment_fee_pct=float(data.get("payment_fee_pct") or 0),
+                payment_fee_fixed=float(data.get("payment_fee_fixed") or 0),
+                return_rate_pct=float(data.get("return_rate_pct") or 0),
+                other_costs=float(data.get("other_costs") or 0),
+                ad_fee_pct=float(data["ad_fee_pct"]) if data.get("ad_fee_pct") not in (None, "") else None,
+            )}
+        if action == "save_project":
+            card, errors = project.save(data)
+            return {"ok": not errors, "errors": errors, "project": card}
+        if action == "changes":
+            key = str(data.get("key") or "")
+            found = history.History().changes(key)
+            for grp in ("new", "stopped", "changed"):
+                for item in found.get(grp, []):
+                    raw_thumb = item.pop("thumbnail_path", None)
+                    item["thumbnail"] = Path(raw_thumb).name if raw_thumb else None
+            return {"ok": True, **found}
+        if action == "media":
+            name = str(data.get("name") or "")
+            uri = mcp_app.media_data_uri(client.media.directory, name)
+            return {"ok": bool(uri), "name": name, "data_uri": uri}
+        if action == "video_inspect":
+            ad_id = video.validate_ad_id(str(data.get("ad_id") or ""))
+            res = await video.inspect_video(
+                ad_id, transcribe=False, use_cache=not bool(data.get("fresh")), media_dir=client.media.directory,
+            )
+            staged = mcp_app.stage_video_sheets(res, ad_id, client.media.directory)
+            if not staged.get("ok"):
+                return staged
+            hook_uri = mcp_app.media_data_uri(client.media.directory, staged["hook_sheet_name"]) if staged.get("hook_sheet_name") else None
+            body_uri = mcp_app.media_data_uri(client.media.directory, staged["body_sheet_name"]) if staged.get("body_sheet_name") else None
+            return {
+                "ok": True,
+                "ad_id": staged["ad_id"],
+                "duration": staged.get("duration"),
+                "width": staged.get("width"),
+                "height": staged.get("height"),
+                "aspect_ratio": staged.get("aspect_ratio"),
+                "hook_sheet": hook_uri,
+                "body_sheet": body_uri,
+                "from_cache": staged.get("from_cache", False),
+            }
+    except (ValueError, TypeError, KeyError, OSError, RuntimeError) as exc:
+        return {"ok": False, "error": str(exc)}
+    return {"ok": False, "error": f"unknown action: {action}"}
 
 
 def run() -> None:

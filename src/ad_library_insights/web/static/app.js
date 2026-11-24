@@ -9,6 +9,10 @@ const PLATFORMS = { facebook: 'Facebook', instagram: 'Instagram', audience_netwo
   messenger: 'Messenger', threads: 'Threads', whatsapp: 'WhatsApp' };
 const MODES = ['keyword', 'company', 'compare', 'news'];
 const LEVELS = ['data', 'analysis', 'plan'];
+const STUDIO_TABS = ['overview', 'pulse', 'structure', 'ads', 'strategy'];
+const IS_MCP_APP = Boolean(window.__MCP_APP_MODE__ && window.McpExtApps && window.McpExtApps.App);
+let mcpApp = null;
+const mcpMediaCache = new Map();
 
 const store = {
   get(key, fallback) { try { return localStorage.getItem(key) || fallback; } catch { return fallback; } },
@@ -28,17 +32,20 @@ const START = loadLevel();
 
 const S = {
   lang: store.get('lang', 'it'), theme: store.get('theme', 'light'),
-  mode: 'keyword', level: START.level, levelOpen: START.open, deep: 10, frames: false, deepChoices: [10, 20, 50],
+  mode: 'company', level: START.level, levelOpen: START.open, deep: 10, frames: false, deepChoices: [10, 20, 50],
   country: 'IT', query: '', company: '', companyB: '', cmp: null, resultMode: null,
   pages: null, busy: null, job: null, result: null, jobId: null, notice: null,
   project: null, overlay: null, estimate: null, pending: null,
   history: null, news: null, sort: 'score', filter: 'all', tableQuery: '',
+  tab: 'overview', adsView: 'table', stratLevel: 'analysis',
+  searchExpandedManual: false, wayHint: false, mcpSent: false,
+  aiJob: null, videoInspect: {},
   durataWindow: 90, durataBusy: false, durataError: false,
   simPrice: null, simCost: null, simVat: null, simShip: null, simFeePct: null, simRetPct: null, simItFee: null,
   cmpCopied: false,
   link: { quick: null, mcp: 'checking', running: false, result: null, error: null, test: null, copy: null, hint: false },
 };
-let T = { it: {}, en: {} };
+let T = window.__STRINGS__ || { it: {}, en: {} };
 let themeTimer = null;
 
 /* ---------- helpers ---------- */
@@ -101,21 +108,179 @@ function dur(seconds) {
   return rest ? `${Math.floor(seconds / 60)} min ${rest} s` : `${seconds / 60} min`;
 }
 const initials = (name) => (name || '?').split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+function mediaAttr(src) {
+  if (!src) return '';
+  if (src.startsWith('/') || src.startsWith('data:') || src.startsWith('http')) return `src="${esc(src)}"`;
+  const cached = mcpMediaCache.get(src);
+  return cached ? `src="${esc(cached)}"` : `data-media-name="${esc(src)}"`;
+}
+function mediaImg(src, cls, alt = '', lazy = false) {
+  if (!src) return '';
+  const lzy = lazy && (src.startsWith('/') || src.startsWith('http')) ? ' loading="lazy"' : '';
+  return `<img class="${cls}" ${mediaAttr(src)} alt="${esc(alt)}"${lzy}>`;
+}
 const avatar = (src, name, big) => (src
-  ? `<img class="avatar${big ? ' big' : ''}" src="${esc(src)}" alt="" data-initials="${esc(initials(name))}">`
+  ? `<img class="avatar${big ? ' big' : ''}" ${mediaAttr(src)} alt="" data-initials="${esc(initials(name))}">`
   : `<span class="avatar txt${big ? ' big' : ''}">${esc(initials(name))}</span>`);
-// a logo that does not load gives way to the initials of the page
+// a logo or thumbnail that does not load falls back to initials or a clean tile
 document.addEventListener('error', (event) => {
   const img = event.target;
-  if (!(img instanceof HTMLImageElement) || !img.classList.contains('avatar')) return;
-  const span = document.createElement('span');
-  span.className = `avatar txt${img.classList.contains('big') ? ' big' : ''}`;
-  span.textContent = img.dataset.initials || '?';
-  img.replaceWith(span);
+  if (!(img instanceof HTMLImageElement)) return;
+  if (img.classList.contains('avatar')) {
+    const span = document.createElement('span');
+    span.className = `avatar txt${img.classList.contains('big') ? ' big' : ''}`;
+    span.textContent = img.dataset.initials || '?';
+    img.replaceWith(span);
+    return;
+  }
+  if (img.classList.contains('top-card-thumb')) {
+    const span = document.createElement('span');
+    span.className = 'top-card-thumb';
+    img.replaceWith(span);
+    return;
+  }
+  img.remove();
 }, true);
 const firstLine = (ad) => ((ad.body || '').trim().split('\n')[0] || ad.headline || '');
 
+function _unwrapMcp(res) {
+  if (!res) return {};
+  if (res.structuredContent && typeof res.structuredContent === 'object') return res.structuredContent;
+  const textBlock = (res.content || []).find((c) => c && c.type === 'text' && c.text);
+  if (textBlock) {
+    try { return JSON.parse(textBlock.text); } catch { return { ok: false, error: textBlock.text }; }
+  }
+  return {};
+}
+async function mcpCall(action, payload = {}) {
+  if (!mcpApp) throw new Error('MCP App not connected');
+  const raw = await mcpApp.callServerTool({ name: 'app_studio_action', arguments: { action, payload } });
+  const data = _unwrapMcp(raw);
+  if (data && data.ok === false && data.error) throw Object.assign(new Error(data.error), { data });
+  return data;
+}
+function _baseName(p) {
+  if (!p) return null;
+  if (!p.includes('/') && !p.includes('\\') && !p.startsWith('data:')) return p;
+  if (p.startsWith('data:') || p.startsWith('/media/')) return p;
+  return String(p).split(/[/\\]/).pop() || null;
+}
+function _normalizeIncomingResult(raw) {
+  const r = { ...raw };
+  r.mode = r.mode || (r.page ? 'company' : 'keyword');
+  r.ads = (r.ads || []).map((ad) => ({
+    ...ad,
+    thumbnail: ad.thumbnail || _baseName(ad.thumbnail_path),
+    logo: ad.logo || _baseName(ad.logo_path),
+    frames: (ad.frames || []).map(_baseName).filter(Boolean),
+  }));
+  if (r.page) r.page = { ...r.page, logo: r.page.logo || _baseName(r.page.logo_path) };
+  r.request = r.request || { mode: r.mode, country: r.country || S.country, level: S.level, deep: S.deep, frames: false };
+  r._live = true;
+  return r;
+}
+function hydrateFromMcpPayload(data) {
+  if (!data || typeof data !== 'object') return;
+  if (data.view === 'home') {
+    if (data.country) S.country = data.country;
+    if ('project' in data) S.project = data.project;
+    if (Array.isArray(data.deep_choices)) S.deepChoices = data.deep_choices;
+    if (Array.isArray(data.subjects)) S.history = data.subjects;
+    S.busy = null;
+    render();
+    return;
+  }
+  if (data.view === 'pages' || data.outcome === 'choose_page') {
+    S.mode = 'company'; S.pages = data; S.busy = null; S.searchExpandedManual = false;
+    render();
+    hydrateMcpImages();
+    return;
+  }
+  if (data.view === 'result' && data.result) {
+    const r = _normalizeIncomingResult(data.result);
+    S.mode = r.mode; S.result = r; S.resultMode = r.mode; S.tab = 'overview';
+    S.pages = null; S.busy = null; S.searchExpandedManual = false;
+    render();
+    hydrateMcpImages();
+    return;
+  }
+  if (Array.isArray(data.ads)) {
+    const r = _normalizeIncomingResult(data);
+    S.mode = r.mode; S.result = r; S.resultMode = r.mode; S.tab = 'overview';
+    S.pages = null; S.busy = null; S.searchExpandedManual = false;
+    render();
+    hydrateMcpImages();
+    return;
+  }
+  if (data.rows && data.names) {
+    const mkSide = (name, ads) => ({ query: name, page: { name }, ads_parsed: (ads || []).length, ads: (ads || []).map((a) => ({ ...a, thumbnail: _baseName(a.thumbnail || a.thumbnail_path) })) });
+    const topA = (data.top_ads && data.top_ads.a) || [];
+    const topB = (data.top_ads && data.top_ads.b) || [];
+    S.mode = 'compare'; S.resultMode = 'compare'; S.cmp = null; S.busy = null;
+    S.result = { mode: 'compare', country: data.country || S.country, comparison: data, sides: [mkSide(data.names.a, topA), mkSide(data.names.b, topB)] };
+    render();
+    hydrateMcpImages();
+  }
+}
+let _hydratingMedia = false;
+async function hydrateMcpImages() {
+  if (!IS_MCP_APP || !mcpApp || _hydratingMedia) return;
+  _hydratingMedia = true;
+  try {
+    for (;;) {
+      const nodes = [...document.querySelectorAll('img[data-media-name]')];
+      const names = [...new Set(nodes.map((n) => n.dataset.mediaName).filter(Boolean))];
+      if (!names.length) break;
+      const batch = names.slice(0, 3);
+      await Promise.all(batch.map(async (name) => {
+        if (mcpMediaCache.has(name)) return;
+        try {
+          const got = await mcpCall('media', { name });
+          mcpMediaCache.set(name, (got && got.data_uri) || '');
+        } catch { mcpMediaCache.set(name, ''); }
+      }));
+      nodes.forEach((img) => {
+        const key = img.dataset.mediaName;
+        if (!key || !mcpMediaCache.has(key)) return;
+        const uri = mcpMediaCache.get(key);
+        img.removeAttribute('data-media-name');
+        if (uri) img.src = uri;
+        else if (img.classList.contains('avatar')) img.dispatchEvent(new Event('error'));
+      });
+    }
+  } finally { _hydratingMedia = false; }
+}
+
+async function _mcpRoute(path, options = {}) {
+  const url = new URL(path, 'http://local');
+  const body = options.body || {};
+  if (url.pathname === '/api/state') return mcpCall('state');
+  if (url.pathname === '/api/pages') return mcpCall('pages', { name: url.searchParams.get('name') || '', country: url.searchParams.get('country') || S.country });
+  if (url.pathname === '/api/estimate') {
+    const lvl = url.searchParams.get('level') || 'data';
+    const ads = Number(url.searchParams.get('ads') || 10);
+    const fr = url.searchParams.get('frames') === '1';
+    if (lvl === 'data') return { level: lvl, uses_assistant: false, ads, images: 0, tokens: 0, band: 'none', concepts: ads, ceiling: ads * 2, seconds: ads * 3 };
+    const tokens = (2500 + ads * 400) * (lvl === 'plan' ? 4 : 3) + 3000;
+    const band = tokens < 35000 ? 'low' : tokens < 110000 ? 'medium' : 'high';
+    return { level: lvl, uses_assistant: true, ads, images: fr ? Math.min(ads, 10) * 3 : 0, tokens, band, concepts: ads, ceiling: ads * 2, seconds: ads * 4 + (fr ? 15 : 0) };
+  }
+  if (url.pathname === '/api/project' && options.method === 'PUT') return mcpCall('save_project', body);
+  if (url.pathname === '/api/precheck') return mcpCall('precheck', body);
+  if (url.pathname === '/api/durata') return { id: 'mcp-durata', status: 'done', result: await mcpCall('durata', body) };
+  if (url.pathname === '/api/video/inspect') return mcpCall('video_inspect', body);
+  if (url.pathname === '/api/history') return { subjects: (await mcpCall('state')).subjects || [] };
+  if (url.pathname === '/api/history/changes') return mcpCall('changes', { key: url.searchParams.get('key') || '' });
+  if (url.pathname === '/api/jobs' && options.method === 'POST') {
+    const act = body.mode === 'keyword' ? 'keyword' : 'company';
+    const res = await mcpCall(act, body);
+    return { id: 'mcp-job', status: 'done', params: body, result: res.result ? _normalizeIncomingResult(res.result) : res };
+  }
+  throw new Error('unsupported in MCP view');
+}
+
 async function api(path, options = {}) {
+  if (IS_MCP_APP) return _mcpRoute(path, options);
   const init = { method: options.method || 'GET', headers: { ...(options.headers || {}) } };
   if (options.body) { init.body = JSON.stringify(options.body); init.headers['Content-Type'] = 'application/json'; }
   const response = await fetch(path, init);
@@ -132,6 +297,16 @@ function renderTop() {
   document.documentElement.lang = S.lang;
   document.documentElement.dataset.theme = S.theme;
   $('#modes').innerHTML = MODES.map((mode) => `<button data-action="mode" data-value="${mode}" aria-current="${mode === S.mode}">${esc(t(`mode.${mode}`))}</button>`).join('');
+  const conn = $('#conn-pill');
+  if (conn) {
+    if (IS_MCP_APP) {
+      conn.innerHTML = `<span class="conn-pill ok"><i class="conn-dot"></i>${esc(t('conn.mcp'))}</span>`;
+    } else if (S.link.quick && S.link.quick.claude && S.link.mcp === 'connected' && S.link.quick.skills && S.link.quick.skills.installed) {
+      conn.innerHTML = `<span class="conn-pill ok"><i class="conn-dot"></i>${esc(t('conn.ok'))}</span>`;
+    } else {
+      conn.innerHTML = `<button type="button" class="conn-pill" data-action="conn-open"><i class="conn-dot"></i>${esc(t('conn.setup'))}</button>`;
+    }
+  }
   const tut = $('#tut-btn');
   if (tut) tut.textContent = t('tut.btn');
   const langEl = $('#lang');
@@ -148,8 +323,39 @@ function countryOptions(selected) {
   const rows = COUNTRIES.map((code) => [region(code), code]).sort((a, b) => a[0].localeCompare(b[0], S.lang));
   return rows.map(([name, code]) => `<option value="${code}"${code === selected ? ' selected' : ''}>${esc(name)}</option>`).join('');
 }
+function isSearchCollapsed() {
+  return (S.mode === 'keyword' || S.mode === 'company')
+    && Boolean(S.busy || S.pages || S.job || S.result)
+    && !S.searchExpandedManual;
+}
+function quickChipsHtml() {
+  const list = (S.history || []).slice(0, 4);
+  if (!list.length || S.job || S.busy) return '';
+  const btns = list.map((row) => `<button type="button" class="quick-chip" data-action="quick-reopen" data-value="${esc(row.key)}">${esc(row.label)} · ${esc(row.country)}</button>`).join('');
+  return `<div class="quick-chips"><span>${esc(t('search.quick.label'))}</span>${btns}</div>`;
+}
 function renderSearch() {
   const active = S.mode === 'keyword' || S.mode === 'company';
+  if (isSearchCollapsed()) {
+    const label = (S.result && S.resultMode === S.mode)
+      ? ((S.result.page && S.result.page.name) || S.result.query || S.company || S.query)
+      : (S.mode === 'company' ? (S.company || t('mode.company')) : (S.query || t('mode.keyword')));
+    const projBtn = `<button class="linklike compact-pill" data-action="project">${esc(S.project
+      ? t('project.saved', { product: S.project.product, price: num(S.project.price) }) : t('project.missing'))}</button>`;
+    const freshBtn = S.result && S.resultMode === S.mode && !S.job && !S.busy
+      ? `<button class="btn quiet small" data-action="search-fresh">${esc(t('search.fresh'))}</button>` : '';
+    $('#search').innerHTML = `<div class="search-compact">
+      <span class="compact-title">${esc(label || t(`mode.${S.mode}`))}</span>
+      <div class="compact-pills">
+        <span class="compact-pill">${esc(region(S.country))}</span>
+        <span class="compact-pill">${esc(t(`level.${S.level}`))}</span>
+        <span class="compact-pill">${esc(`${num(S.deep)} ${t('deep.after')}`)}</span>
+        ${projBtn}
+      </div>
+      <div class="compact-actions">${freshBtn}<button class="btn quiet small" data-action="search-expand">${esc(t('search.edit'))}</button></div>
+    </div>`;
+    return;
+  }
   let html = `<div class="search-in"><div class="search-head"><div><h1>${esc(t(`mode.${S.mode}`))}</h1><p>${esc(t(`${S.mode}.lead`))}</p></div></div>`;
   if (S.mode === 'compare') {
     const off = S.job || S.busy ? 'disabled' : '';
@@ -181,6 +387,7 @@ function renderSearch() {
       <select data-bind="country" ${locked ? 'disabled' : ''}>${countryOptions(S.country)}</select></label>
     <button class="btn" data-action="submit" ${locked ? 'disabled' : ''}>${esc(t(company ? 'button.find' : 'button.search'))}</button>
   </div>
+  ${quickChipsHtml()}
   <div class="levels-head"><h2>${esc(t('lv.title'))}</h2><p>${esc(t('lv.sub'))}</p></div>
   <div class="levels">${levelRows(locked)}</div>
   <div class="options">
@@ -191,11 +398,10 @@ function renderSearch() {
     ${S.level === 'analysis' ? '' : `<span class="proj-pill${S.level === 'plan' ? ' active' : ''}"><span>${esc(t('project.label'))}:</span> <button class="linklike" data-action="project">${esc(S.project
       ? t('project.saved', { product: S.project.product, price: num(S.project.price) }) : t('project.missing'))}</button></span>`}
   </div>`;
-  html += '<section class="way" id="way"></section>';
-  if (S.job || S.busy) html += '<div class="progress"><p><span id="ptext"></span><span class="muted num" id="pleft"></span></p><div class="bar" id="pbar"><i></i></div></div>';
-  else if (S.notice) html += `<p class="notice${S.notice.err ? ' err' : ''}">${esc(S.notice.text)}</p>`;
+  html += IS_MCP_APP ? '' : '<section class="way" id="way"></section>';
+  if (S.notice) html += `<p class="notice${S.notice.err ? ' err' : ''}">${esc(S.notice.text)}</p>`;
   $('#search').innerHTML = `${html}</div>`;
-  renderWay();
+  if (!IS_MCP_APP) renderWay();
   updateProgress();
 }
 function simNumbers() {
@@ -401,7 +607,8 @@ function renderWay() {
       <article class="way-card">
         <p class="way-badge"></p>
         <h3>${esc(t('way.b.title'))}</h3><p>${esc(t('way.b.text'))}</p>
-        <div class="way-act"><button class="btn quiet" disabled>${esc(t('way.b.btn'))}</button><span class="muted">${esc(t('way.b.soon'))}</span></div>
+        <div class="way-act"><button class="btn quiet" data-action="way-run" ${!L.quick || !L.quick.claude ? 'disabled' : ''}>${esc(t('way.b.btn'))}</button></div>
+        ${S.wayHint ? `<p class="way-msg" role="status">${esc(t('way.b.hint'))}</p>` : ''}
       </article>
       <article class="way-card">
         <p class="way-badge"></p>
@@ -426,6 +633,7 @@ async function loadLink(connectedNow = false) {
   try { L.quick = await api('/api/link/status'); } catch { L.quick = { claude: false, skills: { installed: false, modified: [] }, command: '', skills_folder: '~/.claude/skills' }; }
   if (seq !== linkSeq) return;
   if (connectedNow && L.quick.claude) L.mcp = 'connected';
+  renderTop();
   renderWay();
   if (L.quick.claude) {
     try {
@@ -433,7 +641,7 @@ async function loadLink(connectedNow = false) {
       if (seq === linkSeq) L.mcp = connectedNow && state === 'unknown' ? 'connected' : state;
     } catch { if (seq === linkSeq && !connectedNow) L.mcp = 'unknown'; }
   } else if (seq === linkSeq) L.mcp = 'no_claude';
-  if (seq === linkSeq) renderWay();
+  if (seq === linkSeq) { renderTop(); renderWay(); }
 }
 function newToken() {
   const bytes = new Uint8Array(16);
@@ -491,22 +699,40 @@ function updateProgress() {
   const text = $('#ptext');
   if (!text) return;
   const bar = $('#pbar');
-  let label = t('pages.searching'), left = '', share = null;
+  let label = t('pages.searching'), left = '', share = null, activeIdx = 0;
   if (S.job) {
     const { phase, detail = {} } = S.job;
     if (phase === 'details') {
       label = t('phase.details', detail);
       share = detail.total ? detail.done / detail.total : 0;
       if (detail.eta_seconds) left = t('phase.left', { time: dur(detail.eta_seconds) });
-    } else if (phase === 'waiting') label = t('phase.waiting', detail);
-    else if (phase === 'list' && S.job.params.mode !== 'keyword') label = t('phase.list.company');
-    else label = t(`phase.${phase}`);
+      activeIdx = 2;
+    } else if (phase === 'waiting') {
+      label = t('phase.waiting', detail);
+      activeIdx = 1;
+    } else if (phase === 'media') {
+      label = t('phase.media');
+      share = 0.92;
+      activeIdx = 3;
+    } else if (phase === 'list' && S.job.params.mode !== 'keyword') {
+      label = t('phase.list.company');
+      activeIdx = 1;
+    } else {
+      label = t(`phase.${phase}`);
+      activeIdx = phase === 'list' ? 1 : 0;
+    }
     if (detail.side) label = t('cmp.side', { n: detail.side }) + label;
   }
   text.textContent = label;
-  $('#pleft').textContent = left;
-  bar.classList.toggle('open', share === null);
-  bar.firstElementChild.style.width = share === null ? '' : `${Math.max(3, Math.round(share * 100))}%`;
+  if ($('#pleft')) $('#pleft').textContent = left;
+  if (bar) {
+    bar.classList.toggle('open', share === null);
+    bar.firstElementChild.style.width = share === null ? '' : `${Math.max(3, Math.round(share * 100))}%`;
+  }
+  document.querySelectorAll('.step-item').forEach((node, idx) => {
+    node.classList.toggle('done', idx < activeIdx);
+    node.classList.toggle('active', idx === activeIdx);
+  });
 }
 
 /* ---------- results ---------- */
@@ -546,9 +772,14 @@ function changesSection(r) {
 }
 function readySection(r) {
   const level = r.request.level;
-  if (level === 'data') return '';
+  if (level === 'data' || S.tab === 'strategy') return '';
+  if (IS_MCP_APP) {
+    return `<section class="ready"><p>${esc(t(`brief.ready.${level}`))}</p>
+      <button type="button" class="btn small" data-action="rtab" data-value="strategy">${esc(t('strat.ai.title'))} &rarr;</button></section>`;
+  }
   return `<section class="ready"><p>${esc(t(`brief.ready.${level}`))}</p>
-    <button class="btn" data-action="brief">${esc(t(`brief.make.${level}`))}</button></section>`;
+    <button type="button" class="btn small" data-action="rtab" data-value="strategy">${esc(t('strat.ai.title'))} &rarr;</button>
+    <button type="button" class="btn quiet small" data-action="brief">${esc(t(`brief.make.${level}`))}</button></section>`;
 }
 /* When the ceiling of ads opened stopped the reading, say it with the numbers. */
 function cappedSection(r) {
@@ -693,13 +924,34 @@ function filteredAds(r) {
 function tableRowsHtml(r) {
   const company = r.mode === 'company';
   const ads = filteredAds(r);
-  return ads.map((ad, index) => `<tr class="pick" data-action="open-ad" data-value="${esc(ad.library_id)}">
+  return ads.map((ad, index) => {
+    const thumb = ad.thumbnail ? mediaImg(ad.thumbnail, 'thumb', '', true) : '<span class="thumb"></span>';
+    const sub = company
+      ? esc([t(`format.${ad.media_type || 'unknown'}`), ad.cta, kindTag(ad)].filter(Boolean).join(' · '))
+      : `${ad.advertiser ? `<button type="button" class="adv-jump" data-action="jump-company" data-value="${esc(ad.advertiser)}">${esc(ad.advertiser)}</button>` : ''}${kindTag(ad) ? ` · ${esc(kindTag(ad))}` : ''}`;
+    return `<tr class="pick" data-action="open-ad" data-value="${esc(ad.library_id)}">
     <td class="rank">${index + 1}</td>
-    <td><div class="adcell">${ad.thumbnail ? `<img class="thumb" src="${esc(ad.thumbnail)}" alt="" loading="lazy">` : '<span class="thumb"></span>'}
-      <div class="adtext"><div>${esc(firstLine(ad) || t('t.notext'))}</div><small>${esc([company ? t(`format.${ad.media_type || 'unknown'}`) : ad.advertiser, company ? ad.cta : '', kindTag(ad)].filter(Boolean).join(' · '))}</small></div></div></td>
+    <td><div class="adcell">${thumb}<div class="adtext"><div>${esc(firstLine(ad) || t('t.notext'))}</div><small>${sub}</small></div></div></td>
     <td class="tier">${verdictCell(ad)}</td>
     <td class="r">${Math.round(ad.score)}</td><td class="r">${num(ad.days_running)}</td><td class="r">${num(ad.creatives)}</td>
-    ${company ? '' : `<td class="fmt">${esc(t(`format.${ad.media_type || 'unknown'}`))}</td>`}${reachCells(ad)}</tr>`).join('');
+    ${company ? '' : `<td class="fmt">${esc(t(`format.${ad.media_type || 'unknown'}`))}</td>`}${reachCells(ad)}</tr>`;
+  }).join('');
+}
+function cardsGridHtml(r) {
+  const company = r.mode === 'company';
+  return filteredAds(r).map((ad) => {
+    const media = ad.thumbnail ? mediaImg(ad.thumbnail, '', '', true) : `<span class="dim">${esc(t(`format.${ad.media_type || 'unknown'}`))}</span>`;
+    const reachTxt = ad.reach_per_day != null ? `${num(ad.reach_per_day)}/gg` : (ad.impression_rank ? `#${num(ad.impression_rank)}` : '');
+    const sub = [days(ad.days_running), oneOrMore('f.reused.n', ad.creatives || 1), reachTxt].filter(Boolean).join(' · ');
+    return `<button type="button" class="ad-card" data-action="open-ad" data-value="${esc(ad.library_id)}">
+      <div class="ad-card-media">${media}</div>
+      <div class="ad-card-body">
+        <div class="ad-card-head"><span class="v-${ad.verdict}">${esc(t(`verdict.${ad.verdict}`))}</span><span class="ad-card-score">${Math.round(ad.score)}/100</span></div>
+        <div class="ad-card-copy">${esc(firstLine(ad) || t('t.notext'))}</div>
+        <div class="ad-card-meta">${company ? esc(sub) : `${esc(ad.advertiser || '')} · ${esc(sub)}`}</div>
+      </div>
+    </button>`;
+  }).join('');
 }
 function helpPopover(topic, titleKey, bodyHtml, alignRight = false) {
   return `<span class="help-wrap"><button type="button" class="help-btn" data-action="help-toggle" aria-label="${esc(t('help.aria', { topic }))}" aria-expanded="false">?</button><div class="help-pop${alignRight ? ' right' : ''}" role="tooltip"><h4>${esc(t(titleKey))}</h4>${bodyHtml}</div></span>`;
@@ -1223,33 +1475,175 @@ function anomalieSection(r) {
 }
 function tableSection(r) {
   const company = r.mode === 'company';
-  const rows = tableRowsHtml(r);
+  const isCards = S.adsView === 'cards';
+  const bodyHtml = isCards
+    ? `<div class="ads-grid" id="ads-grid">${cardsGridHtml(r)}</div>`
+    : `<div class="table-scroll"><table class="ads${company ? '' : ' mixed'}"><thead><tr><th></th><th>${esc(t('t.ad'))}</th><th>${esc(t('t.tier'))}${tierScalePop()}</th>
+    <th class="r">${esc(t('t.score'))}${scoreScalePop(true)}</th><th class="r">${esc(t('t.days'))}</th><th class="r">${esc(t('t.creatives'))}</th>
+    ${company ? '' : `<th>${esc(t('t.format'))}</th>`}<th class="r">${esc(t('t.reached', { country: region(r.country) }))}</th><th class="r">${esc(t('t.perday'))}${perdayPop(true)}</th></tr></thead>
+    <tbody id="ads-tbody">${tableRowsHtml(r)}</tbody></table></div>`;
   const opened = r.deep ? r.deep.read : r.ads.reduce((sum, ad) => sum + (ad.reach ? 1 : 0) + Object.keys(ad.card_reach || {}).length, 0);
   const concepts = r.deep ? r.deep.concepts : r.ads.filter((ad) => ad.reach).length;
   return `<section><div class="sortbar">
       <span>${esc(t('sort.by'))}</span><div class="switch" role="group">${toggle('sort', ['score', 'perday', 'days'], S.sort, (v) => t(`sort.${v}`))}</div>
       <div class="switch" role="group">${toggle('tfilter', ['all', 'scaling', 'video', 'high'], S.filter, (v) => t(`filter.${v}`))}</div>
+      <div class="switch" role="group">${toggle('ads-view', ['table', 'cards'], S.adsView, (v) => t(`ads.view.${v}`))}</div>
       <span class="sort-spacer"></span>
       <input type="search" class="tbl-search" id="tbl-q" data-bind="tableQuery" value="${esc(S.tableQuery)}" placeholder="${esc(t('filter.search'))}" autocomplete="off">
       <button class="btn quiet small" data-action="export-csv">${esc(t('export.csv'))}</button>
     </div>
     ${tableLegend()}
-    <div class="table-scroll"><table class="ads${company ? '' : ' mixed'}"><thead><tr><th></th><th>${esc(t('t.ad'))}</th><th>${esc(t('t.tier'))}${tierScalePop()}</th>
-    <th class="r">${esc(t('t.score'))}${scoreScalePop(true)}</th><th class="r">${esc(t('t.days'))}</th><th class="r">${esc(t('t.creatives'))}</th>
-    ${company ? '' : `<th>${esc(t('t.format'))}</th>`}<th class="r">${esc(t('t.reached', { country: region(r.country) }))}</th><th class="r">${esc(t('t.perday'))}${perdayPop(true)}</th></tr></thead>
-    <tbody id="ads-tbody">${rows}</tbody></table></div><p class="tablenote">${esc(t(concepts === 1 ? 't.note.one' : 't.note', { concepts: count(concepts, 'n.concepts'), opened: count(opened, 'n.ads') }))}</p></section>`;
+    ${bodyHtml}<p class="tablenote">${esc(t(concepts === 1 ? 't.note.one' : 't.note', { concepts: count(concepts, 'n.concepts'), opened: count(opened, 'n.ads') }))}</p></section>`;
+}
+function liveStepperHtml() {
+  const title = S.mode === 'company' ? (S.company || t('mode.company')) : (S.query || t(`mode.${S.mode}`));
+  return `<div class="live-stepper">
+    <h2>${esc(title)}</h2>
+    <div class="step-meta"><span id="ptext"></span><span class="num" id="pleft"></span></div>
+    <div class="bar open" id="pbar"><i></i></div>
+    <div class="step-row">${[1, 2, 3, 4].map((n) => `<div class="step-item">${esc(t(`step.${n}`))}</div>`).join('')}</div>
+  </div>`;
+}
+function studioTabBadge(r, tab) {
+  if (tab === 'pulse' && r.ritmo && r.ritmo.sta_lta && r.ritmo.sta_lta.state === 'spike' && r.ritmo.sta_lta.ratio != null) {
+    return `${num(r.ritmo.sta_lta.ratio)}x`;
+  }
+  if (tab === 'structure' && r.anomalie && (r.anomalie.items || []).length) {
+    return num(r.anomalie.items.length);
+  }
+  if (tab === 'ads') return num((r.ads || []).length);
+  if (tab === 'strategy') return t(`level.${S.stratLevel === 'plan' ? 'plan' : 'analysis'}`);
+  return null;
+}
+function studioTabsHtml(r) {
+  const btns = STUDIO_TABS.map((tab, idx) => {
+    const badge = studioTabBadge(r, tab);
+    return `<button type="button" class="studio-tab" role="tab" data-action="rtab" data-value="${tab}" aria-selected="${S.tab === tab}">
+      <span>${idx + 1}. ${esc(t(`tab.${tab}`))}</span>${badge != null ? `<span class="tab-badge">${esc(badge)}</span>` : ''}
+    </button>`;
+  }).join('');
+  return `<nav class="studio-tabs" role="tablist">${btns}<span class="tab-hint">${esc(t('tab.hint'))}</span></nav>`;
+}
+function topPreviewSection(r) {
+  const top = (r.ads || []).slice(0, 3);
+  if (!top.length) return '';
+  const cards = top.map((ad) => {
+    const thumb = ad.thumbnail ? mediaImg(ad.thumbnail, 'top-card-thumb', '', true) : '<span class="top-card-thumb"></span>';
+    const meta = [days(ad.days_running), ad.reach_per_day != null ? `${num(ad.reach_per_day)}/gg` : ''].filter(Boolean).join(' · ');
+    return `<button type="button" class="top-card" data-action="open-ad" data-value="${esc(ad.library_id)}">
+      ${thumb}<div class="top-card-body">
+        <div class="top-card-top"><span class="v-${ad.verdict}">${esc(t(`verdict.${ad.verdict}`))}</span><strong>${Math.round(ad.score)}/100</strong></div>
+        <div class="top-card-copy">${esc(firstLine(ad) || t('t.notext'))}</div>
+        <div class="top-card-meta">${esc(meta)}</div>
+      </div>
+    </button>`;
+  }).join('');
+  return `<section class="top-preview">
+    <div class="top-preview-head"><h2>${esc(t('top.title'))}</h2><button type="button" class="linklike" data-action="rtab" data-value="ads">${esc(t('top.all', { n: num((r.ads || []).length) }))}</button></div>
+    <div class="top-cards">${cards}</div>
+  </section>`;
+}
+function keywordJumpSection(r) {
+  if (r.mode !== 'keyword' || !(r.advertisers || []).length) return '';
+  const btns = r.advertisers.slice(0, 6).map((row) => `<button type="button" class="btn quiet small" data-action="jump-company" data-value="${esc(row.advertiser)}">${esc(row.advertiser)} (${num(row.ads)})</button>`).join('');
+  return `<section class="jump-box"><p class="muted">${esc(t('jump.kw_note'))}</p><div class="jump-list">${btns}</div></section>`;
+}
+function linkifyAdIds(escapedHtml) {
+  return escapedHtml.replace(/(?<![\d/\w])(\d{12,18})(?!\d)/g, '<button type="button" class="linklike id-link" data-action="open-ad" data-value="$1">$1</button>');
+}
+function formatInlineMd(raw) {
+  let s = esc(raw);
+  s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  return linkifyAdIds(s);
+}
+function renderMarkdownSafe(md) {
+  const lines = String(md || '').split(/\r?\n/);
+  const out = [];
+  let inList = false;
+  const closeList = () => { if (inList) { out.push('</ul>'); inList = false; } };
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) { closeList(); continue; }
+    const h = trimmed.match(/^(#{1,3})\s+(.+)$/);
+    if (h) { closeList(); const lvl = Math.min(3, h[1].length); out.push(`<h${lvl}>${formatInlineMd(h[2])}</h${lvl}>`); continue; }
+    const li = trimmed.match(/^[-*]\s+(.+)$/);
+    if (li) { if (!inList) { out.push('<ul>'); inList = true; } out.push(`<li>${formatInlineMd(li[1])}</li>`); continue; }
+    closeList();
+    out.push(`<p>${formatInlineMd(trimmed)}</p>`);
+  }
+  closeList();
+  return out.join('');
+}
+function strategyTabSection(r) {
+  const lvl = S.stratLevel === 'plan' ? 'plan' : 'analysis';
+  const subj = (r.page && r.page.name) || r.query || t(`mode.${r.mode}`);
+  const hasClaude = Boolean(S.link.quick && S.link.quick.claude);
+  const running = Boolean(S.aiJob && S.aiJob.status === 'running');
+  let primaryBtn = '';
+  if (IS_MCP_APP) {
+    const canMsg = Boolean(mcpApp && mcpApp.getHostCapabilities && mcpApp.getHostCapabilities()?.message);
+    primaryBtn = canMsg
+      ? `<button type="button" class="btn" data-action="mcp-send-ai">${esc(t('strat.ai.mcp'))}</button>`
+      : `<p class="muted" style="font-size:.88rem">${esc(t('strat.ai.mcp_global', { name: subj }))}</p>`;
+  } else if (hasClaude) {
+    primaryBtn = `<button type="button" class="btn" data-action="ai-run" ${running ? 'disabled' : ''}>${esc(t('strat.ai.run'))}</button>`;
+  }
+  let outputHtml = '';
+  if (S.stratNeedProject) {
+    outputHtml = `<p class="notice err">${esc(t('strat.ai.project_needed'))} <button type="button" class="linklike" data-action="project">${esc(t('project.missing'))}</button></p>`;
+  } else if (IS_MCP_APP && S.mcpSent) {
+    outputHtml = `<p class="audit-pill ok">${esc(t('strat.ai.mcp_sent'))}</p>`;
+  } else if (S.aiJob) {
+    if (S.aiJob.status === 'running') {
+      outputHtml = `<div class="progress" style="margin-top:4px;padding-top:4px"><p><span>${esc(t('strat.ai.running', { folder: S.aiJob.folder_name || 'pack' }))}</span></p><div class="bar open"><i></i></div></div>`;
+    } else if (S.aiJob.status === 'error') {
+      outputHtml = `<p class="notice err">${esc(t('strat.ai.err'))}: ${esc(S.aiJob.detail || S.aiJob.error || '')}</p>`;
+    } else if (S.aiJob.markdown) {
+      const a = S.aiJob.audit;
+      const auditHtml = a ? (a.warning_count === 0
+        ? `<div class="audit-pill ok">${esc(t('strat.ai.audit.ok', { n: num((a.checked_ad_ids || []).length) }))}</div>`
+        : `<div class="audit-pill warn">${esc(t('strat.ai.audit.warn', { n: num(a.warning_count) }))}</div>`) : '';
+      outputHtml = `${auditHtml}<div class="ai-report-view">${renderMarkdownSafe(S.aiJob.markdown)}</div>
+        <div class="ai-actions"><button type="button" class="btn quiet small" data-action="copy-ai-report">${esc(t('strat.ai.copy_report'))}</button></div>`;
+    }
+  }
+  const exportBtn = IS_MCP_APP ? '' : `<button type="button" class="btn quiet small" data-action="brief">${esc(t('strat.ai.export'))}</button>`;
+  return `<section class="strategy-grid">
+    <div><h2 style="margin-bottom:12px">${esc(t('strat.calc.title'))}</h2>${levelVisual('plan')}</div>
+    <div class="ai-studio-card">
+      <div class="ai-studio-head"><h2>${esc(t('strat.ai.title'))}</h2><p>${esc(t('strat.ai.sub'))}</p></div>
+      <div class="switch" role="group" style="margin-left:0;width:fit-content">${toggle('strat-level', ['analysis', 'plan'], lvl, (v) => t(`strat.lvl.${v === 'plan' ? 3 : 2}`))}</div>
+      <div class="ai-actions">${primaryBtn}${exportBtn}</div>
+      ${outputHtml}
+    </div>
+  </section>`;
 }
 function renderResults() {
   const el = $('#results');
-  if (S.mode === 'news') { renderNews(); return; }
+  if (S.mode === 'news') { renderNews(); hydrateMcpImages(); return; }
   if (S.mode === 'compare') {
     el.innerHTML = S.cmp ? cmpChooser() : (S.result && S.resultMode === 'compare' && S.result.comparison ? compareSheet(S.result) : '');
+    hydrateMcpImages();
     return;
   }
-  if (S.pages) { el.innerHTML = pagesSheet(); return; }
+  if ((S.busy || S.job) && !S.pages && (!S.result || S.resultMode !== S.mode)) {
+    el.innerHTML = liveStepperHtml();
+    updateProgress();
+    return;
+  }
+  if (S.pages) { el.innerHTML = pagesSheet(); hydrateMcpImages(); return; }
   const r = S.result;
   if (!r || !(r.ads || []).length || S.resultMode !== S.mode) { el.innerHTML = ''; return; }
-  el.innerHTML = `<div class="sheet">${headSection(r)}${tldrSection(r)}${readySection(r)}${cappedSection(r)}${changesSection(r)}${metricsSection(r)}${factsSection(r)}${durataSection(r)}${ritmoSection(r)}${strutturaSection(r)}${anomalieSection(r)}${tableSection(r)}</div>`;
+  if (!STUDIO_TABS.includes(S.tab)) S.tab = 'overview';
+  let tabBody = '';
+  if (S.tab === 'overview') tabBody = `${cappedSection(r)}${changesSection(r)}${metricsSection(r)}${topPreviewSection(r)}${factsSection(r)}`;
+  else if (S.tab === 'pulse') tabBody = `${ritmoSection(r)}${durataSection(r)}${keywordJumpSection(r)}`;
+  else if (S.tab === 'structure') tabBody = `${strutturaSection(r)}${anomalieSection(r)}`;
+  else if (S.tab === 'ads') tabBody = `${tableSection(r)}`;
+  else if (S.tab === 'strategy') tabBody = `${strategyTabSection(r)}`;
+  el.innerHTML = `<div class="sheet">${headSection(r)}${tldrSection(r)}${readySection(r)}${studioTabsHtml(r)}${tabBody}</div>`;
+  hydrateMcpImages();
 }
 
 /* ---------- two companies ---------- */
@@ -1330,7 +1724,7 @@ function compareSheet(r) {
     return `${title}<tr><td>${esc(t(`cmp.row.${row.key}`, { country: region(r.country) }))}</td><td${numeric}>${cmpValue(row, row.a)}</td><td${numeric}>${cmpValue(row, row.b)}</td></tr>`;
   }).join('');
   const top = (side) => `<div><div class="table-scroll"><table class="ads"><tbody>${side.ads.slice(0, 5).map((ad) => `<tr class="pick" data-action="open-ad" data-value="${esc(ad.library_id)}">
-    <td><div class="adcell">${ad.thumbnail ? `<img class="thumb" src="${esc(ad.thumbnail)}" alt="" loading="lazy">` : '<span class="thumb"></span>'}
+    <td><div class="adcell">${ad.thumbnail ? mediaImg(ad.thumbnail, 'thumb', '', true) : '<span class="thumb"></span>'}
       <div class="adtext"><div>${esc(firstLine(ad) || t('t.notext'))}</div><small>${esc(`${t(`verdict.${ad.verdict}`)} · ${days(ad.days_running)} · ${oneOrMore('f.reused.n', ad.creatives)}`)}</small></div></div></td>
     <td class="r">${Math.round(ad.score)}</td></tr>`).join('')}</tbody></table></div></div>`;
   return `<div class="sheet">
@@ -1409,7 +1803,7 @@ function launchCompare() {
 /* ---------- what changed ---------- */
 const stamp = (iso) => `${day(iso.slice(0, 10))}, ${clock(iso)}`;
 function adCell(ad, keyword) {
-  return `<div class="adcell">${ad.thumbnail ? `<img class="thumb" src="${esc(ad.thumbnail)}" alt="" loading="lazy">` : '<span class="thumb"></span>'}
+  return `<div class="adcell">${ad.thumbnail ? mediaImg(ad.thumbnail, 'thumb', '', true) : '<span class="thumb"></span>'}
     <div class="adtext"><div><a href="${esc(ad.ad_url)}" target="_blank" rel="noopener">${esc(ad.opening || t('t.notext'))}</a></div>
     <small>${esc([keyword ? ad.advertiser : t(`format.${ad.media_type || 'unknown'}`), ad.cta].filter(Boolean).join(' · '))}</small></div></div>`;
 }
@@ -1517,12 +1911,36 @@ function adDrawer(ad, r) {
   }
   const review = ad.needs_review ? `<p class="review" style="margin-top:12px;font-size:1rem">${esc(t(ad.review && ad.review.basis === 'impressions' ? 'd.review.impressions' : 'd.review'))}</p>` : '';
   const recent = ad.too_recent ? `<p class="review" style="margin-top:12px;font-size:1rem">${esc(t('d.recent', { days: days(ad.days_running) }))}</p>` : '';
-  return `<aside class="drawer" role="dialog" aria-modal="true"><header><h2>${esc(ad.advertiser || '')}</h2><button class="x" data-action="close">${esc(t('button.close'))}</button></header><div class="body">
-    <section><div class="hero">${ad.thumbnail ? `<img src="${esc(ad.thumbnail)}" alt="">` : ''}<div>
+  const isVideo = ad.media_type === 'video' && /^\d{5,25}$/.test(String(ad.library_id || ''));
+  const vi = isVideo ? S.videoInspect[ad.library_id] : null;
+  let vidHtml = '';
+  if (isVideo) {
+    let viBody = '';
+    if (vi && vi.loading) {
+      viBody = `<div class="progress" style="margin-top:10px;padding-top:10px"><p><span>${esc(t('vid.loading'))}</span></p><div class="bar open"><i></i></div></div>`;
+    } else if (vi && (vi.err || (vi.data && !vi.data.ok))) {
+      viBody = `<p class="notice err" style="margin-top:10px;padding-top:10px">${esc((vi.data && vi.data.note) || t('vid.err'))}</p>`;
+    } else if (vi && vi.data && vi.data.ok) {
+      const vd = vi.data;
+      const durTxt = vd.duration != null ? `${num(Math.round(vd.duration * 10) / 10)} s` : '—';
+      const sheets = [
+        vd.hook_sheet ? `<div class="vid-sheet-card"><strong>${esc(t('vid.hook'))}</strong>${mediaImg(vd.hook_sheet, 'vid-sheet-img', t('vid.hook'))}</div>` : '',
+        vd.body_sheet ? `<div class="vid-sheet-card"><strong>${esc(t('vid.body'))}</strong>${mediaImg(vd.body_sheet, 'vid-sheet-img', t('vid.body'))}</div>` : '',
+      ].filter(Boolean).join('');
+      viBody = `<p class="smallnote" style="margin-top:8px">${esc(t('vid.meta', { dur: durTxt, ratio: vd.aspect_ratio || '—' }))}</p>
+        ${sheets ? `<div class="vid-sheets">${sheets}</div>` : ''}`;
+    }
+    vidHtml = `<section class="vid-inspect-box"><div class="vid-inspect-head"><h3>${esc(t('vid.title'))}</h3>
+      <button type="button" class="btn quiet small" data-action="video-inspect" data-value="${esc(ad.library_id)}" ${vi && vi.loading ? 'disabled' : ''}>${esc(t('vid.btn'))}</button>
+      </div>${viBody}</section>`;
+  }
+  return `<aside class="drawer" role="dialog" aria-modal="true"><header><h2>${esc(ad.advertiser || '')}</h2><div class="drawer-nav"><button type="button" class="btn quiet small" data-action="ad-step" data-value="-1" aria-label="Previous">&larr;</button><button type="button" class="btn quiet small" data-action="ad-step" data-value="1" aria-label="Next">&rarr;</button></div><button class="x" data-action="close">${esc(t('button.close'))}</button></header><div class="body">
+    <section><div class="hero">${ad.thumbnail ? mediaImg(ad.thumbnail, '', '') : ''}<div>
       <p><strong>${esc(ad.status === 'inactive' ? t('d.inactive') : t('d.active', { date: ad.started ? day(ad.started) : '—' }))}</strong></p>
       <p class="muted">${esc(days(ad.days_running))} · ${esc(t(`format.${ad.media_type || 'unknown'}`))}</p>
       ${ad.impression_rank ? `<p class="muted">${esc(t('d.rank', { n: ad.impression_rank }))}</p>` : ''}
       <p style="margin-top:10px"><a href="${esc(ad.ad_url)}" target="_blank" rel="noopener">${esc(t('link.meta'))}</a></p></div></div></section>
+    ${vidHtml}
     <section><h3>${esc(t('d.score', { score: Math.round(ad.score) }))} · ${esc(t(`verdict.${ad.verdict}`))}${scoreScalePop(true)}</h3>
       <div class="scorebar three">${['scale', 'staying', 'creative'].map((part) => `<i style="width:${points[part]}%"></i>`).join('')}</div>
       <dl>
@@ -1550,7 +1968,7 @@ function adDrawer(ad, r) {
       <dt>${esc(t('f.places.in'))}</dt><dd>${places(audience.locations_included, 8)}</dd>
       <dt>${esc(t('f.places.out'))}</dt><dd>${places(audience.locations_excluded, 3)}</dd></dl>
       <p class="smallnote">${esc(t('f.places.note'))}</p></section>` : ''}
-    ${(ad.frames || []).length ? `<section><h3>${esc(t('d.frames'))}</h3><div class="frames">${ad.frames.map((src) => `<img src="${esc(src)}" alt="">`).join('')}</div></section>` : ''}
+    ${(ad.frames || []).length ? `<section><h3>${esc(t('d.frames'))}</h3><div class="frames">${ad.frames.map((src) => mediaImg(src, '', '')).join('')}</div></section>` : ''}
   </div></aside>`;
 }
 function guideDrawer() {
@@ -1704,6 +2122,7 @@ function renderOverlay() {
   else if (overlay.type === 'how') inner = howDialog(overlay);
   else if (overlay.type === 'tutorial') inner = tutorialDialog(overlay);
   el.innerHTML = `<div class="scrim" data-action="close"></div>${inner}`;
+  hydrateMcpImages();
 }
 function render() { renderTop(); renderSearch(); renderResults(); renderOverlay(); }
 
@@ -1718,7 +2137,7 @@ async function refreshEstimate() {
 function note(key, vars, err) { S.notice = { text: t(key, vars), err }; render(); }
 
 async function submit() {
-  S.notice = null;
+  S.notice = null; S.searchExpandedManual = false; S.wayHint = false;
   if (S.mode === 'compare') return submitCompare();
   if (S.mode === 'keyword') {
     if (!S.query.trim()) return note('error.input', null, true);
@@ -1732,9 +2151,11 @@ async function submit() {
     if (!found.pages.length) return note('pages.none', { country: region(S.country) });
     if (found.pages.length === 1) { render(); return gate({ mode: 'company', page_id: found.pages[0].page_id }); }
     S.pages = found; render();
+    window.scrollTo({ top: 0, behavior: 'instant' });
   } catch (error) { S.busy = null; note('error.title', null, true); }
 }
 function gate(request) {
+  S.searchExpandedManual = false;
   S.pending = { fresh: false, ...request, country: S.country };
   if (S.level === 'plan' && !S.project) return openProject(true);
   if (S.level !== 'data') { S.overlay = { type: 'confirm' }; renderOverlay(); return refreshEstimate(); }
@@ -1742,6 +2163,7 @@ function gate(request) {
 }
 async function launch() {
   S.overlay = null; S.pages = null; S.result = null; S.notice = null;
+  S.searchExpandedManual = false;
   S.durataBusy = false; S.durataError = false;
   try {
     S.job = await api('/api/jobs', { method: 'POST', body: { ...S.pending, level: S.pending.mode === 'compare' ? 'data' : S.level, deep: S.deep, frames: S.frames } });
@@ -1759,8 +2181,112 @@ async function launch() {
   if (!job || job.status !== 'done') return note('error.title', null, true);
   const found = job.result.sides ? job.result.sides.every((side) => (side.ads || []).length) : (job.result.ads || []).length;
   if (!found) return note(`error.${job.result.outcome === 'blocked' ? 'blocked' : 'no_results'}`);
-  S.result = job.result; S.resultMode = job.params.mode; S.jobId = job.id; render();
-  window.scrollTo({ top: $('#results').offsetTop - 12, behavior: 'instant' });
+  S.result = job.result; S.result._live = true; S.resultMode = job.params.mode; S.jobId = job.id;
+  S.tab = 'overview'; S.aiJob = null; S.mcpSent = false; S.stratNeedProject = false;
+  S.stratLevel = (job.params.level === 'plan') ? 'plan' : 'analysis';
+  render();
+  window.scrollTo({ top: 0, behavior: 'instant' });
+}
+function setTab(tab) {
+  if (!STUDIO_TABS.includes(tab) || !S.result) return;
+  S.tab = tab; S.stratNeedProject = false;
+  renderResults();
+  if (tab === 'pulse' && S.result._live && S.result.mode === 'company' && !S.result.durata && !S.durataBusy && !S.durataError && !S.result._durataAuto) {
+    S.result._durataAuto = true;
+    runDurata(false);
+  }
+}
+function stepAd(delta) {
+  if (!S.overlay || S.overlay.type !== 'ad' || !S.result) return;
+  const list = S.result.sides ? S.result.sides.flatMap((side) => side.ads) : filteredAds(S.result);
+  if (!list.length) return;
+  const idx = list.findIndex((item) => item.library_id === S.overlay.id);
+  const nextIdx = idx < 0 ? 0 : (idx + delta + list.length) % list.length;
+  S.overlay = { type: 'ad', id: list[nextIdx].library_id };
+  renderOverlay();
+}
+async function runVideoInspect(adId) {
+  if (!adId || (S.videoInspect[adId] && S.videoInspect[adId].loading)) return;
+  S.videoInspect[adId] = { loading: true, data: null, err: false };
+  renderOverlay();
+  try {
+    const data = await api('/api/video/inspect', { method: 'POST', body: { ad_id: adId } });
+    S.videoInspect[adId] = { loading: false, data, err: false };
+  } catch {
+    S.videoInspect[adId] = { loading: false, data: null, err: true };
+  }
+  renderOverlay();
+}
+async function runAi() {
+  const r = S.result;
+  if (!r || !S.jobId) return;
+  const level = S.stratLevel === 'plan' ? 'plan' : 'analysis';
+  if (level === 'plan' && !S.project) { S.stratNeedProject = true; renderResults(); return; }
+  S.stratNeedProject = false;
+  const token = newToken();
+  const adsCount = (r.request && r.request.deep) || S.deep;
+  const useFrames = Boolean(r.request && r.request.frames);
+  try {
+    S.aiJob = await api('/api/ai/run', {
+      method: 'POST',
+      headers: { 'X-Run-Token': token },
+      body: { token, job_id: S.jobId, level, ads: adsCount, frames: useFrames, lang: S.lang },
+    });
+  } catch (error) {
+    if (error.data && error.data.error === 'project_required') { S.stratNeedProject = true; renderResults(); return; }
+    S.aiJob = { status: 'error', error: (error.data && error.data.error) || 'command_failed', detail: error.message };
+    renderResults();
+    return;
+  }
+  renderResults();
+  while (S.aiJob && S.aiJob.status === 'running') {
+    await sleep(700);
+    try { S.aiJob = await api(`/api/ai/jobs/${S.aiJob.id}`); } catch { break; }
+    if (S.tab === 'strategy') renderResults();
+  }
+  if (S.tab === 'strategy') renderResults();
+}
+async function sendMcpAi() {
+  const r = S.result;
+  if (!r || !mcpApp) return;
+  const level = S.stratLevel === 'plan' ? 'plan' : 'analysis';
+  if (level === 'plan' && !S.project) { S.stratNeedProject = true; renderResults(); return; }
+  S.stratNeedProject = false;
+  const target = r.mode === 'company' && r.page && r.page.page_id
+    ? `page_id ${r.page.page_id} (${r.page.name || ''})` : `query "${r.query || ''}"`;
+  const skill = level === 'plan' ? 'competitor-plan' : 'competitor-analysis';
+  const prompt = S.lang === 'it'
+    ? `Usa ad-library-insights (${skill}, livello ${level === 'plan' ? 3 : 2}) su ${target} in ${r.country}, analizzando ${S.deep} concetti e verifica il report finale con check_report.`
+    : `Use ad-library-insights (${skill}, level ${level === 'plan' ? 3 : 2}) on ${target} in ${r.country}, reading ${S.deep} concepts and verify the final draft with check_report.`;
+  try {
+    await mcpApp.sendMessage({ role: 'user', content: [{ type: 'text', text: prompt }] });
+    S.mcpSent = true;
+  } catch { S.mcpSent = false; }
+  renderResults();
+}
+function jumpToCompany(name) {
+  if (!name) return;
+  S.mode = 'company'; S.company = name; S.searchExpandedManual = false;
+  submit();
+}
+async function reopenHistory(key) {
+  const row = (S.history || []).find((item) => item.key === key);
+  if (!row) return;
+  S.mode = row.mode === 'keyword' ? 'keyword' : 'company';
+  S.country = row.country || S.country;
+  if (S.mode === 'keyword') S.query = row.query || row.label || '';
+  else S.company = row.label || '';
+  if (!IS_MCP_APP) {
+    try {
+      const saved = await api(`/api/history/latest?key=${encodeURIComponent(key)}`);
+      if (saved && saved.available && saved.result) {
+        S.result = saved.result; S.resultMode = saved.result.mode; S.jobId = saved.job_id || null;
+        S.tab = 'overview'; S.searchExpandedManual = false; render(); return;
+      }
+    } catch { /* fall back to fresh search */ }
+  }
+  if (S.mode === 'company' && row.page_id) gate({ mode: 'company', page_id: row.page_id });
+  else submit();
 }
 async function runDurata(fresh = false) {
   const r = S.result;
@@ -1808,11 +2334,14 @@ async function saveProject() {
   if (overlay.thenSearch && S.pending) gate(S.pending);
 }
 async function makeBrief(options = {}) {
-  const request = S.result.request;
-  const before = (S.overlay && S.overlay.type === 'brief' && S.overlay.made) || { ads: request.deep, frames: request.frames };
+  const r = S.result;
+  if (!r) return;
+  const req = r.request || { level: S.stratLevel, deep: S.deep, frames: S.frames };
+  const lvl = (req.level && req.level !== 'data') ? req.level : (S.stratLevel === 'plan' ? 'plan' : 'analysis');
+  const before = (S.overlay && S.overlay.type === 'brief' && S.overlay.made) || { ads: req.deep || S.deep, frames: Boolean(req.frames) };
   const ads = options.ads ?? before.ads, frames = options.frames ?? before.frames;
   try {
-    const made = await api('/api/brief', { method: 'POST', body: { job_id: S.jobId, level: request.level, ads, frames, lang: S.lang } });
+    const made = await api('/api/brief', { method: 'POST', body: { job_id: S.jobId, level: lvl, ads, frames, lang: S.lang } });
     S.overlay = { type: 'brief', made }; renderOverlay();
   } catch (error) {
     if (error.data && error.data.error === 'project_required') openProject(false);
@@ -1820,8 +2349,26 @@ async function makeBrief(options = {}) {
 }
 
 const ACTIONS = {
-  mode(value) { S.mode = value; S.pages = null; S.cmp = null; S.notice = null; S.durataBusy = false; S.durataError = false; render(); if (value === 'news') loadHistory(); },
+  mode(value) { S.mode = value; S.pages = null; S.cmp = null; S.notice = null; S.durataBusy = false; S.durataError = false; S.searchExpandedManual = false; render(); if (value === 'news') loadHistory(); },
   'news-open': openNews, 'news-refresh': refreshSubject,
+  rtab: setTab,
+  'ads-view'(value) { S.adsView = value === 'cards' ? 'cards' : 'table'; renderResults(); },
+  'strat-level'(value) { S.stratLevel = value === 'plan' ? 'plan' : 'analysis'; S.stratNeedProject = false; renderResults(); },
+  'search-expand'() { S.searchExpandedManual = true; renderSearch(); const inp = $('#search input[type="text"]'); if (inp) inp.focus(); },
+  'search-fresh'() {
+    const r = S.result;
+    if (!r) return;
+    if (r.mode === 'company' && r.page && r.page.page_id) gate({ mode: 'company', page_id: r.page.page_id, fresh: true });
+    else if (r.mode === 'keyword' && r.query) gate({ mode: 'keyword', query: r.query, fresh: true });
+  },
+  'conn-open'() { S.searchExpandedManual = true; renderSearch(); const way = $('#way'); if (way && way.scrollIntoView) way.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
+  'quick-reopen': reopenHistory,
+  'jump-company': jumpToCompany,
+  'ad-step'(value) { stepAd(Number(value || 1)); },
+  'video-inspect': runVideoInspect,
+  'ai-run': runAi,
+  'mcp-send-ai': sendMcpAi,
+  async 'copy-ai-report'() { if (S.aiJob && S.aiJob.markdown) await copyText(S.aiJob.markdown); },
   sort(value) { S.sort = value; renderResults(); },
   theme(value) {
     if (value === S.theme) return;
@@ -1858,6 +2405,13 @@ const ACTIONS = {
   'link-go'() { const overwrite = S.overlay.overwrite; S.overlay = null; renderOverlay(); runConnect(overwrite); },
   'link-test': testLink,
   async 'link-copy'() { S.link.copy = (await copyText(exampleSentence())) ? 'ok' : 'failed'; renderWay(); },
+  'way-run'() {
+    const r = S.result;
+    if (r && S.jobId && S.resultMode !== 'compare') {
+      S.wayHint = false; S.tab = 'strategy'; render(); runAi(); return;
+    }
+    S.wayHint = true; renderWay();
+  },
   'way-copy'() {
     const r = S.result;
     if (r && S.jobId && S.resultMode !== 'compare' && r.request && r.request.level !== 'data') { S.link.hint = false; renderWay(); return makeBrief(); }
@@ -1987,6 +2541,8 @@ document.addEventListener('input', (event) => {
     if (el.dataset.bind === 'tableQuery' && S.result) {
       const tbody = $('#ads-tbody');
       if (tbody) tbody.innerHTML = tableRowsHtml(S.result);
+      const grid = $('#ads-grid');
+      if (grid) { grid.innerHTML = cardsGridHtml(S.result); hydrateMcpImages(); }
     }
   }
   if (el.dataset.sim) {
@@ -2015,17 +2571,71 @@ document.addEventListener('change', (event) => {
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     if ($('.help-wrap.open')) { closeHelp(); return; }
-    if (S.overlay) ACTIONS.close();
+    if (S.overlay) { ACTIONS.close(); return; }
   }
-  if (event.key === 'Enter' && event.target.dataset && event.target.dataset.bind && !S.job && !S.busy) submit();
+  if (event.key === 'Enter' && event.target.dataset && event.target.dataset.bind && !S.job && !S.busy) { submit(); return; }
+  const editing = event.target && event.target.matches && event.target.matches('input, textarea, select, [contenteditable]');
+  if (editing || event.ctrlKey || event.metaKey || event.altKey) return;
+  if (S.overlay && S.overlay.type === 'ad') {
+    if (event.key === 'ArrowRight') { event.preventDefault(); stepAd(1); }
+    else if (event.key === 'ArrowLeft') { event.preventDefault(); stepAd(-1); }
+    return;
+  }
+  if (!S.overlay && S.result && (S.mode === 'company' || S.mode === 'keyword')) {
+    const idx = STUDIO_TABS.indexOf(S.tab);
+    if (event.key === 'ArrowRight') { event.preventDefault(); setTab(STUDIO_TABS[(idx + 1) % STUDIO_TABS.length]); return; }
+    if (event.key === 'ArrowLeft') { event.preventDefault(); setTab(STUDIO_TABS[(idx - 1 + STUDIO_TABS.length) % STUDIO_TABS.length]); return; }
+    if (/^[1-5]$/.test(event.key)) { event.preventDefault(); setTab(STUDIO_TABS[Number(event.key) - 1]); return; }
+    if (event.key === '/') { event.preventDefault(); ACTIONS['search-expand'](); }
+  }
 });
 
+function _applyHostCtx(ctx) {
+  if (!ctx || !window.McpExtApps) return;
+  if (ctx.theme === 'dark' || ctx.theme === 'light') {
+    S.theme = ctx.theme;
+    window.McpExtApps.applyDocumentTheme(ctx.theme);
+  }
+  if (ctx.styles && ctx.styles.variables) window.McpExtApps.applyHostStyleVariables(ctx.styles.variables);
+  renderTop();
+}
+
 (async function start() {
-  T = await (await fetch('/static/strings.json', { cache: 'no-store' })).json();
+  if (IS_MCP_APP) {
+    try {
+      mcpApp = new window.McpExtApps.App({ name: 'Ad Library Insights', version: '0.7.0' }, {});
+      mcpApp.onhostcontextchanged = _applyHostCtx;
+      mcpApp.ontoolinput = ({ arguments: args }) => {
+        if (args && (args.name || args.page_id || args.query)) {
+          S.busy = 'tool'; S.searchExpandedManual = false;
+          render();
+        }
+      };
+      mcpApp.ontoolresult = (res) => hydrateFromMcpPayload(_unwrapMcp(res));
+      await mcpApp.connect();
+      _applyHostCtx(mcpApp.getHostContext());
+    } catch { /* graceful standalone fallback */ }
+    try {
+      const state = await api('/api/state');
+      S.project = state.project;
+      if (Array.isArray(state.deep_choices)) S.deepChoices = state.deep_choices;
+      if (Array.isArray(state.subjects)) S.history = state.subjects;
+    } catch { /* ignore */ }
+    render();
+    hydrateMcpImages();
+    return;
+  }
+  if (!Object.keys(T.it || {}).length) {
+    T = await (await fetch('/static/strings.json', { cache: 'no-store' })).json();
+  }
   try {
     const state = await api('/api/state');
     S.project = state.project; S.deepChoices = state.deep_choices;
   } catch { /* the page still works without the saved card */ }
+  try {
+    const hist = await api('/api/history');
+    S.history = hist.subjects || [];
+  } catch { S.history = []; }
   render();
   refreshEstimate();
   loadLink();

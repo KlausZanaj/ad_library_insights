@@ -22,7 +22,7 @@ from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from .. import __version__, briefs, compare, consumption, details, history, link, media, project, rating, service
+from .. import __version__, ai_runner, briefs, compare, consumption, details, history, link, mcp_app, media, project, rating, service, video
 from ..client import AdLibraryClient, normalise_country
 from ..lab import precheck, ritmo
 from ..storage import DiskCache, Throttle
@@ -58,18 +58,7 @@ def _media_url(path: str | None) -> str | None:
 
 def present(result: dict, params: dict) -> dict:
     """The research result as the page needs it: local pictures as URLs, plus the request."""
-    shown = dict(result)
-    shown["ads"] = []
-    for ad in result.get("ads", []):
-        row = {k: v for k, v in ad.items() if k not in ("image_url", "logo_url", "video_url")}
-        row["thumbnail"] = _media_url(ad.get("thumbnail_path"))
-        row["logo"] = _media_url(ad.get("logo_path"))
-        row["frames"] = [_media_url(path) for path in ad.get("frames") or []]
-        shown["ads"].append(row)
-    if result.get("page"):
-        shown["page"] = {**result["page"], "logo": _media_url(result["page"].get("logo_path"))}
-    shown["request"] = params
-    return shown
+    return mcp_app.compact_result(result, params, url_prefix="/media/")
 
 
 def open_folder(folder: Path) -> None:
@@ -93,9 +82,11 @@ class Workspace:
         self.home = home
         self.connection = connection or link.Settings()
         self._used_tokens: set[str] = set()          # a confirmation token works once
+        self._used_run_tokens: set[str] = set()
         self._connecting = threading.Lock()
         self.history = history.History(Path(home) / "snapshots" if home else None)
         self.jobs: dict[str, Job] = {}
+        self.ai_jobs: dict[str, dict] = {}
         self.frame_folders: dict[str, Path] = {}     # key given to the page -> stills folder of a pack
         self.opener = open_folder
         self._lock = asyncio.Lock()
@@ -439,6 +430,150 @@ class Workspace:
         return JSONResponse({"opened": True, "pictures": sum(1 for p in folder.iterdir() if p.is_file())})
 
 
+    async def _verify_page_token(
+        self, request: Request, header_name: str, seen_tokens: set[str]
+    ) -> tuple[dict | None, Response | None]:
+        """Validate a single-use token issued by the local 127.0.0.1 page."""
+        if not _own_page(request):
+            return None, JSONResponse({"error": "forbidden_origin"}, status_code=403)
+        if not (request.headers.get("content-type") or "").split(";")[0].strip() == "application/json":
+            return None, JSONResponse({"error": "bad_request"}, status_code=400)
+        try:
+            body = await request.json()
+        except ValueError:
+            body = None
+        token = request.headers.get(header_name, "")
+        if not isinstance(body, dict) or not _TOKEN.match(token) or body.get("token") != token:
+            return None, JSONResponse({"error": "bad_token"}, status_code=403)
+        if token in seen_tokens:
+            return None, JSONResponse({"error": "bad_token"}, status_code=403)
+        seen_tokens.add(token)
+        return body, None
+
+    @staticmethod
+    def _public_ai_job(entry: dict) -> dict:
+        return {k: v for k, v in entry.items() if k != "_task"}
+
+    async def _run_ai_job(self, entry: dict, brief_text: str, pack_folder: Path, lang: str) -> None:
+        try:
+            res = await asyncio.to_thread(ai_runner.run_claude_brief, brief_text, pack_folder, lang)
+            if res.get("ok"):
+                entry["status"] = "done"
+                entry["markdown"] = res["markdown"]
+                entry["audit"] = res.get("audit")
+            else:
+                entry["status"] = "error"
+                entry["error"] = res.get("error") or "command_failed"
+                entry["detail"] = res.get("detail")
+        except Exception as exc:
+            entry["status"] = "error"
+            entry["error"] = "command_failed"
+            entry["detail"] = f"{type(exc).__name__}: {exc}"
+
+    async def ai_run(self, request: Request) -> Response:
+        """Execute a prepared Level 2/3 brief directly via local Claude Code CLI."""
+        body, err = await self._verify_page_token(request, "x-run-token", self._used_run_tokens)
+        if err is not None:
+            return err
+        assert body is not None
+        job = self.jobs.get(str(body.get("job_id") or ""))
+        if not job or not job.raw or not job.raw.get("ads"):
+            return JSONResponse({"error": "not_found"}, status_code=404)
+        level = body.get("level", "analysis")
+        if level not in briefs.LEVELS:
+            return JSONResponse({"error": "unknown level"}, status_code=400)
+        card = project.load(self.home)
+        if level == "plan" and not card:
+            return JSONResponse({"error": "project_required"}, status_code=409)
+        frames = bool(body.get("frames")) and bool(job.params.get("frames"))
+        lang = "en" if body.get("lang") == "en" else "it"
+        try:
+            made = briefs.prepare(
+                level, job.raw, int(body.get("ads", 10)), frames, card, lang,
+                Path(self.home) / "packs" if self.home else None,
+            )
+        except (ValueError, TypeError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+
+        ai_id = uuid.uuid4().hex[:12]
+        pack_folder = Path(made["folder"])
+        entry: dict = {
+            "id": ai_id,
+            "status": "running",
+            "level": level,
+            "folder_name": pack_folder.name,
+            "markdown": None,
+            "audit": None,
+            "error": None,
+            "detail": None,
+        }
+        self.ai_jobs[ai_id] = entry
+        entry["_task"] = asyncio.create_task(self._run_ai_job(entry, made["text"], pack_folder, lang))
+        return JSONResponse(self._public_ai_job(entry), status_code=202)
+
+    async def get_ai_job(self, request: Request) -> Response:
+        entry = self.ai_jobs.get(request.path_params["job_id"])
+        if not entry:
+            return JSONResponse({"error": "not_found"}, status_code=404)
+        return JSONResponse(self._public_ai_job(entry))
+
+    async def video_inspect(self, request: Request) -> Response:
+        """Inspect a single video ad on demand and expose hook/body sheets via /media/."""
+        if not _allowed_origin(request):
+            return JSONResponse({"error": "forbidden_origin"}, status_code=403)
+        try:
+            body = await _json_object(request)
+            ad_id = video.validate_ad_id(str(body.get("ad_id") or ""))
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        try:
+            res = await video.inspect_video(
+                ad_id,
+                transcribe=False,
+                use_cache=not bool(body.get("fresh")),
+                media_dir=self.client.media.directory,
+            )
+        except (ValueError, OSError, RuntimeError) as exc:
+            return JSONResponse({"ok": False, "outcome": "unavailable", "ad_id": ad_id, "note": str(exc)})
+        staged = mcp_app.stage_video_sheets(res, ad_id, self.client.media.directory)
+        if not staged.get("ok"):
+            return JSONResponse(staged)
+        return JSONResponse({
+            "ok": True,
+            "ad_id": staged["ad_id"],
+            "duration": staged.get("duration"),
+            "width": staged.get("width"),
+            "height": staged.get("height"),
+            "aspect_ratio": staged.get("aspect_ratio"),
+            "hook_sheet": _media_url(staged.get("hook_sheet_name")),
+            "body_sheet": _media_url(staged.get("body_sheet_name")),
+            "from_cache": staged.get("from_cache", False),
+        })
+
+    async def history_latest(self, request: Request) -> Response:
+        """Return the latest live Studio result (if in memory) or latest snapshot metadata."""
+        key = (request.query_params.get("key") or "").strip()
+        for job in reversed(list(self.jobs.values())):
+            if job.status != "done" or not job.result or not job.raw:
+                continue
+            subj_key = ((job.result.get("changes") or {}).get("key")
+                        or history.subject(job.raw)["key"])
+            if not key or subj_key == key:
+                return JSONResponse({"available": True, "job_id": job.id, "result": job.result})
+        subjects = self.history.subjects()
+        target = next((s for s in subjects if s["key"] == key), None) if key else (subjects[0] if subjects else None)
+        if not target:
+            return JSONResponse({"available": False})
+        snaps = self.history.snapshots(target["key"])
+        latest = snaps[-1] if snaps else None
+        return JSONResponse({
+            "available": bool(latest),
+            "subject": target,
+            "changes": self.history.changes(target["key"]) if len(snaps) >= 2 else None,
+            "ritmo": self.history.ritmo(target["key"]) if target["mode"] == "company" else None,
+            "taken_at": latest.get("taken_at") if latest else None,
+        })
+
     # --- connection to Claude Code ----------------------------------------------------
 
     async def link_status(self, request: Request) -> Response:
@@ -451,20 +586,10 @@ class Workspace:
 
     async def link_connect(self, request: Request) -> Response:
         """Register the server and copy the skills. Only the page itself may ask, once per token."""
-        if not _own_page(request):
-            return JSONResponse({"error": "forbidden_origin"}, status_code=403)
-        if not (request.headers.get("content-type") or "").split(";")[0].strip() == "application/json":
-            return JSONResponse({"error": "bad_request"}, status_code=400)
-        try:
-            body = await request.json()
-        except ValueError:
-            body = None
-        token = request.headers.get("x-link-token", "")
-        if not isinstance(body, dict) or not _TOKEN.match(token) or body.get("token") != token:
-            return JSONResponse({"error": "bad_token"}, status_code=403)
-        if token in self._used_tokens:
-            return JSONResponse({"error": "bad_token"}, status_code=403)
-        self._used_tokens.add(token)
+        body, err = await self._verify_page_token(request, "x-link-token", self._used_tokens)
+        if err is not None:
+            return err
+        assert body is not None
         if not self._connecting.acquire(blocking=False):
             return JSONResponse({"error": "busy"}, status_code=409)
         try:
@@ -541,11 +666,15 @@ def create_app(client: AdLibraryClient | None = None, home: Path | None = None,
         Route("/api/durata", space.create_durata_job, methods=["POST"]),
         Route("/api/jobs/{job_id}", space.get_job),
         Route("/api/brief", space.brief, methods=["POST"]),
+        Route("/api/ai/run", space.ai_run, methods=["POST"]),
+        Route("/api/ai/jobs/{job_id}", space.get_ai_job),
+        Route("/api/video/inspect", space.video_inspect, methods=["POST"]),
         Route("/api/frames/open", space.open_frames, methods=["POST"]),
         Route("/api/link/status", space.link_status),
         Route("/api/link/mcp", space.link_mcp),
         Route("/api/link/connect", space.link_connect, methods=["POST"]),
         Route("/api/history", space.saved_searches),
+        Route("/api/history/latest", space.history_latest),
         Route("/api/history/changes", space.changes),
         Route("/api/history/ritmo", space.ritmo_history),
         Mount("/docs/images", StaticFiles(directory=Path(__file__).resolve().parents[3] / "docs" / "images", check_dir=False), name="docs_images"),

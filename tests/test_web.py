@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
-from ad_library_insights import briefs, consumption, project
+from ad_library_insights import ai_runner, briefs, consumption, project, video
 from ad_library_insights.web.app import STATIC, create_app
 from test_company import PAGE_ID, Studio
 
@@ -300,13 +300,15 @@ def test_mutating_endpoints_reject_cross_origin_and_malformed_json_and_zero_prec
             ("POST", "/api/durata"),
             ("POST", "/api/brief"),
             ("POST", "/api/frames/open"),
+            ("POST", "/api/video/inspect"),
+            ("POST", "/api/ai/run"),
         ):
             bad_orig = client.request(method, path, json={"x": 1}, headers={"Origin": "https://evil.example"})
             assert bad_orig.status_code == 403, (method, path)
             cross = client.request(method, path, json={"x": 1}, headers={"Sec-Fetch-Site": "cross-site"})
             assert cross.status_code == 403, (method, path)
 
-        for method, path in (("PUT", "/api/project"), ("POST", "/api/jobs"), ("POST", "/api/brief")):
+        for method, path in (("PUT", "/api/project"), ("POST", "/api/jobs"), ("POST", "/api/brief"), ("POST", "/api/video/inspect")):
             assert client.request(method, path, content=b"{bad", headers={"Content-Type": "application/json"}).status_code == 400
             assert client.request(method, path, json=["not-a-dict"]).status_code == 400
 
@@ -346,6 +348,77 @@ def test_trusted_host_middleware_blocks_dns_rebinding_hosts(app):
     assert client.get("/api/project", headers={"Host": "127.0.0.1:8765"}).status_code == 200
     assert client.get("/api/project", headers={"Host": "localhost:8765"}).status_code == 200
     assert client.get("/api/project").status_code == 200
+
+
+def test_ai_run_video_inspect_and_history_latest(tmp_path, monkeypatch):
+    studio = Studio(tmp_path)
+    with TestClient(create_app(studio.client, home=tmp_path / "home"), base_url="http://127.0.0.1:8765") as client:
+        job = run_job(client, mode="company", page_id=PAGE_ID, country="IT", level="analysis", deep=2)
+        latest = client.get("/api/history/latest")
+        assert latest.status_code == 200 and latest.json()["available"] is True
+        assert latest.json()["result"]["page"]["page_id"] == PAGE_ID
+
+        assert client.post("/api/ai/run", json={"token": "a" * 32, "job_id": job["id"]}).status_code == 403
+        same_origin = {"Origin": "http://127.0.0.1:8765", "Sec-Fetch-Site": "same-origin"}
+        assert client.post("/api/ai/run", json={"token": "a" * 32, "job_id": job["id"]}, headers=same_origin).status_code == 403
+
+        tok_a = "a" * 32
+        plan_res = client.post(
+            "/api/ai/run",
+            json={"token": tok_a, "job_id": job["id"], "level": "plan", "ads": 2, "lang": "en"},
+            headers={**same_origin, "X-Run-Token": tok_a},
+        )
+        assert plan_res.status_code == 409 and plan_res.json()["error"] == "project_required"
+
+        monkeypatch.setattr(ai_runner, "run_claude_brief", lambda brief_text, pack_folder, lang="it": {
+            "ok": True,
+            "markdown": "## Diagnosis\nConcept 1001 leads.",
+            "audit": {"status": "ok", "checked_ad_ids": ["1001"], "warning_count": 0, "warnings": []},
+        })
+        tok_b = "b" * 32
+        started = client.post(
+            "/api/ai/run",
+            json={"token": tok_b, "job_id": job["id"], "level": "analysis", "ads": 2, "lang": "en"},
+            headers={**same_origin, "X-Run-Token": tok_b},
+        )
+        assert started.status_code == 202
+        ai_id = started.json()["id"]
+        ai_data = None
+        for _ in range(100):
+            ai_data = client.get(f"/api/ai/jobs/{ai_id}").json()
+            if ai_data["status"] != "running":
+                break
+            time.sleep(0.02)
+        assert ai_data and ai_data["status"] == "done"
+        assert "Diagnosis" in ai_data["markdown"] and ai_data["audit"]["status"] == "ok"
+
+        replay = client.post(
+            "/api/ai/run",
+            json={"token": tok_b, "job_id": job["id"], "level": "analysis", "ads": 2},
+            headers={**same_origin, "X-Run-Token": tok_b},
+        )
+        assert replay.status_code == 403 and replay.json()["error"] == "bad_token"
+
+        assert client.post("/api/video/inspect", json={"ad_id": "../bad"}).status_code == 400
+        hook_p = tmp_path / "hook.jpg"
+        body_p = tmp_path / "body.jpg"
+        hook_p.write_bytes(b"\xff\xd8\xff\xe0HOOK")
+        body_p.write_bytes(b"\xff\xd8\xff\xe0BODY")
+
+        async def fake_inspect(ad_id, transcribe=False, use_cache=True, media_dir=None):
+            return {
+                "ok": True, "outcome": "inspected", "ad_id": ad_id,
+                "duration": 18.4, "width": 1080, "height": 1920, "aspect_ratio": "9:16",
+                "contact_sheets": [
+                    {"kind": "hook", "path": str(hook_p)},
+                    {"kind": "body", "path": str(body_p)},
+                ],
+            }
+
+        monkeypatch.setattr(video, "inspect_video", fake_inspect)
+        vid = client.post("/api/video/inspect", json={"ad_id": "123456789012"}).json()
+        assert vid["ok"] is True and vid["hook_sheet"] == "/media/vid_123456789012_hook.jpg"
+        assert client.get(vid["hook_sheet"]).status_code == 200
 
 
 # --- texts ----------------------------------------------------------------------------
@@ -550,8 +623,11 @@ def test_page_says_concepts_and_explains_the_ceiling(site, page_of):
     assert ("Letti 18 concetti su 20: raggiunto il tetto di 40 annunci aperti. Di questi concetti "
             "restano chiusi 7 annunci: la loro copertura è un minimo.") in text
     assert "Stopped at the ceiling" not in page.content()
-    assert "Copertura letta per 18 concetti" in text and "aprendo 40 annunci" in text
+    page.click("[data-action=search-expand]")
     assert "concetti della classifica" in page.inner_text("#search")
+    page.click("[data-action=rtab][data-value=ads]")
+    ads_text = page.inner_text("#results")
+    assert "Copertura letta per 18 concetti" in ads_text and "aprendo 40 annunci" in ads_text
     page = page_of("en", _result(site, deep={**deep, "left_out": 1}))
     text = page.inner_text("#results")
     assert ("Read 18 concepts out of 20: the ceiling of 40 ads opened was reached. 1 more ad of these "
@@ -670,6 +746,7 @@ def test_page_table_note_is_singular_for_one_concept(site, page_of):
     for lang, expected, wrong in (("it", "per 1 concetto, il più mostrato", "i più mostrati"),
                                   ("en", "for 1 concept, the one most shown", "the most shown")):
         page = page_of(lang, result)
+        page.click("[data-action=rtab][data-value=ads]")
         note = page.inner_text("p.tablenote")
         assert expected in note and wrong not in note
 
@@ -685,6 +762,7 @@ def test_page_table_shows_reach_when_only_a_later_ad_of_the_concept_was_read(sit
     ad = result["ads"][0]
     ad.update(reach=None, reach_total=123456, reach_per_day=789, cards=3, reach_cards_read=2)
     page = page_of("en", result)
+    page.click("[data-action=rtab][data-value=ads]")
     row = page.locator("table.ads tbody tr").filter(has_text=f"{123456:,}").first
     cells = row.locator("td.r")
     texts = cells.all_inner_texts()
@@ -881,13 +959,19 @@ def test_page_copy_the_text_card_needs_a_search_with_level_two_or_three(site, pa
     page.click("[data-action=way-copy]")
     assert "Prima fai una ricerca" in page.inner_text(".ways")
     page = page_of("it", _result(site))
+    page.click("[data-action=search-expand]")
     page.click("[data-action=way-copy]")
     page.wait_for_selector(".dialog [data-action=copy-brief]")
 
 
 def test_page_how_it_works_has_three_screens_and_the_plan_button_is_marked_soon(site, page_of):
     page = page_of("en")
-    assert page.is_disabled(".ways .way-card:nth-child(2) button") and "coming soon" in page.inner_text(".ways")
+    page.wait_for_selector("[data-action=way-run]")
+    assert page.is_disabled("[data-action=way-run]")
+    page_ready = page_of("en", link=(READY, "connected"))
+    page_ready.wait_for_selector("[data-action=way-run]:not([disabled])")
+    page_ready.click("[data-action=way-run]")
+    assert "First search a company or keyword" in page_ready.inner_text(".ways")
     page.click("[data-action=how-open]")
     assert "Step 1 of 3" in page.inner_text(".dialog") and page.is_disabled("[data-action=how-prev]")
     page.click("[data-action=how-next]")
@@ -954,7 +1038,8 @@ def test_page_shows_tldr_and_help_popovers_within_viewport(site, page_of):
     tldr = page.inner_text(".tldr")
     assert "in breve" in tldr.casefold() and "22 giorni" in tldr
 
-    # Check ? help popovers on table headers fit inside 1440px viewport and close cleanly on Escape
+    # Check ? help popovers on table headers inside the Ads tab fit inside 1440px viewport and close on Escape
+    page.click("[data-action=rtab][data-value=ads]")
     for idx in range(3):
         btn = page.locator("table.ads thead [data-action=help-toggle]").nth(idx)
         btn.click()
@@ -980,18 +1065,21 @@ def test_page_shows_tldr_and_help_popovers_within_viewport(site, page_of):
 
 
 def test_page_durata_section_renders_states_svg_and_runs_endpoint(site, page_of):
-    # Keyword mode -> locked bar
+    # Keyword mode -> locked bar (inside Pulse & Timing tab)
     kw = _result(site, mode="keyword", query="standing desk", page=None)
     page = page_of("it", kw)
+    page.click("[data-action=rtab][data-value=pulse]")
     assert "Analizza un'azienda" in page.inner_text(".durata-locked")
 
     # Partial list -> honest explanation (both low loaded_share and unverified None)
     partial = _result(site, durata={"available": False, "reason": "partial_list", "loaded_share": 0.55, "window_days": 90})
     page = page_of("it", partial)
+    page.click("[data-action=rtab][data-value=pulse]")
     assert "55%" in page.inner_text(".durata-sec")
 
     unverified = _result(site, durata={"available": False, "reason": "partial_list", "loaded_share": None, "window_days": 90})
     page = page_of("it", unverified)
+    page.click("[data-action=rtab][data-value=pulse]")
     assert "non verificata" in page.inner_text(".durata-sec")
 
     # Populated Durata in Light & Dark, IT & EN
@@ -1001,6 +1089,7 @@ def test_page_durata_section_renders_states_svg_and_runs_endpoint(site, page_of)
         page = page_of(lang, populated)
         if lang == "en":
             page.click(".topbar [data-action=theme][data-value=dark]")
+        page.click("[data-action=rtab][data-value=pulse]")
         sec = page.inner_text(".durata-sec")
         assert expected_word in sec and expected_small in sec and "101" in sec and "202" in sec
         assert _count(page, ".durata-chart svg path") >= 1
@@ -1009,6 +1098,7 @@ def test_page_durata_section_renders_states_svg_and_runs_endpoint(site, page_of)
     # Clicking Run triggers POST /api/durata and updates UI cleanly
     base_res = _result(site)
     page = page_of("it", base_res)
+    page.click("[data-action=rtab][data-value=pulse]")
     posted = []
     page.route("**/api/durata", lambda route: (
         posted.append(json.loads(route.request.post_data)),
@@ -1151,6 +1241,7 @@ def test_page_ritmo_section_and_news_detail_render_svg_and_alerts(site, page_of)
     # Keyword search must never show Ritmo
     kw = _result(site, mode="keyword", query="standing desk", page=None, ritmo=SAMPLE_RITMO)
     page = page_of("it", kw)
+    page.click("[data-action=rtab][data-value=pulse]")
     assert _count(page, ".ritmo-sec") == 0
 
     # Company mode renders Ritmo in IT/Light and EN/Dark with 9 bars, alert callout, In breve & ? popovers
@@ -1160,6 +1251,7 @@ def test_page_ritmo_section_and_news_detail_render_svg_and_alerts(site, page_of)
         page = page_of(lang, comp)
         if lang == "en":
             page.click(".topbar [data-action=theme][data-value=dark]")
+        page.click("[data-action=rtab][data-value=pulse]")
         sec = page.locator(".ritmo-sec")
         assert sec.is_visible()
         sec_text = sec.inner_text()
@@ -1273,6 +1365,7 @@ def test_page_struttura_anomalie_pianka_and_js_drift(site, page_of):
         page = page_of(lang, comp)
         if lang == "en":
             page.click(".topbar [data-action=theme][data-value=dark]")
+        page.click("[data-action=rtab][data-value=structure]")
         assert page.locator(".struttura-sec").is_visible()
         assert page.locator(".anomalie-sec").is_visible()
         assert expected_fam in page.inner_text(".struttura-sec") or expected_fam in page.inner_text(".tldr")
@@ -1293,6 +1386,7 @@ def test_page_struttura_anomalie_pianka_and_js_drift(site, page_of):
 
     # Clicking an anomaly card opens the ad drawer cleanly
     page = page_of("it", comp)
+    page.click("[data-action=rtab][data-value=structure]")
     page.locator(".anom-card").first.click()
     page.wait_for_selector(".drawer")
     assert _count(page, ".drawer") == 1
@@ -1304,6 +1398,7 @@ def test_page_struttura_anomalie_pianka_and_js_drift(site, page_of):
     kw_anom = {**_sample_anomalie(lead_id), "mode": "keyword", "sample_scope": "keyword_sample"}
     kw = _result(site, mode="keyword", query="standing desk", page=None, struttura=kw_str, anomalie=kw_anom)
     page = page_of("it", kw)
+    page.click("[data-action=rtab][data-value=structure]")
     assert "parola chiave" in page.inner_text(".struttura-sec").casefold()
     assert "parola chiave" in page.inner_text(".anomalie-sec").casefold()
 
@@ -1350,14 +1445,16 @@ def test_page_struttura_anomalie_pianka_and_js_drift(site, page_of):
 def test_page_mobile_layout_has_no_overflow_and_clamps_popovers(site, page_of):
     base = _result(site)
     lead_id = base["ads"][0]["library_id"]
-    comp = _result(site, struttura=_sample_struttura(lead_id), anomalie=_sample_anomalie(lead_id))
+    comp = _result(site, struttura=_sample_struttura(lead_id), anomalie=_sample_anomalie(lead_id), durata=SAMPLE_DURATA, ritmo=SAMPLE_RITMO)
     page = page_of("it", comp)
     page.set_viewport_size({"width": 420, "height": 900})
+    for tab in ("overview", "pulse", "structure", "ads", "strategy"):
+        page.click(f"[data-action=rtab][data-value={tab}]")
+        assert page.evaluate("() => document.documentElement.scrollWidth <= 420"), tab
+
+    page.click("[data-action=rtab][data-value=structure]")
     page.wait_for_selector(".struttura-sec")
-    overflow = page.evaluate("() => document.documentElement.scrollWidth <= 420")
-    assert overflow
-    for sel in (".struttura-sec [data-action=help-toggle]", ".anomalie-sec [data-action=help-toggle]",
-                "table.ads thead [data-action=help-toggle]"):
+    for sel in (".struttura-sec [data-action=help-toggle]", ".anomalie-sec [data-action=help-toggle]"):
         cnt = page.locator(sel).count()
         assert cnt >= 1
         for idx in range(cnt):
@@ -1369,6 +1466,20 @@ def test_page_mobile_layout_has_no_overflow_and_clamps_popovers(site, page_of):
             box = pop.bounding_box()
             assert box and box["x"] >= 0 and box["x"] + box["width"] <= 420
             page.keyboard.press("Escape")
+
+    page.click("[data-action=rtab][data-value=ads]")
+    page.wait_for_selector("table.ads")
+    cnt = page.locator("table.ads thead [data-action=help-toggle]").count()
+    assert cnt >= 1
+    for idx in range(cnt):
+        btn = page.locator("table.ads thead [data-action=help-toggle]").nth(idx)
+        btn.scroll_into_view_if_needed()
+        btn.click()
+        pop = page.locator(".help-wrap.open .help-pop")
+        assert pop.is_visible()
+        box = pop.bounding_box()
+        assert box and box["x"] >= 0 and box["x"] + box["width"] <= 420
+        page.keyboard.press("Escape")
 
 
 def test_page_v05_i18n_singulars_currency_and_popover_scroll(site, page_of):
@@ -1383,28 +1494,34 @@ def test_page_v05_i18n_singulars_currency_and_popover_scroll(site, page_of):
 
     comp = _result(site, struttura=strutt, anomalie=anom, ritmo=rit)
     page = page_of("it", comp)
-    page.wait_for_selector(".anomalie-sec")
+    assert "1 annuncio in contrasto" in page.inner_text(".tldr")
 
-    # 1. Localized Italian Annunci fuori schema detail + singulars across sections
+    # 1. Localized Italian Annunci fuori schema detail + singulars across tabs
+    page.click("[data-action=rtab][data-value=structure]")
+    page.wait_for_selector(".anomalie-sec")
     detail = page.inner_text(".anom-detail")
     assert "al giorno" in detail and "mediana" in detail
     assert "on air" not in detail and "/day" not in detail
     meta = page.inner_text(".anom-meta")
     assert "1 giorno" in meta and "1 creativit" in meta
-    assert "1 annuncio in contrasto" in page.inner_text(".tldr")
-    assert "1 snapshot salvato" in page.inner_text(".ritmo-note")
     assert "1 testo (" in page.inner_text(".fam-chip")
 
-    # 2. Search input widened so English/Italian placeholder is not truncated
-    assert page.evaluate("() => document.querySelector('.tbl-search').getBoundingClientRect().width") >= 225
-
-    # 3. Scrolling closes open help popover instead of leaving it detached
+    # 2. Scrolling closes open help popover instead of leaving it detached
+    page.set_viewport_size({"width": 1440, "height": 500})
     btn = page.locator(".anomalie-sec [data-action=help-toggle]").first
     btn.scroll_into_view_if_needed()
     btn.click()
     assert _count(page, ".help-wrap.open") == 1
-    page.evaluate("() => window.scrollBy(0, -300)")
+    page.evaluate("() => window.scrollBy(0, -180)")
     page.wait_for_function("() => document.querySelectorAll('.help-wrap.open').length === 0")
+    page.set_viewport_size({"width": 1440, "height": 900})
+
+    page.click("[data-action=rtab][data-value=pulse]")
+    assert "1 snapshot salvato" in page.inner_text(".ritmo-note")
+
+    # 3. Search input widened so English/Italian placeholder is not truncated
+    page.click("[data-action=rtab][data-value=ads]")
+    assert page.evaluate("() => document.querySelector('.tbl-search').getBoundingClientRect().width") >= 225
 
     # 4. gender.unknown localizes in both IT and EN compare segments
     pianka_unk = {
@@ -1434,4 +1551,81 @@ def test_page_v05_i18n_singulars_currency_and_popover_scroll(site, page_of):
     page.evaluate("() => { S.project = { ...(S.project || {}), market: 'US' }; S.simItFee = false; render(); }")
     page.wait_for_selector("#sim-cpc-rows")
     assert "€" not in page.inner_text("#sim-cpc-rows") and "€" not in page.inner_text("#sim-risk-line")
+
+
+def test_studio_five_tabs_keyboard_collapse_and_grid_view(site, page_of):
+    res = _result(site, ritmo=SAMPLE_RITMO)
+    page = page_of("it", res)
+    assert page.is_visible(".search-compact")
+    assert _count(page, ".top-card") >= 1
+
+    for key, expected_tab in (("2", "pulse"), ("3", "structure"), ("4", "ads"), ("5", "strategy"), ("1", "overview")):
+        page.keyboard.press(key)
+        assert page.get_attribute(f"[data-action=rtab][data-value={expected_tab}]", "aria-selected") == "true"
+
+    page.keyboard.press("ArrowRight")
+    assert page.get_attribute("[data-action=rtab][data-value=pulse]", "aria-selected") == "true"
+    page.keyboard.press("ArrowLeft")
+    assert page.get_attribute("[data-action=rtab][data-value=overview]", "aria-selected") == "true"
+
+    page.click("[data-action=rtab][data-value=ads]")
+    page.click("[data-action=ads-view][data-value=cards]")
+    assert _count(page, ".ads-grid .ad-card") >= 1
+    page.locator(".ads-grid .ad-card").first.click()
+    page.wait_for_selector(".drawer")
+    first_id = page.evaluate("S.overlay.id")
+    page.click("[data-action=ad-step][data-value='1']")
+    if len(res["ads"]) > 1:
+        assert page.evaluate("S.overlay.id") != first_id
+    page.keyboard.press("Escape")
+
+    page.keyboard.press("/")
+    page.wait_for_selector("#search input[type=text]")
+    assert page.evaluate("document.activeElement === document.querySelector('#search input[type=text]')")
+
+
+def test_in_page_ai_runner_and_video_hook_inspection(site, page_of):
+    res = _result(site)
+    lead_id = "123456789012"
+    res["ads"][0]["library_id"] = lead_id
+    res["ads"][0]["media_type"] = "video"
+    page = page_of("en", res, link=(READY, "connected"))
+
+    posted_ai = []
+    page.route("**/api/ai/run", lambda route: (
+        posted_ai.append({"headers": route.request.headers, "body": json.loads(route.request.post_data)}),
+        route.fulfill(status=202, json={"id": "ai1", "status": "running", "folder_name": "pack-1", "level": "analysis"}),
+    ))
+    page.route("**/api/ai/jobs/ai1", lambda route: route.fulfill(json={
+        "id": "ai1",
+        "status": "done",
+        "folder_name": "pack-1",
+        "markdown": f"## Diagnosis\n<script>window.__xss=1</script>\nLead concept {lead_id} dominates.",
+        "audit": {"status": "ok", "checked_ad_ids": [lead_id], "warning_count": 0, "warnings": []},
+    }))
+
+    page.click("[data-action=rtab][data-value=strategy]")
+    page.wait_for_function("!document.querySelector('[data-action=ai-run]').disabled")
+    page.click("[data-action=ai-run]")
+    page.wait_for_selector(".ai-report-view")
+    assert len(posted_ai) == 1 and len(posted_ai[0]["headers"]["x-run-token"]) == 32
+    assert page.evaluate("Boolean(window.__xss)") is False
+    assert _count(page, ".audit-pill.ok") == 1
+
+    page.click(".ai-report-view .id-link")
+    page.wait_for_selector(".drawer")
+
+    page.route("**/api/video/inspect", lambda route: route.fulfill(json={
+        "ok": True,
+        "ad_id": lead_id,
+        "duration": 15.2,
+        "width": 1080,
+        "height": 1920,
+        "aspect_ratio": "9:16",
+        "hook_sheet": None,
+        "body_sheet": None,
+    }))
+    page.click("[data-action=video-inspect]")
+    page.wait_for_function("document.querySelector('.vid-inspect-box').innerText.includes('9:16')")
+    assert "15.2" in page.inner_text(".vid-inspect-box")
 

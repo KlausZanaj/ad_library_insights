@@ -14,7 +14,7 @@ import asyncio
 import json
 import sys
 
-from . import breakeven, history, report, service, video
+from . import breakeven, history, link, report, service, video
 from .client import default_client
 
 
@@ -138,6 +138,23 @@ def _video_setup(args: argparse.Namespace) -> int:
     return 0
 
 
+def _connect(args: argparse.Namespace) -> int:
+    out: dict = {}
+    ok = True
+    if args.claude or not args.antigravity:
+        res = link.connect(link.Settings(), overwrite_skills=args.overwrite)
+        out["claude"] = res
+        ok = ok and bool(res.get("ok"))
+    if args.antigravity:
+        ag = link.install_to_folder(overwrite=args.overwrite)
+        out["antigravity"] = {
+            "skills": ag,
+            "mcp_config": link.antigravity_mcp_entry(),
+        }
+    print(json.dumps(out, indent=2, ensure_ascii=False))
+    return 0 if ok else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
@@ -207,6 +224,11 @@ def main(argv: list[str] | None = None) -> int:
     vsetup.add_argument("--model", default=video.DEFAULT_WHISPER_MODEL, choices=video.WHISPER_MODELS,
                         help="Whisper model size to download locally")
 
+    con = commands.add_parser("connect", help="register the MCP server and copy skills/sub-agents")
+    con.add_argument("--claude", action="store_true", help="configure Claude Code MCP server and skills/agents")
+    con.add_argument("--antigravity", action="store_true", help="install skills for Google Antigravity and print MCP entry")
+    con.add_argument("--overwrite", action="store_true", help="overwrite modified skill/agent files")
+
     args = parser.parse_args(argv)
     try:
         if args.command == "report":
@@ -225,6 +247,8 @@ def main(argv: list[str] | None = None) -> int:
             return _video(args)
         if args.command == "video-setup":
             return _video_setup(args)
+        if args.command == "connect":
+            return _connect(args)
     except (ValueError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
