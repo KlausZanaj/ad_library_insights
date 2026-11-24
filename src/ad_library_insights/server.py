@@ -421,7 +421,7 @@ def check_breakeven_cpa(price: float, product_cost: float = 0, shipping_cost: fl
                                       payment_fee_fixed, other_costs)
         rows = breakeven.load_ads_csv(csv_path) if csv_path else (ads or [])
         judged = breakeven.evaluate_ads(rows, cpa, multiplier) if rows else []
-    except (ValueError, OSError) as exc:
+    except (ValueError, OSError, RuntimeError) as exc:
         return {"ok": False, "error": str(exc)}
     return {"ok": True, "breakeven_cpa": cpa, "cut_threshold": round(cpa * multiplier, 2),
             "multiplier": multiplier, "to_cut": [r["name"] for r in judged if r["verdict"] == "cut"],
@@ -438,7 +438,7 @@ def check_report(pack_folder: str, report_text: str = "", report_path: str = "")
     """
     try:
         return audit.check_report(pack_folder, report_text, report_path=report_path or None)
-    except (ValueError, OSError) as exc:
+    except (ValueError, OSError, RuntimeError) as exc:
         return {"ok": False, "error": str(exc)}
 
 
@@ -470,7 +470,7 @@ async def inspect_video(ad_id: str, pack_folder: str = "", transcribe: bool = Fa
             language=language or None,
             use_cache=use_cache,
         )
-    except (ValueError, OSError) as exc:
+    except (ValueError, OSError, RuntimeError) as exc:
         return {"ok": False, "error": str(exc)}
 
 

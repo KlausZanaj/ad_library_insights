@@ -166,10 +166,6 @@ _DRAW_SHEET_JS = """async ({tiles, cols}) => {
 }"""
 _ANY_JSON_SCRIPTS_JS = """() => [...document.querySelectorAll('script[type="application/json"]')]
     .map((s) => s.textContent).filter(Boolean)"""
-_DOM_VIDEO_SRC_JS = """() => {
-  const v = document.querySelector('video');
-  return v ? (v.currentSrc || v.src || null) : null;
-}"""
 
 
 class DetailError(RuntimeError):
@@ -500,15 +496,37 @@ async def compose_contact_sheet(page, tiles: list[dict], output_path: Path, cols
     return str(output_path)
 
 
+def _empty_video_lookup(ad_id: str, error: str | None = None) -> dict:
+    payload = {
+        "found": False,
+        "ad_id": str(ad_id),
+        "media_type": None,
+        "video_url": None,
+        "body": "",
+        "headline": None,
+        "cta": None,
+        "advertiser": None,
+        "started": None,
+    }
+    if error:
+        payload["error"] = error
+    return payload
+
+
 async def fetch_ad_video(ad_id: str, timeout_ms: int = 60_000) -> dict:
     """Open one ad's public Library URL to read a fresh video address and copy."""
-    async with _chromium() as context:
-        page = await context.new_page()
-        return await _fetch_ad_video_on_page(page, ad_id, timeout_ms)
+    from playwright.async_api import Error as PlaywrightError
+
+    try:
+        async with _chromium() as context:
+            page = await context.new_page()
+            return await _fetch_ad_video_on_page(page, ad_id, timeout_ms)
+    except (PlaywrightError, TimeoutError, OSError, RuntimeError) as exc:
+        return _empty_video_lookup(ad_id, error=str(exc))
 
 
 def _find_record_by_ad_id(obj, ad_id: str) -> dict | None:
-    """Find a structured record dict matching ``ad_id`` explicitly before falling back."""
+    """Find a structured record dict whose ``ad_archive_id`` matches ``ad_id`` exactly."""
     stack = [obj]
     while stack:
         current = stack.pop()
@@ -544,7 +562,7 @@ async def _fetch_ad_video_on_page(page, ad_id: str, timeout_ms: int = 60_000) ->
         ads = records.ads_from_edges(connection.get("edges") or [])
         match = next(
             (ad for ad in ads if ad.get("library_id") == ad_id or ad_id in (ad.get("collation_ids") or [])),
-            ads[0] if ads else None,
+            None,
         )
         if match:
             chosen = match
@@ -552,45 +570,43 @@ async def _fetch_ad_video_on_page(page, ad_id: str, timeout_ms: int = 60_000) ->
 
     if chosen is None or not chosen.get("video_url"):
         for text in await page.evaluate(_ANY_JSON_SCRIPTS_JS):
-            if ad_id not in text and '"snapshot"' not in text:
+            if ad_id not in text:
                 continue
             payload = records.load_payload(text)
             if not payload:
                 continue
             exact = _find_record_by_ad_id(payload, ad_id)
-            snap = exact.get("snapshot") if exact else records.find_key(payload, "snapshot")
-            if isinstance(snap, dict):
-                candidate = records.ad_from_record({"ad_archive_id": ad_id, "snapshot": snap})
-                if candidate:
-                    if chosen is None:
-                        chosen = candidate
-                    elif candidate.get("video_url") and not chosen.get("video_url"):
-                        chosen["video_url"] = candidate["video_url"]
+            if not exact:
+                continue
+            candidate = records.ad_from_record(exact)
+            if candidate:
+                if chosen is None:
+                    chosen = candidate
+                elif candidate.get("video_url") and not chosen.get("video_url"):
+                    chosen["video_url"] = candidate["video_url"]
             if chosen and not chosen.get("video_url"):
-                fallback_url = records.find_key(exact or payload, "video_hd_url") or records.find_key(
-                    exact or payload, "video_sd_url"
+                fallback_url = records.find_key(exact, "video_hd_url") or records.find_key(
+                    exact, "video_sd_url"
                 )
                 if isinstance(fallback_url, str) and fallback_url.startswith("https://"):
                     chosen["video_url"] = fallback_url
             if chosen and chosen.get("video_url"):
                 break
 
-    dom_video = await page.evaluate(_DOM_VIDEO_SRC_JS)
+    if chosen is None:
+        return _empty_video_lookup(ad_id)
 
-    video_url = (chosen or {}).get("video_url") or (
-        dom_video if isinstance(dom_video, str) and dom_video.startswith("https://") else None
-    )
-    media_type = (chosen or {}).get("media_type") or ("video" if video_url else None)
+    video_url = chosen.get("video_url")
     return {
-        "found": bool(chosen or video_url),
+        "found": True,
         "ad_id": ad_id,
-        "media_type": media_type,
+        "media_type": chosen.get("media_type"),
         "video_url": video_url,
-        "body": (chosen or {}).get("body") or "",
-        "headline": (chosen or {}).get("headline"),
-        "cta": (chosen or {}).get("cta"),
-        "advertiser": (chosen or {}).get("advertiser"),
-        "started": (chosen or {}).get("started"),
+        "body": chosen.get("body") or "",
+        "headline": chosen.get("headline"),
+        "cta": chosen.get("cta"),
+        "advertiser": chosen.get("advertiser"),
+        "started": chosen.get("started"),
     }
 
 
@@ -654,9 +670,14 @@ async def _capture_video_on_page(page, video_url: str, frames_dir: Path, timesta
 
 async def capture_video_frames(video_url: str, frames_dir: Path, timestamps_fn, sheets_dir: Path) -> dict:
     """Seek a Meta video URL in Chromium, screenshot frames without CORS taint, and compose contact sheets."""
-    async with _chromium() as context:
-        page = await context.new_page()
-        return await _capture_video_on_page(page, video_url, frames_dir, timestamps_fn, sheets_dir)
+    from playwright.async_api import Error as PlaywrightError
+
+    try:
+        async with _chromium() as context:
+            page = await context.new_page()
+            return await _capture_video_on_page(page, video_url, frames_dir, timestamps_fn, sheets_dir)
+    except (PlaywrightError, TimeoutError, OSError) as exc:
+        raise RuntimeError(f"video frame capture failed: {exc}") from exc
 
 
 async def fetch_and_capture_ad_video(
@@ -669,14 +690,16 @@ async def fetch_and_capture_ad_video(
     timeout_ms: int = 60_000,
 ) -> tuple[dict, dict | None, str | None]:
     """Fetch a single ad's video metadata and capture its contact sheets in one Chromium session."""
-    async with _chromium() as context:
-        page = await context.new_page()
-        fresh = await _fetch_ad_video_on_page(page, ad_id, timeout_ms)
-        video_url = fresh.get("video_url")
-        if not video_url or (url_validator and not url_validator(video_url)):
-            return fresh, None, None
-        try:
+    from playwright.async_api import Error as PlaywrightError
+
+    try:
+        async with _chromium() as context:
+            page = await context.new_page()
+            fresh = await _fetch_ad_video_on_page(page, ad_id, timeout_ms)
+            video_url = fresh.get("video_url")
+            if not video_url or (url_validator and not url_validator(video_url)):
+                return fresh, None, None
             capture = await _capture_video_on_page(page, video_url, frames_dir, timestamps_fn, sheets_dir)
             return fresh, capture, None
-        except (RuntimeError, OSError) as exc:
-            return fresh, None, str(exc)
+    except (PlaywrightError, TimeoutError, OSError, RuntimeError) as exc:
+        return _empty_video_lookup(ad_id, error=str(exc)), None, str(exc)

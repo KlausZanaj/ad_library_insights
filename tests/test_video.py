@@ -74,7 +74,7 @@ def test_format_aspect_ratio_snaps_standard_formats_and_handles_missing():
 
 def test_validate_ad_id_and_is_allowed_video_url_blocks_ssrf():
     assert video.validate_ad_id(" 1648829336414617 ") == "1648829336414617"
-    for bad_id in ("", "1234", "abc12345", "https://evil.com", "../etc/passwd", "123456;rm"):
+    for bad_id in ("", "1234", "abc12345", "https://evil.com", "../etc/passwd", "123456;rm", "١٢٣٤٥٦", "१२३४५६"):
         with pytest.raises(ValueError):
             video.validate_ad_id(bad_id)
 
@@ -571,3 +571,210 @@ def test_find_record_by_ad_id_prefers_matching_ad_over_earlier_snapshot():
     assert found is not None
     assert found["ad_archive_id"] == "222222"
     assert found["snapshot"]["videos"][0]["video_sd_url"] == "https://video.fbcdn.net/right.mp4"
+
+
+def test_plan_timestamps_short_reels_6s_and_7s_have_no_clustered_frames():
+    for dur in (5.0, 6.0, 7.0, 8.0):
+        hook, body = video.plan_timestamps(dur)
+        assert hook == [0.3, 1.5, 3.0]
+        assert len(body) >= 3
+        combined = hook + body
+        assert combined == sorted(combined) and len(set(combined)) == len(combined)
+        assert combined[-1] < dur
+        gaps = [round(b - a, 4) for a, b in zip(combined, combined[1:])]
+        assert all(g >= 0.59 for g in gaps), (dur, combined, gaps)
+
+
+def test_fetch_ad_video_does_not_fall_back_to_other_ad(tmp_path):
+    wrong_edge_payload = json.dumps({
+        "data": {
+            "ad_library_main": {
+                "search_results_connection": {
+                    "edges": [{
+                        "node": {
+                            "collated_results": [{
+                                "ad_archive_id": "999999999",
+                                "snapshot": {
+                                    "display_format": "VIDEO",
+                                    "videos": [{"video_sd_url": "https://video.fbcdn.net/wrong.mp4"}],
+                                    "body": {"text": "Wrong ad copy"},
+                                },
+                            }]
+                        }
+                    }]
+                }
+            }
+        }
+    })
+    wrong_snapshot_payload = json.dumps({
+        "ad_archive_id": "999999999",
+        "snapshot": {
+            "display_format": "VIDEO",
+            "videos": [{"video_sd_url": "https://video.fbcdn.net/wrong_snap.mp4"}],
+        },
+    })
+
+    class FakePage:
+        async def goto(self, *args, **kwargs):
+            return None
+
+        async def wait_for_function(self, *args, **kwargs):
+            return None
+
+        async def wait_for_timeout(self, *args, **kwargs):
+            return None
+
+        async def evaluate(self, script):
+            if "search_results_connection" in script:
+                return [wrong_edge_payload]
+            if "script[type" in script:
+                return [wrong_snapshot_payload]
+            return "https://video.fbcdn.net/dom_wrong.mp4"
+
+    looked_up = asyncio.run(browser._fetch_ad_video_on_page(FakePage(), "123456789"))
+    assert looked_up["found"] is False and looked_up["video_url"] is None
+
+    res = asyncio.run(video.inspect_video(
+        "123456789",
+        media_dir=tmp_path / "media",
+        cache_dir=tmp_path / "empty_cache",
+        fetcher=lambda ad_id: browser._fetch_ad_video_on_page(FakePage(), ad_id),
+        capturer=lambda *a: (_ for _ in ()).throw(AssertionError("capturer must not run for wrong ad")),
+    ))
+    assert res["ok"] is False and res["outcome"] == "unavailable"
+
+
+def test_inspect_video_handles_browser_network_errors_and_retry_failure_cleanly(tmp_path, monkeypatch):
+    # 1. Browser launch/network error in browser.fetch_ad_video & fetch_and_capture_ad_video -> clean unavailable
+    def broken_chromium(*args, **kwargs):
+        class BrokenCtx:
+            async def __aenter__(self):
+                raise RuntimeError("Executable doesn't exist")
+
+            async def __aexit__(self, *exc):
+                return False
+
+        return BrokenCtx()
+
+    monkeypatch.setattr(browser, "_chromium", broken_chromium)
+    direct = asyncio.run(browser.fetch_ad_video("123456789"))
+    assert direct["found"] is False and "Executable doesn't exist" in direct["error"]
+
+    combined_fresh, combined_cap, combined_err = asyncio.run(
+        browser.fetch_and_capture_ad_video("123456789", tmp_path / "f", video.plan_timestamps, tmp_path / "s")
+    )
+    assert combined_fresh["found"] is False and combined_cap is None and "Executable doesn't exist" in combined_err
+
+    # 2. Fetcher raising TimeoutError -> inspect_video returns clean outcome="unavailable"
+    async def timeout_fetch(ad_id):
+        raise TimeoutError("Meta timed out")
+
+    res_timeout = asyncio.run(video.inspect_video(
+        "123456789",
+        media_dir=tmp_path / "media1",
+        cache_dir=tmp_path / "empty1",
+        fetcher=timeout_fetch,
+        capturer=lambda *a: None,
+    ))
+    assert res_timeout["ok"] is False and res_timeout["outcome"] == "unavailable"
+    assert "Meta timed out" in res_timeout["note"]
+
+    # 3. Transcription failure + failing retry fetcher -> returns ok=True with transcript_status="error"
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    (cache_dir / "ad.json").write_text(json.dumps({
+        "stored_at": 100.0,
+        "key": "k",
+        "payload": {"ads": [{"library_id": "246810", "media_type": "video", "video_url": "https://video.fbcdn.net/c.mp4"}]},
+    }), encoding="utf-8")
+
+    async def ok_capture(video_url, frames_dir, timestamps_fn, sheets_dir):
+        sheet = _write_jpeg(sheets_dir / "hook_sheet.jpg")
+        fp = _write_jpeg(frames_dir / "01_00.3s.jpg")
+        return {
+            "ok": True, "duration": 6.0, "width": 360, "height": 640,
+            "frames": [{"index": 1, "timestamp": 0.3, "label": "#1", "zone": "hook", "path": str(fp)}],
+            "contact_sheets": [{"zone": "hook", "path": str(sheet), "frames": 1}],
+        }
+
+    def fail_tx(*args):
+        raise urllib.error.URLError("network down")
+
+    res_retry_err = asyncio.run(video.inspect_video(
+        "246810",
+        transcribe=True,
+        media_dir=tmp_path / "media2",
+        cache_dir=cache_dir,
+        fetcher=timeout_fetch,
+        capturer=ok_capture,
+        transcriber=fail_tx,
+    ))
+    assert res_retry_err["ok"] is True
+    assert res_retry_err["transcript_status"] == "error"
+    assert "Meta timed out" in res_retry_err["transcript_note"]
+
+
+def test_inspect_video_loads_whisper_model_only_once(tmp_path, monkeypatch):
+    import sys
+    import types
+
+    load_calls = 0
+
+    class FakeModel:
+        def __init__(self, model_size, *, device, compute_type, local_files_only=False):
+            nonlocal load_calls
+            load_calls += 1
+            assert local_files_only is True
+
+        def transcribe(self, path, language=None, vad_filter=True):
+            seg = type("Seg", (), {"start": 0.2, "end": 1.4, "text": "Hello world"})()
+            info = type("Info", (), {"language": "en"})()
+            return iter([seg]), info
+
+    class FakeContainer:
+        def __init__(self):
+            self.streams = type("Streams", (), {"audio": ["aac"]})()
+
+        def close(self):
+            pass
+
+    fake_fw = types.SimpleNamespace(WhisperModel=FakeModel)
+    fake_av = types.SimpleNamespace(open=lambda path: FakeContainer())
+    monkeypatch.setitem(sys.modules, "faster_whisper", fake_fw)
+    monkeypatch.setitem(sys.modules, "av", fake_av)
+    monkeypatch.setattr(
+        video,
+        "download_video_checked",
+        lambda url, dest: (Path(dest).write_bytes(b"mp4"), Path(dest))[1],
+    )
+
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    (cache_dir / "ad.json").write_text(json.dumps({
+        "stored_at": 100.0,
+        "key": "k",
+        "payload": {"ads": [{"library_id": "135790", "media_type": "video", "video_url": "https://video.fbcdn.net/once.mp4"}]},
+    }), encoding="utf-8")
+
+    async def ok_capture(video_url, frames_dir, timestamps_fn, sheets_dir):
+        sheet = _write_jpeg(sheets_dir / "hook_sheet.jpg")
+        fp = _write_jpeg(frames_dir / "01_00.3s.jpg")
+        return {
+            "ok": True, "duration": 6.0, "width": 360, "height": 640,
+            "frames": [{"index": 1, "timestamp": 0.3, "label": "#1", "zone": "hook", "path": str(fp)}],
+            "contact_sheets": [{"zone": "hook", "path": str(sheet), "frames": 1}],
+        }
+
+    res = asyncio.run(video.inspect_video(
+        "135790",
+        transcribe=True,
+        media_dir=tmp_path / "media",
+        cache_dir=cache_dir,
+        fetcher=lambda ad_id: None,
+        capturer=ok_capture,
+    ))
+    assert res["ok"] is True
+    assert res["transcript_status"] == "ok"
+    assert res["transcript_segment_count"] == 1
+    assert "Hello world" in res["transcript"]
+    assert load_calls == 1

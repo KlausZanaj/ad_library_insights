@@ -41,10 +41,10 @@ _STANDARD_RATIOS = (
 
 
 def validate_ad_id(ad_id: str) -> str:
-    """Ensure ``ad_id`` is a plain numeric Ad Library ID (blocks arbitrary URLs or paths)."""
+    """Ensure ``ad_id`` is a plain ASCII numeric Ad Library ID (blocks arbitrary URLs or paths)."""
     raw = str(ad_id or "").strip()
-    if not raw.isdigit() or not (5 <= len(raw) <= 25):
-        raise ValueError("ad_id must be a numeric Ad Library ID (5 to 25 digits)")
+    if not raw.isascii() or not raw.isdigit() or not (5 <= len(raw) <= 25):
+        raise ValueError("ad_id must be a numeric Ad Library ID (5 to 25 ASCII digits)")
     return raw
 
 
@@ -121,8 +121,15 @@ def plan_timestamps(duration: float) -> tuple[list[float], list[float]]:
         raw = [low + (high - low) * i / 3 for i in range(4)]
         return (_dedup_points(raw, low, min(d - 0.03, high)), [])
 
-    raw_hook = [0.3, 1.5, 3.0, 5.0] if d > 6.5 else [0.3, 1.5, 3.0]
-    hook = _dedup_points(raw_hook, 0.05, d - 0.1)
+    if d <= 10.0:
+        hook = _dedup_points([0.3, 1.5, 3.0], 0.05, d - 0.1)
+        close_2 = round(min(d - 0.05, d * 0.97), 2)
+        span = close_2 - hook[-1]
+        count = min(6, max(1, int(span / 0.6)))
+        body = [round(hook[-1] + span * k / count, 2) for k in range(1, count + 1)]
+        return (hook, body)
+
+    hook = _dedup_points([0.3, 1.5, 3.0, 5.0], 0.05, d - 0.1)
 
     close_2 = round(min(d - 0.05, d * 0.97), 2)
     close_gap = min(4.0, max(1.5, d * 0.09))
@@ -368,17 +375,22 @@ def transcribe_video_url(
     downloader=None,
     model_loader=None,
     av_opener=None,
+    preloaded_model=None,
+    preloaded_av=None,
 ) -> dict:
     """Optionally probe audio stream and transcribe speech using a pre-downloaded local Whisper model."""
     model_size = validate_whisper_model(model_size)
     if not is_allowed_video_url(video_url):
         raise ValueError("video URL is not an allowed Meta CDN address")
 
-    model, av_open, early = check_transcribe_ready(
-        model_size, model_loader=model_loader, av_opener=av_opener,
-    )
-    if early is not None:
-        return early
+    if preloaded_model is not None and preloaded_av is not None:
+        model, av_open = preloaded_model, preloaded_av
+    else:
+        model, av_open, early = check_transcribe_ready(
+            model_size, model_loader=model_loader, av_opener=av_opener,
+        )
+        if early is not None:
+            return early
 
     handle = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
     tmp_path = Path(handle.name)
@@ -548,6 +560,14 @@ def _sheets_exist(meta: dict) -> bool:
     return bool(sheets) and all(Path(s.get("path", "")).is_file() for s in sheets)
 
 
+async def _safe_fetch(fetch_fn, ad_id: str) -> dict:
+    try:
+        res = await fetch_fn(ad_id)
+        return res if isinstance(res, dict) else {"found": False, "ad_id": ad_id}
+    except Exception as exc:
+        return {"found": False, "ad_id": ad_id, "media_type": None, "video_url": None, "body": "", "error": str(exc)}
+
+
 async def inspect_video(
     ad_id: str,
     *,
@@ -632,7 +652,7 @@ async def inspect_video(
                     ad_id, frames_dir, plan_timestamps, out_dir, url_validator=is_allowed_video_url,
                 )
             else:
-                fresh = await fetch_fn(ad_id)
+                fresh = await _safe_fetch(fetch_fn, ad_id)
 
             if fresh:
                 merged = dict(ad_meta or {})
@@ -650,28 +670,34 @@ async def inspect_video(
                     "media_type": media_type,
                     "note": "This ad is not a video creative.",
                 }
-            if not fresh or not is_allowed_video_url(fresh_url):
+            if not fresh or not fresh.get("found") or not is_allowed_video_url(fresh_url):
+                err_detail = (fresh or {}).get("error") or cap_err
+                note = (
+                    f"Could not retrieve video for ad {ad_id}: {err_detail}"
+                    if err_detail
+                    else f"Could not find a playable video matching ad_id {ad_id} on the Ad Library page."
+                )
                 return {
                     "ok": False,
                     "outcome": "unavailable",
                     "ad_id": ad_id,
-                    "note": "Could not retrieve a playable Meta video URL for this ad.",
+                    "note": note,
                 }
             active_url = fresh_url
             if capture is None:
                 if cap_err is not None:
                     return {
                         "ok": False,
-                        "outcome": "capture_failed",
+                        "outcome": "unavailable",
                         "ad_id": ad_id,
                         "note": f"Could not capture video frames: {cap_err}",
                     }
                 try:
                     capture = await capture_fn(active_url, frames_dir, plan_timestamps, out_dir)
-                except (RuntimeError, OSError) as exc:
+                except Exception as exc:
                     return {
                         "ok": False,
-                        "outcome": "capture_failed",
+                        "outcome": "unavailable",
                         "ad_id": ad_id,
                         "note": f"Could not capture video frames: {exc}",
                     }
@@ -690,14 +716,22 @@ async def inspect_video(
     }
 
     if transcribe:
-        early_tx: dict | None = None
-        if transcriber is None:
-            _, _, early_tx = check_transcribe_ready(whisper_model)
+        ready_model, ready_av, early_tx = (
+            check_transcribe_ready(whisper_model) if transcriber is None else (None, None, None)
+        )
         if early_tx is not None:
             tx = early_tx
         else:
+            def _run_tx(url: str) -> dict:
+                if transcriber is not None:
+                    return transcriber(url, whisper_model, language or None)
+                return transcribe_video_url(
+                    url, whisper_model, language or None,
+                    preloaded_model=ready_model, preloaded_av=ready_av,
+                )
+
             if not is_allowed_video_url(active_url):
-                fresh = await fetch_fn(ad_id)
+                fresh = await _safe_fetch(fetch_fn, ad_id)
                 if fresh:
                     merged = dict(ad_meta or {})
                     for k, v in fresh.items():
@@ -717,14 +751,14 @@ async def inspect_video(
                 }
             else:
                 try:
-                    tx = await asyncio.to_thread(transcribe_fn, active_url, whisper_model, language or None)
+                    tx = await asyncio.to_thread(_run_tx, active_url)
                 except (OSError, urllib.error.URLError, ValueError, RuntimeError) as first_exc:
                     # Cached signed CDN URL may have expired between visual capture and transcription.
-                    fresh = await fetch_fn(ad_id)
+                    fresh = await _safe_fetch(fetch_fn, ad_id)
                     fresh_url = (fresh or {}).get("video_url")
                     if is_allowed_video_url(fresh_url) and fresh_url != active_url:
                         try:
-                            tx = await asyncio.to_thread(transcribe_fn, fresh_url, whisper_model, language or None)
+                            tx = await asyncio.to_thread(_run_tx, fresh_url)
                         except (OSError, urllib.error.URLError, ValueError, RuntimeError) as retry_exc:
                             tx = {
                                 "status": "error",
@@ -735,13 +769,14 @@ async def inspect_video(
                                 "note": f"Audio transcription failed: {retry_exc}",
                             }
                     else:
+                        detail = fresh.get("error") or first_exc
                         tx = {
                             "status": "error",
                             "has_audio": None,
                             "language": None,
                             "text": None,
                             "segments": [],
-                            "note": f"Audio transcription failed: {first_exc}",
+                            "note": f"Audio transcription failed: {detail}",
                         }
 
     ad_copy_raw = _format_ad_copy(ad_meta, pack_ctx) or (cached_meta or {}).get("ad_copy_raw")
