@@ -289,4 +289,4 @@ The **518-test suite** (unit, statistical invariants, security/sandboxing, MCP p
 
 ## License
 
-MIT License — Copyright (c) 2026 Klaus Zanaj. See [LICENSE](LICENSE) and [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+MIT License — Copyright (c) 2026 Klaus Zanaj. See [LICENSE](LICENSE).
