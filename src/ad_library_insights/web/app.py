@@ -494,6 +494,8 @@ class Workspace:
         if err is not None:
             return err
         assert body is not None
+        if any(j.get("status") == "running" for j in self.ai_jobs.values()):
+            return JSONResponse({"error": "already_running"}, status_code=409)
         job = self.jobs.get(str(body.get("job_id") or ""))
         if not job or not job.raw or not job.raw.get("ads"):
             return JSONResponse({"error": "not_found"}, status_code=404)

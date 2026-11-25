@@ -18,6 +18,7 @@ whatever the language of the instructions.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import statistics
 from collections import Counter
@@ -32,6 +33,9 @@ from .storage import home_dir
 SLICES = ("overview", "copy", "creative", "reach", "testing")
 FRAMES_FOLDER = "frames"
 STILL_NAMES = ("start", "middle", "end")
+UNTRUSTED_OPEN = "<untrusted_ad_content>"
+UNTRUSTED_CLOSE = "</untrusted_ad_content>"
+_UNTRUSTED_TAG_RE = re.compile(r"<(/?)\s*untrusted_ad_content\s*>", re.IGNORECASE)
 
 # The types a specialist sorts every ad into. Code can tell the first and hint at two
 # others from the format; the rest needs someone to read the text or look at the picture.
@@ -62,11 +66,27 @@ def _top(rows: list[dict], key: str, limit: int = 6) -> str:
     return ", ".join(f"{row[key]} {_pct(row['share'])}" for row in rows[:limit]) or "none"
 
 
+def _neutralize_untrusted(text: str) -> str:
+    return _UNTRUSTED_TAG_RE.sub(
+        lambda m: r"<\/untrusted_ad_content>" if m.group(1) else "&lt;untrusted_ad_content&gt;",
+        text,
+    )
+
+
+def _wrap_inline_untrusted(text: str | None) -> str:
+    clean = _neutralize_untrusted((text or "").strip())
+    return f"{UNTRUSTED_OPEN}{clean}{UNTRUSTED_CLOSE}" if clean else ""
+
+
 def _quote(text: str, limit: int = 1200) -> str:
     text = (text or "").strip()
     if len(text) > limit:
         text = text[:limit].rstrip() + " [...]"
-    return "\n".join("> " + line for line in text.splitlines()) or "> (no text)"
+    if not text:
+        return "> (no text)"
+    safe = _neutralize_untrusted(text)
+    quoted = "\n".join("> " + line for line in safe.splitlines())
+    return f"{UNTRUSTED_OPEN}\n{quoted}\n{UNTRUSTED_CLOSE}"
 
 
 def active_label(found: dict) -> str:
@@ -258,21 +278,21 @@ def copy(result: dict, ads: list[dict]) -> str:
              f"- Texts with proof: {_pct(patterns['share_with_proof'])}; with urgency: "
              f"{_pct(patterns['share_with_urgency'])}; naming an offer: {_pct(patterns['share_mentioning_offer'])}; "
              f"naming a price: {_pct(patterns['share_mentioning_price'])}",
-             "- Concepts with most creatives: " + ("; ".join(f"\"{row['opening']}\" ({row['creatives']} creatives, id {row['library_id']})"
+             "- Concepts with most creatives: " + ("; ".join(f"\"{_wrap_inline_untrusted(row['opening'])}\" ({row['creatives']} creatives, id {row['library_id']})"
                                                    for row in patterns["reused_texts"]) or "none"),
-             "- Openers that repeat: " + (", ".join(f"\"{row['opener']}\" ({row['texts']} texts)"
+             "- Openers that repeat: " + (", ".join(f"\"{_wrap_inline_untrusted(row['opener'])}\" ({row['texts']} texts)"
                                                     for row in patterns["repeated_openers"]) or "none"),
              f"- Languages: {_top(found['languages'], 'language')}", "",
              f"## Top {len(ads)} ads",
              "Hook, promise and proof below are a first pass made by rules. Correct them from the text."]
     for rank, ad in enumerate(ads, start=1):
         parts = copy_analysis.analyze_ad(ad)
-        hook = f"hook ({parts['hook']['type']}): \"{parts['hook']['text'][:160]}\"" if parts["hook"] else "no hook found"
-        promise = f"promise: \"{parts['promise']['text'][:160]}\"" if parts["promise"] else "promise: none found"
-        proof = "; ".join(f"\"{p['text'][:120]}\" ({', '.join(p['kinds'])})" for p in parts["proof"]) or "none found"
+        hook = f"hook ({parts['hook']['type']}): \"{_wrap_inline_untrusted(parts['hook']['text'][:160])}\"" if parts["hook"] else "no hook found"
+        promise = f"promise: \"{_wrap_inline_untrusted(parts['promise']['text'][:160])}\"" if parts["promise"] else "promise: none found"
+        proof = "; ".join(f"\"{_wrap_inline_untrusted(p['text'][:120])}\" ({', '.join(p['kinds'])})" for p in parts["proof"]) or "none found"
         lines += ["", _head(rank, ad) + _reached(ad, country),
                   f"button \"{ad.get('cta') or 'none'}\" -> {ad.get('landing_domain') or 'no destination'}"
-                  + (f" · headline: {ad['headline']}" if ad.get("headline") else ""),
+                  + (f" · headline: {_wrap_inline_untrusted(ad['headline'])}" if ad.get("headline") else ""),
                   f"first pass: {hook}; {promise}; proof: {proof}",
                   _quote(ad.get("body"))]
     if result.get("struttura"):
@@ -303,7 +323,8 @@ def creative(result: dict, ads: list[dict], frames: bool) -> tuple[str, list[dic
               "- Pictures: not collected for this pack. Work from formats and copy, and say so."), ""]
     for rank, ad in enumerate(chosen, start=1):
         opening = (ad.get("body") or "").strip().splitlines()[0][:160] if (ad.get("body") or "").strip() else ""
-        lines += [_head(rank, ad) + _reached(ad, country), f"opening line: \"{opening}\""]
+        wrapped_opening = _wrap_inline_untrusted(opening) if opening else ""
+        lines += [_head(rank, ad) + _reached(ad, country), f"opening line: \"{wrapped_opening}\""]
         if frames:
             stills = [_picture(rank, ad, label, source) for label, source in zip(STILL_NAMES, ad.get("frames") or [])]
             if stills:

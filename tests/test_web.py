@@ -1855,4 +1855,30 @@ def test_durata_backend_preserves_and_syncs_ritmo(monkeypatch, tmp_path):
     assert djob["result"]["durata"]["reason"] == "partial_list"
 
 
+def test_ai_run_rejects_second_concurrent_run_with_409(tmp_path):
+    """Only one Claude Code CLI run may be active at a time in Workspace."""
+    from ad_library_insights.client import AdLibraryClient
+    from ad_library_insights.web.app import Job
+
+    asgi = create_app(client=AdLibraryClient(renderer=lambda *_a, **_k: None), home=tmp_path)
+    space = asgi.state.workspace
+    space.jobs["j1"] = Job(
+        id="j1",
+        params={"mode": "company", "country": "IT", "page_id": "111", "level": "analysis", "deep": 10, "frames": False},
+        status="done",
+        raw={"mode": "company", "country": "IT", "ads": [{"library_id": "1"}]},
+        result={"mode": "company", "country": "IT", "ads": [{"library_id": "1"}]},
+    )
+    space.ai_jobs["busy1"] = {"id": "busy1", "status": "running", "level": "analysis"}
+
+    tok = "c" * 32
+    headers = {"Origin": "http://127.0.0.1:8765", "Sec-Fetch-Site": "same-origin", "X-Run-Token": tok}
+    with TestClient(asgi, base_url="http://127.0.0.1:8765") as client:
+        res = client.post(
+            "/api/ai/run",
+            json={"token": tok, "job_id": "j1", "level": "analysis", "ads": 1, "lang": "it"},
+            headers=headers,
+        )
+    assert res.status_code == 409
+    assert res.json() == {"error": "already_running"}
 

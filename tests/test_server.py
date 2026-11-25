@@ -179,3 +179,44 @@ def test_ai_runner_handles_missing_binary_oserror_and_success(monkeypatch, tmp_p
     res_ok = ai_runner.run_claude_brief("hello brief", tmp_path, claude_bin="claude")
     assert res_ok["ok"] is True and "Final Report" in res_ok["markdown"]
 
+
+def test_ai_runner_enforces_readonly_tools_and_no_user_mcp(monkeypatch, tmp_path):
+    from ad_library_insights import ai_runner
+
+    recorded = []
+
+    class CapturingProc:
+        returncode = 0
+
+        def __init__(self, cmd):
+            self.cmd = cmd
+
+        def communicate(self, input=None, timeout=None):
+            return ("# Verified Output", "")
+
+    def fake_popen(cmd, **kwargs):
+        recorded.append((list(cmd), kwargs))
+        return CapturingProc(cmd)
+
+    monkeypatch.setattr(ai_runner.subprocess, "Popen", fake_popen)
+
+    for lang in ("it", "en"):
+        res = ai_runner.run_claude_brief("brief body", tmp_path, lang=lang, claude_bin="claude")
+        assert res["ok"] is True
+
+    assert len(recorded) == 2
+    for cmd, kwargs in recorded:
+        assert kwargs.get("shell") is False
+        assert "-p" in cmd
+        assert cmd[cmd.index("--tools") + 1] == "Read,Glob,Grep"
+        assert "--strict-mcp-config" in cmd
+        assert cmd[cmd.index("--disallowedTools") + 1] == "mcp__*"
+        assert cmd[cmd.index("--permission-prompts") + 1] == "none"
+        assert "--no-session-persistence" in cmd
+        sep = cmd.index("--")
+        instruction = cmd[sep + 1]
+        assert sep == len(cmd) - 2
+        assert "<untrusted_ad_content>" in instruction
+        assert "</untrusted_ad_content>" in instruction
+
+
