@@ -30,18 +30,21 @@ function loadLevel() {
 }
 const START = loadLevel();
 
+const _savedLang = store.get('lang', 'it');
+const _savedTheme = store.get('theme', 'light');
 const S = {
-  lang: store.get('lang', 'it'), theme: store.get('theme', 'light'),
+  lang: _savedLang === 'en' ? 'en' : 'it', theme: _savedTheme === 'dark' ? 'dark' : 'light',
   mode: 'company', level: START.level, levelOpen: START.open, deep: 10, frames: false, deepChoices: [10, 20, 50],
   country: 'IT', query: '', company: '', companyB: '', cmp: null, resultMode: null,
-  pages: null, busy: null, job: null, result: null, jobId: null, notice: null,
+  pages: null, busy: null, busyMode: null, job: null, result: null, jobId: null, notice: null,
   project: null, overlay: null, estimate: null, pending: null,
   history: null, news: null, sort: 'score', filter: 'all', tableQuery: '',
   tab: 'overview', adsView: 'table', stratLevel: 'analysis', stratNeedProject: false,
   seismoWeek: null, archFocus: 'copy',
   searchExpandedManual: false, wayHint: false, mcpSent: false,
-  aiJob: null, aiElapsed: 0, videoInspect: {},
+  aiJob: null, aiElapsed: 0, aiCopied: false, videoInspect: {},
   durataWindow: 90, durataBusy: false, durataError: false, durataCancelSeq: 0, durataElapsed: 0,
+  searchSeq: 0, aiSeq: 0, newsSeq: 0, estSeq: 0,
   simPrice: null, simCost: null, simVat: null, simShip: null, simFeePct: null, simRetPct: null, simItFee: null,
   cmpCopied: false,
   link: { quick: null, mcp: 'checking', running: false, result: null, error: null, test: null, copy: null, hint: false },
@@ -56,11 +59,11 @@ const esc = (value) => String(value ?? '').replace(/[&<>"']/g,
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function t(key, vars) {
-  let text = T[S.lang][key] ?? T.en[key] ?? key;
+  let text = (T[S.lang] && T[S.lang][key]) ?? (T.en && T.en[key]) ?? key;
   for (const name in vars || {}) text = text.replaceAll(`{${name}}`, vars[name]);
   return text;
 }
-const hasT = (key) => Boolean(T[S.lang][key] ?? T.en[key]);
+const hasT = (key) => Boolean((T[S.lang] && T[S.lang][key]) ?? (T.en && T.en[key]));
 const num = (value) => (value == null ? '—' : new Intl.NumberFormat(S.lang, { useGrouping: 'always' }).format(value));
 const pct = (share) => `${Math.round((share || 0) * 100)}%`;
 /* A number with its noun, singular for one: count(1, 'n.days') is "1 giorno" / "1 day". */
@@ -99,9 +102,18 @@ function placeLabel(place) {
   if (code) return region(code);
   return type.includes('group') ? `${place.name} (${t('type.country_groups')})` : place.name;
 }
-const day = (iso) => new Intl.DateTimeFormat(S.lang, { day: 'numeric', month: 'short', year: 'numeric' })
-  .format(new Date(`${iso}T00:00:00`));
-const clock = (iso) => new Intl.DateTimeFormat(S.lang, { hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
+function day(iso) {
+  if (!iso) return '—';
+  const d = new Date(`${String(iso).slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return '—';
+  return new Intl.DateTimeFormat(S.lang, { day: 'numeric', month: 'short', year: 'numeric' }).format(d);
+}
+function clock(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return new Intl.DateTimeFormat(S.lang, { hour: '2-digit', minute: '2-digit' }).format(d);
+}
 function dur(seconds) {
   seconds = Math.max(0, Math.round(seconds));
   if (seconds < 60) return `${seconds} s`;
@@ -137,6 +149,12 @@ document.addEventListener('error', (event) => {
   if (img.classList.contains('top-card-thumb')) {
     const span = document.createElement('span');
     span.className = 'top-card-thumb';
+    img.replaceWith(span);
+    return;
+  }
+  if (img.classList.contains('thumb')) {
+    const span = document.createElement('span');
+    span.className = 'thumb';
     img.replaceWith(span);
     return;
   }
@@ -180,6 +198,11 @@ function _normalizeIncomingResult(raw) {
   r._live = true;
   return r;
 }
+function _resetViewFilters() {
+  S.sort = 'score'; S.filter = 'all'; S.tableQuery = ''; S.seismoWeek = null;
+  S.aiJob = null; S.aiCopied = false; S.mcpSent = false; S.stratNeedProject = false;
+  S.cmpCopied = false; S.durataCancelSeq++; S.durataBusy = false; S.durataError = false;
+}
 function hydrateFromMcpPayload(data) {
   if (!data || typeof data !== 'object') return;
   if (data.view === 'home') {
@@ -187,28 +210,33 @@ function hydrateFromMcpPayload(data) {
     if ('project' in data) S.project = data.project;
     if (Array.isArray(data.deep_choices)) S.deepChoices = data.deep_choices;
     if (Array.isArray(data.subjects)) S.history = data.subjects;
-    S.busy = null;
+    S.busy = null; S.busyMode = null;
     render();
     return;
   }
   if (data.view === 'pages' || data.outcome === 'choose_page') {
-    S.mode = 'company'; S.pages = data; S.busy = null; S.searchExpandedManual = false;
+    S.mode = 'company'; S.pages = data; S.cmp = null; S.notice = null; S.overlay = null;
+    S.busy = null; S.busyMode = null; S.searchExpandedManual = false;
     render();
     hydrateMcpImages();
     return;
   }
   if (data.view === 'result' && data.result) {
     const r = _normalizeIncomingResult(data.result);
+    _resetViewFilters();
     S.mode = r.mode; S.result = r; S.resultMode = r.mode; S.tab = 'overview';
-    S.pages = null; S.busy = null; S.searchExpandedManual = false;
+    S.pages = null; S.cmp = null; S.notice = null; S.overlay = null;
+    S.busy = null; S.busyMode = null; S.searchExpandedManual = false;
     render();
     hydrateMcpImages();
     return;
   }
   if (Array.isArray(data.ads)) {
     const r = _normalizeIncomingResult(data);
+    _resetViewFilters();
     S.mode = r.mode; S.result = r; S.resultMode = r.mode; S.tab = 'overview';
-    S.pages = null; S.busy = null; S.searchExpandedManual = false;
+    S.pages = null; S.cmp = null; S.notice = null; S.overlay = null;
+    S.busy = null; S.busyMode = null; S.searchExpandedManual = false;
     render();
     hydrateMcpImages();
     return;
@@ -217,7 +245,9 @@ function hydrateFromMcpPayload(data) {
     const mkSide = (name, ads) => ({ query: name, page: { name }, ads_parsed: (ads || []).length, ads: (ads || []).map((a) => ({ ...a, thumbnail: _baseName(a.thumbnail || a.thumbnail_path) })) });
     const topA = (data.top_ads && data.top_ads.a) || [];
     const topB = (data.top_ads && data.top_ads.b) || [];
-    S.mode = 'compare'; S.resultMode = 'compare'; S.cmp = null; S.busy = null;
+    _resetViewFilters();
+    S.mode = 'compare'; S.resultMode = 'compare'; S.cmp = null; S.pages = null; S.notice = null; S.overlay = null;
+    S.busy = null; S.busyMode = null;
     S.result = { mode: 'compare', country: data.country || S.country, comparison: data, sides: [mkSide(data.names.a, topA), mkSide(data.names.b, topB)] };
     render();
     hydrateMcpImages();
@@ -273,9 +303,10 @@ async function _mcpRoute(path, options = {}) {
   if (url.pathname === '/api/history') return { subjects: (await mcpCall('state')).subjects || [] };
   if (url.pathname === '/api/history/changes') return mcpCall('changes', { key: url.searchParams.get('key') || '' });
   if (url.pathname === '/api/jobs' && options.method === 'POST') {
-    const act = body.mode === 'keyword' ? 'keyword' : 'company';
+    const act = body.mode === 'keyword' ? 'keyword' : body.mode === 'compare' ? 'compare' : 'company';
     const res = await mcpCall(act, body);
-    return { id: 'mcp-job', status: 'done', params: body, result: res.result ? _normalizeIncomingResult(res.result) : res };
+    const out = act === 'compare' ? res : (res.result ? _normalizeIncomingResult(res.result) : res);
+    return { id: 'mcp-job', status: 'done', params: body, result: out };
   }
   throw new Error('unsupported in MCP view');
 }
@@ -324,9 +355,23 @@ function countryOptions(selected) {
   const rows = COUNTRIES.map((code) => [region(code), code]).sort((a, b) => a[0].localeCompare(b[0], S.lang));
   return rows.map(([name, code]) => `<option value="${code}"${code === selected ? ' selected' : ''}>${esc(name)}</option>`).join('');
 }
+function hasModeResult(mode = S.mode) {
+  if (!S.result || S.resultMode !== mode) return false;
+  return mode === 'compare' ? Boolean(S.result.comparison) : Boolean((S.result.ads || []).length);
+}
+function hasModeJob(mode = S.mode) {
+  return Boolean(S.job && S.job.params && S.job.params.mode === mode);
+}
+function hasModeBusy(mode = S.mode) {
+  return Boolean(S.busy && S.busyMode === mode);
+}
+function noticeText() {
+  if (!S.notice) return '';
+  return S.notice.key ? t(S.notice.key, S.notice.vars) : (S.notice.text || '');
+}
 function isSearchCollapsed() {
   return (S.mode === 'keyword' || S.mode === 'company')
-    && Boolean(S.busy || S.pages || S.job || S.result)
+    && Boolean(hasModeBusy() || (S.pages && S.mode === 'company') || hasModeJob() || hasModeResult())
     && !S.searchExpandedManual;
 }
 function quickChipsHtml() {
@@ -368,8 +413,8 @@ function renderSearch() {
       <div class="options"><span>${esc(t('deep.before'))}</span>
       <div class="switch" role="group">${toggle('deep', S.deepChoices, S.deep, String)}</div>
       <span>${esc(t('cmp.deep.after'))}</span><span class="gap"></span><span>${esc(t('cmp.level'))}</span></div>`;
-    if (S.job || S.busy) html += '<div class="progress"><p><span id="ptext"></span><span class="muted num" id="pleft"></span></p><div class="bar" id="pbar"><i></i></div></div>';
-    else if (S.notice) html += `<p class="notice${S.notice.err ? ' err' : ''}">${esc(S.notice.text)}</p>`;
+    if (hasModeJob('compare') || hasModeBusy('compare')) html += '<div class="progress"><p><span id="ptext"></span><span class="muted num" id="pleft"></span></p><div class="bar" id="pbar"><i></i></div></div>';
+    else if (S.notice) html += `<p class="notice${S.notice.err ? ' err' : ''}">${esc(noticeText())}</p>`;
     $('#search').innerHTML = `${html}</div>`;
     updateProgress();
     return;
@@ -400,7 +445,7 @@ function renderSearch() {
       ? t('project.saved', { product: S.project.product, price: num(S.project.price) }) : t('project.missing'))}</button></span>`}
   </div>`;
   html += IS_MCP_APP ? '' : '<section class="way" id="way"></section>';
-  if (S.notice) html += `<p class="notice${S.notice.err ? ' err' : ''}">${esc(S.notice.text)}</p>`;
+  if (S.notice) html += `<p class="notice${S.notice.err ? ' err' : ''}">${esc(noticeText())}</p>`;
   $('#search').innerHTML = `${html}</div>`;
   if (!IS_MCP_APP) renderWay();
   updateProgress();
@@ -457,20 +502,20 @@ function precheckCpcRowsHtml(cpcs, isEur = true) {
 }
 function updateSimDom() {
   const { cpa, lowCut, highCut, round1, billed, roas, cpcs, oneIn, isEur } = simNumbers();
-  if ($('#sim-cpa')) $('#sim-cpa').textContent = num(cpa);
-  if ($('#sim-roas')) $('#sim-roas').textContent = t('lv.v3.sim.roas', { roas });
-  if ($('#sim-stop')) $('#sim-stop').textContent = `${num(lowCut)} - ${num(highCut)}`;
-  if ($('#sim-budget')) $('#sim-budget').textContent = num(round1);
-  if ($('#sim-cpc-rows')) $('#sim-cpc-rows').innerHTML = precheckCpcRowsHtml(cpcs, isEur);
-  if ($('#sim-risk-line')) {
-    $('#sim-risk-line').textContent = t('pre.risk.line', {
-      spend: simMoney(round1, isEur),
-      billed: simMoney(billed, isEur),
-      onein: oneIn != null ? num(oneIn) : '—',
-    });
-  }
+  const cpcHtml = precheckCpcRowsHtml(cpcs, isEur);
+  const riskText = t('pre.risk.line', {
+    spend: simMoney(round1, isEur),
+    billed: simMoney(billed, isEur),
+    onein: oneIn != null ? num(oneIn) : '—',
+  });
+  document.querySelectorAll('[data-sim-out="cpa"]').forEach((el) => { el.textContent = num(cpa); });
+  document.querySelectorAll('[data-sim-out="roas"]').forEach((el) => { el.textContent = t('lv.v3.sim.roas', { roas }); });
+  document.querySelectorAll('[data-sim-out="stop"]').forEach((el) => { el.textContent = `${num(lowCut)} - ${num(highCut)}`; });
+  document.querySelectorAll('[data-sim-out="budget"]').forEach((el) => { el.textContent = num(round1); });
+  document.querySelectorAll('[data-sim-out="cpc-rows"]').forEach((el) => { el.innerHTML = cpcHtml; });
+  document.querySelectorAll('[data-sim-out="risk-line"]').forEach((el) => { el.textContent = riskText; });
 }
-function levelVisual(level) {
+function levelVisual(level, withIds = true) {
   if (level === 'data') {
     return `<div class="lvl-vis">
       <div class="vis-top"><span class="vis-title">${esc(t('lv.v1.badge'))}</span><span class="vis-pill ok">${esc(t('lv.v1.status'))}</span></div>
@@ -506,15 +551,15 @@ function levelVisual(level) {
       <label class="sim-check"><input type="checkbox" data-sim-check="itFee" ${itFee ? 'checked' : ''}><span>${esc(t('lv.v3.sim.itfee'))}</span></label>
     </details>
     <div class="vis-econ num">
-      <div class="vis-kpi"><span>${esc(t('lv.v3.cpa'))}${simplePop('lv.v3.cpa', 'help.sim.cpa.title', 'help.sim.cpa.body')}</span><strong id="sim-cpa">${num(cpa)}</strong><small id="sim-roas">${esc(t('lv.v3.sim.roas', { roas }))}</small></div>
-      <div class="vis-kpi"><span>${esc(t('lv.v3.stop'))}${simplePop('lv.v3.stop', 'help.sim.stop.title', 'help.sim.stop.body')}</span><strong id="sim-stop">${num(lowCut)} - ${num(highCut)}</strong><small>${esc(t('lv.v3.stop.sub'))}</small></div>
-      <div class="vis-kpi"><span>${esc(t('lv.v3.budget'))}${simplePop('lv.v3.budget', 'help.sim.budget.title', 'help.sim.budget.body', null, true)}</span><strong id="sim-budget">${num(round1)}</strong><small>${esc(t('lv.v3.budget.sub'))}</small></div>
+      <div class="vis-kpi"><span>${esc(t('lv.v3.cpa'))}${simplePop('lv.v3.cpa', 'help.sim.cpa.title', 'help.sim.cpa.body')}</span><strong${withIds ? ' id="sim-cpa"' : ''} data-sim-out="cpa">${num(cpa)}</strong><small${withIds ? ' id="sim-roas"' : ''} data-sim-out="roas">${esc(t('lv.v3.sim.roas', { roas }))}</small></div>
+      <div class="vis-kpi"><span>${esc(t('lv.v3.stop'))}${simplePop('lv.v3.stop', 'help.sim.stop.title', 'help.sim.stop.body')}</span><strong${withIds ? ' id="sim-stop"' : ''} data-sim-out="stop">${num(lowCut)} - ${num(highCut)}</strong><small>${esc(t('lv.v3.stop.sub'))}</small></div>
+      <div class="vis-kpi"><span>${esc(t('lv.v3.budget'))}${simplePop('lv.v3.budget', 'help.sim.budget.title', 'help.sim.budget.body', null, true)}</span><strong${withIds ? ' id="sim-budget"' : ''} data-sim-out="budget">${num(round1)}</strong><small>${esc(t('lv.v3.budget.sub'))}</small></div>
     </div>
     <div class="precheck-box">
       <div class="precheck-head"><span>${esc(t('pre.cpc.title'))}</span>${cpcHelp}</div>
-      <div class="cpc-grid" id="sim-cpc-rows">${precheckCpcRowsHtml(cpcs, isEur)}</div>
+      <div class="cpc-grid"${withIds ? ' id="sim-cpc-rows"' : ''} data-sim-out="cpc-rows">${precheckCpcRowsHtml(cpcs, isEur)}</div>
       <p class="precheck-bench">${esc(t('pre.cpc.bench'))}</p>
-      <p class="precheck-risk" id="sim-risk-line">${esc(t('pre.risk.line', { spend: simMoney(round1, isEur), billed: simMoney(billed, isEur), onein: oneIn != null ? num(oneIn) : '—' }))}</p>
+      <p class="precheck-risk"${withIds ? ' id="sim-risk-line"' : ''} data-sim-out="risk-line">${esc(t('pre.risk.line', { spend: simMoney(round1, isEur), billed: simMoney(billed, isEur), onein: oneIn != null ? num(oneIn) : '—' }))}</p>
     </div>
     <div class="jury-box">
       <p class="jury-title">${esc(t('pre.jury.title'))}</p>
@@ -715,18 +760,18 @@ function updateProgress() {
       label = t('phase.media');
       share = 0.92;
       activeIdx = 3;
-    } else if (phase === 'list' && S.job.params.mode !== 'keyword') {
+    } else if (phase === 'list' && (S.job.params && S.job.params.mode !== 'keyword')) {
       label = t('phase.list.company');
       activeIdx = 1;
     } else {
-      label = t(`phase.${phase}`);
+      label = hasT(`phase.${phase}`) ? t(`phase.${phase}`) : t('phase.queued');
       activeIdx = phase === 'list' ? 1 : 0;
     }
     if (detail.side) label = t('cmp.side', { n: detail.side }) + label;
   }
   text.textContent = label;
   if ($('#pleft')) $('#pleft').textContent = left;
-  if (bar) {
+  if (bar && bar.firstElementChild) {
     bar.classList.toggle('open', share === null);
     bar.firstElementChild.style.width = share === null ? '' : `${Math.max(3, Math.round(share * 100))}%`;
   }
@@ -750,9 +795,9 @@ function pagesSheet() {
 function headSection(r) {
   const company = r.mode === 'company';
   const page = r.page || {};
-  const total = r.signals.active_ads;
+  const total = (r.signals && r.signals.active_ads) ?? (r.ads || []).length;
   const loaded = t('result.loaded', { loaded: num(r.ads_parsed), total: num(total),
-    time: `${t(r.from_cache ? 'result.cache' : 'result.fresh')}${r.fetched_at ? `, ${clock(r.fetched_at)}` : ''}` });
+    time: `${t(r.from_cache ? 'result.cache' : 'result.fresh')}${r.fetched_at && clock(r.fetched_at) ? `, ${clock(r.fetched_at)}` : ''}` });
   const title = company ? esc(page.name || r.query) : esc(t('result.keyword', { query: r.query, country: region(r.country) }));
   const facts = { category: page.category, followers: num(page.followers), country: region(r.country) };
   const sub = company ? `${esc(t(page.category ? 'result.sub.company' : 'result.sub.company.nocat', facts))}<br>${esc(loaded)}` : esc(loaded);
@@ -766,13 +811,13 @@ function changesSection(r) {
   const c = r.changes;
   if (!c) return '';
   if (!c.available) return `<section class="changes"><p class="muted">${esc(t('changes.first'))}</p></section>`;
-  const date = `${day(c.previous_taken_at.slice(0, 10))}, ${clock(c.previous_taken_at)}`;
-  const { new: fresh, stopped, changed } = c.counts;
+  const date = c.previous_taken_at ? `${day(c.previous_taken_at)}, ${clock(c.previous_taken_at)}` : '—';
+  const { new: fresh = 0, stopped = 0, changed = 0 } = c.counts || {};
   const text = fresh + stopped + changed ? t('changes.since', { date, new: fresh, stopped, changed }) : t('changes.same', { date });
   return `<section class="changes"><p>${esc(text)}</p><button class="btn quiet small" data-action="news-open" data-value="${esc(c.key)}">${esc(t('news.view'))}</button></section>`;
 }
 function readySection(r) {
-  const level = r.request.level;
+  const level = (r.request && r.request.level) || 'data';
   if (level === 'data' || S.tab === 'strategy') return '';
   if (IS_MCP_APP) {
     return `<section class="ready"><p>${esc(t(`brief.ready.${level}`))}</p>
@@ -799,8 +844,9 @@ function cappedSection(r) {
   return out;
 }
 function metricsSection(r) {
-  const s = r.signals;
-  const reach = s.reach.available ? s.reach.median_reach_per_day : null;
+  const s = r.signals || {};
+  const reachObj = s.reach || {};
+  const reach = reachObj.available ? reachObj.median_reach_per_day : null;
   const cells = [
     [num(s.active_ads), t('m.active'), t(r.mode === 'company' ? 'm.active.x' : 'm.active.x.keyword'), 'help.m.active.body', false],
     [pct(s.video_share), t('m.video'), t('m.video.x'), 'help.m.video.body', false],
@@ -837,18 +883,18 @@ function ageNames(ranges, total) {
   const others = ranges.length > 1 ? `${share ? ',' : ''} ${count(ranges.length - 1, 'f.age.more')}` : '';
   return esc(ageRange(main.age_min, main.age_max)) + (share || others ? `<span class="dim">${esc(share + others)}</span>` : '');
 }
-const shareRows = (rows, label) => `<ul class="rows">${rows.slice(0, 5).map((row) => `<li><span>${esc(label(row))}</span><span>${pct(row.share)}</span></li>`).join('') || `<li><span class="dim">—</span></li>`}</ul>`;
+const shareRows = (rows, label) => `<ul class="rows">${(rows || []).slice(0, 5).map((row) => `<li><span>${esc(label(row))}</span><span>${pct(row.share)}</span></li>`).join('') || `<li><span class="dim">—</span></li>`}</ul>`;
 function factsSection(r) {
-  const s = r.signals, audience = s.audience, reach = s.reach;
-  const places = audience && audience.locations_included.length
-    ? `<dl><dt>${esc(t('f.places.in'))}</dt><dd>${placeNames(audience.locations_included, audience.ads_with_audience, audience.locations_included_count)}</dd>
-       <dt>${esc(t('f.places.out'))}</dt><dd>${placeNames(audience.locations_excluded, audience.ads_with_audience, audience.locations_excluded_count, 3)}</dd></dl>
+  const s = r.signals || {}, audience = s.audience, reach = s.reach || {};
+  const places = audience && (audience.locations_included || []).length
+    ? `<dl><dt>${esc(t('f.places.in'))}</dt><dd>${placeNames(audience.locations_included || [], audience.ads_with_audience, audience.locations_included_count)}</dd>
+       <dt>${esc(t('f.places.out'))}</dt><dd>${placeNames(audience.locations_excluded || [], audience.ads_with_audience, audience.locations_excluded_count, 3)}</dd></dl>
        <p class="note">${esc(t('f.places.note'))}</p>`
     : `<p class="note" style="margin-top:0">${esc(t('f.places.unread'))} ${esc(t('f.places.note'))}</p>`;
   const who = audience ? `<dl>
-      <dt>${esc(t('f.audience.age'))}</dt><dd>${ageNames(audience.age_ranges, audience.ads_with_audience)}</dd>
-      <dt>${esc(t('f.audience.gender'))}</dt><dd>${Object.keys(audience.genders).map((g) => esc(t(`gender.${g}`))).join(', ')}</dd>
-      <dt>${esc(t('f.audience.breadth'))}</dt><dd>${Object.keys(audience.breadth).map((b) => esc(t(`breadth.${b}`))).join(', ') || '—'}</dd></dl>`
+      <dt>${esc(t('f.audience.age'))}</dt><dd>${ageNames(audience.age_ranges || [], audience.ads_with_audience)}</dd>
+      <dt>${esc(t('f.audience.gender'))}</dt><dd>${Object.keys(audience.genders || {}).map((g) => esc(t(`gender.${g}`))).join(', ') || '—'}</dd>
+      <dt>${esc(t('f.audience.breadth'))}</dt><dd>${Object.keys(audience.breadth || {}).map((b) => esc(t(`breadth.${b}`))).join(', ') || '—'}</dd></dl>`
     : '<p class="dim">—</p>';
   const coverage = !reach.available ? `<p class="note" style="margin-top:0">${esc(t('f.reach.none'))}</p>`
     : !reach.ads_with_market_reach ? `<p class="note" style="margin-top:0">${esc(t('f.reach.elsewhere', { country: region(r.country) }))}</p>`
@@ -858,7 +904,7 @@ function factsSection(r) {
       <dt>${esc(t('f.reach.total.median'))}</dt><dd class="num">${num(reach.median_reach_total)}</dd>
       <dt>${esc(t('f.reach.total.best'))}</dt><dd class="num">${num(reach.highest_reach_total)}</dd></dl>
       <p class="note">${esc(t('f.reach.note', { n: reach.ads_with_market_reach, country: region(r.country) }))}</p>`;
-  const reused = s.copy_patterns.reused_texts.slice(0, 4).map((row) => `<li><span>${esc(row.opening)}</span><span>${esc(oneOrMore('f.reused.n', row.creatives))}</span></li>`).join('');
+  const reused = ((s.copy_patterns && s.copy_patterns.reused_texts) || []).slice(0, 4).map((row) => `<li><span>${esc(row.opening)}</span><span>${esc(oneOrMore('f.reused.n', row.creatives))}</span></li>`).join('');
   return `<section class="facts">
     <div style="margin-bottom:16px">
       <div class="sec-eyebrow">${esc(t('overview.facts.eyebrow'))}</div>
@@ -957,7 +1003,7 @@ function cardsGridHtml(r) {
   const company = r.mode === 'company';
   return filteredAds(r).map((ad) => {
     const media = ad.thumbnail ? mediaImg(ad.thumbnail, '', '', true) : `<span class="dim">${esc(t(`format.${ad.media_type || 'unknown'}`))}</span>`;
-    const reachTxt = ad.reach_per_day != null ? `${num(ad.reach_per_day)}/gg` : (ad.impression_rank ? `#${num(ad.impression_rank)}` : '');
+    const reachTxt = ad.reach_per_day != null ? t('n.perday.short', { n: num(ad.reach_per_day) }) : (ad.impression_rank ? `#${num(ad.impression_rank)}` : '');
     const sub = [days(ad.days_running), oneOrMore('f.reused.n', ad.creatives || 1), reachTxt].filter(Boolean).join(' · ');
     return `<button type="button" class="ad-card" data-action="open-ad" data-value="${esc(ad.library_id)}">
       <div class="ad-card-media">${media}</div>
@@ -1375,7 +1421,10 @@ function renderRitmoSvg(m) {
     const lbl = (w.week_start || '').slice(5);
     const isSel = idx === selIdx;
     const strokeAttr = isSel ? ' stroke="var(--text)" stroke-width="2"' : '';
+    const hitX0 = +(padL + slot * idx).toFixed(1);
+    const hitX1 = +(padL + slot * (idx + 1)).toFixed(1);
     return `<g class="ritmo-bar-hit" data-action="seismo-week" data-value="${idx}">
+      <path class="bar-bg" d="M${hitX0},${padT} H${hitX1} V${padT + plotH} H${hitX0} Z" fill="var(--text)" opacity="0"/>
       <rect x="${x}" y="${y}" width="${barW}" height="${bh}" rx="3" fill="${fill}" fill-opacity="${w.is_sta ? '0.92' : '0.86'}"${strokeAttr}/>
       <text x="${cx.toFixed(1)}" y="${Math.max(11, y - 4).toFixed(1)}" text-anchor="middle" fill="${isSel ? 'var(--text)' : 'var(--muted)'}" font-size="10" font-weight="${isSel ? '700' : '500'}">${countVal}</text>
       <text x="${cx.toFixed(1)}" y="${H - 6}" text-anchor="middle" fill="${isSel ? 'var(--text)' : 'var(--muted)'}" font-size="10" font-weight="${isSel ? '700' : '500'}">${esc(lbl)}</text>
@@ -1778,7 +1827,7 @@ function topPreviewSection(r) {
   if (!top.length) return '';
   const cards = top.map((ad) => {
     const thumb = ad.thumbnail ? mediaImg(ad.thumbnail, 'top-card-thumb', '', true) : '<span class="top-card-thumb"></span>';
-    const meta = [days(ad.days_running), ad.reach_per_day != null ? `${num(ad.reach_per_day)}/gg` : ''].filter(Boolean).join(' · ');
+    const meta = [days(ad.days_running), ad.reach_per_day != null ? t('n.perday.short', { n: num(ad.reach_per_day) }) : ''].filter(Boolean).join(' · ');
     return `<button type="button" class="top-card" data-action="open-ad" data-value="${esc(ad.library_id)}">
       ${thumb}<div class="top-card-body">
         <div class="top-card-top"><span class="v-${ad.verdict}">${esc(t(`verdict.${ad.verdict}`))}</span><strong>${Math.round(ad.score)}/100</strong></div>
@@ -1967,7 +2016,7 @@ function strategyTabSection(r) {
         ? `<div class="audit-pill ok">${esc(t('strat.ai.audit.ok', { n: num((a.checked_ad_ids || []).length) }))}</div>`
         : `<div class="audit-pill warn">${esc(t('strat.ai.audit.warn', { n: num(a.warning_count) }))}</div>`) : '';
       outputHtml = `${auditHtml}<div class="ai-report-view">${renderMarkdownSafe(S.aiJob.markdown)}</div>
-        <div class="ai-actions"><button type="button" class="btn quiet small" data-action="copy-ai-report">${esc(t('strat.ai.copy_report'))}</button></div>`;
+        <div class="ai-actions"><button type="button" class="btn quiet small" data-action="copy-ai-report">${esc(t(S.aiCopied ? 'strat.ai.copied' : 'strat.ai.copy_report'))}</button></div>`;
     }
   }
   const exportBtn = IS_MCP_APP ? '' : `<button type="button" class="btn quiet small" data-action="brief">${esc(t('strat.ai.export'))}</button>`;
@@ -1983,7 +2032,7 @@ function strategyTabSection(r) {
   </div>`;
 
   const calcCol = lvl === 'plan'
-    ? `<div><h2 class="sec-title-line" style="margin-bottom:12px">${esc(t('strat.calc.title'))}${simplePop('strat.calc.title', 'help.strat.calc.title', 'help.strat.calc.body')}</h2>${levelVisual('plan')}</div>`
+    ? `<div><h2 class="sec-title-line" style="margin-bottom:12px">${esc(t('strat.calc.title'))}${simplePop('strat.calc.title', 'help.strat.calc.title', 'help.strat.calc.body')}</h2>${levelVisual('plan', isSearchCollapsed())}</div>`
     : '';
   const runTitle = t(lvl === 'plan' ? 'strat.run.title.l3' : 'strat.run.title.l2');
   const runSub = t(lvl === 'plan' ? 'strat.ai.sub.l3' : 'strat.ai.sub.l2');
@@ -2013,18 +2062,18 @@ function renderResults() {
   const el = $('#results');
   if (S.mode === 'news') { renderNews(); hydrateMcpImages(); return; }
   if (S.mode === 'compare') {
-    el.innerHTML = S.cmp ? cmpChooser() : (S.result && S.resultMode === 'compare' && S.result.comparison ? compareSheet(S.result) : '');
+    el.innerHTML = S.cmp ? cmpChooser() : (hasModeResult('compare') ? compareSheet(S.result) : '');
     hydrateMcpImages();
     return;
   }
-  if ((S.busy || S.job) && !S.pages && (!S.result || S.resultMode !== S.mode)) {
+  if ((hasModeBusy() || hasModeJob()) && !(S.pages && S.mode === 'company') && !hasModeResult()) {
     el.innerHTML = liveStepperHtml();
     updateProgress();
     return;
   }
-  if (S.pages) { el.innerHTML = pagesSheet(); hydrateMcpImages(); return; }
+  if (S.pages && S.mode === 'company') { el.innerHTML = pagesSheet(); hydrateMcpImages(); return; }
+  if (!hasModeResult()) { el.innerHTML = ''; return; }
   const r = S.result;
-  if (!r || !(r.ads || []).length || S.resultMode !== S.mode) { el.innerHTML = ''; return; }
   if (!STUDIO_TABS.includes(S.tab)) S.tab = 'overview';
   let tabBody = '';
   if (S.tab === 'overview') tabBody = `${cappedSection(r)}${changesSection(r)}${metricsSection(r)}${topPreviewSection(r)}${factsSection(r)}`;
@@ -2100,24 +2149,24 @@ function piankaSection(c) {
   </section>`;
 }
 function compareSheet(r) {
-  const c = r.comparison, [a, b] = r.sides;
+  const c = r.comparison, [a = {}, b = {}] = r.sides || [];
   const head = (side) => { const page = side.page || {}; return `<div>${avatar(page.logo, page.name, true)}<div><h1>${esc(page.name || side.query)}</h1>
     <p>${esc(t('cmp.sub', { category: page.category || '—', followers: num(page.followers), loaded: num(side.ads_parsed) }))}</p></div></div>`; };
   const fmt = (note, value) => (note.key === 'video_share' ? pct(value) : num(value));
-  const notes = c.highlights.map((note) => `<li>${esc(t(`hl.${note.key}`, {
+  const notes = (c.highlights || []).map((note) => `<li>${esc(t(`hl.${note.key}`, {
     leader: c.names[note.leader], other: c.names[note.leader === 'a' ? 'b' : 'a'],
     ratio: num(note.ratio), lead: fmt(note, note.lead), trail: fmt(note, note.trail) }))}</li>`).join('');
   let group = null;
-  const rows = c.rows.map((row) => {
+  const rows = (c.rows || []).map((row) => {
     const title = row.group !== group ? `<tr class="group"><td colspan="3">${esc(t(`cmp.group.${row.group}`))}</td></tr>` : '';
     group = row.group;
     const numeric = row.kind === 'number' || row.kind === 'percent' ? ' class="num"' : '';
     return `${title}<tr><td>${esc(t(`cmp.row.${row.key}`, { country: region(r.country) }))}</td><td${numeric}>${cmpValue(row, row.a)}</td><td${numeric}>${cmpValue(row, row.b)}</td></tr>`;
   }).join('');
-  const top = (side) => `<div><div class="table-scroll"><table class="ads"><tbody>${side.ads.slice(0, 5).map((ad) => `<tr class="pick" data-action="open-ad" data-value="${esc(ad.library_id)}">
+  const top = (side) => `<div><div class="table-scroll"><table class="ads"><tbody>${(side.ads || []).slice(0, 5).map((ad) => `<tr class="pick" data-action="open-ad" data-value="${esc(ad.library_id)}">
     <td><div class="adcell">${ad.thumbnail ? mediaImg(ad.thumbnail, 'thumb', '', true) : '<span class="thumb"></span>'}
       <div class="adtext"><div>${esc(firstLine(ad) || t('t.notext'))}</div><small>${esc(`${t(`verdict.${ad.verdict}`)} · ${days(ad.days_running)} · ${oneOrMore('f.reused.n', ad.creatives)}`)}</small></div></div></td>
-    <td class="r">${Math.round(ad.score)}</td></tr>`).join('')}</tbody></table></div></div>`;
+    <td class="r">${Math.round(ad.score || 0)}</td></tr>`).join('')}</tbody></table></div></div>`;
   return `<div class="sheet">
     <section class="cmphead">${head(a)}${head(b)}</section>
     <section class="ready"><p>${esc(t(S.cmpCopied ? 'cmp.brief.copied' : 'cmp.brief.ready'))}</p>
@@ -2157,42 +2206,54 @@ function exportCsv(r) {
   });
   const blob = new Blob([`\uFEFF${headers.join(',')}\n${rows.join('\n')}\n`], { type: 'text/csv;charset=utf-8' });
   const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
+  const url = URL.createObjectURL(blob);
+  link.href = url;
   link.download = `ad-library-insights-${(r.page && r.page.name) || r.query || 'export'}-${r.country}.csv`.replace(/[^a-zA-Z0-9._-]+/g, '-');
   document.body.appendChild(link);
   link.click();
   link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 const findAd = (id) => {
-  const pools = S.result ? (S.result.sides ? S.result.sides.map((side) => side.ads) : [S.result.ads]) : [];
-  return pools.flat().find((item) => item.library_id === id);
+  const pools = S.result ? (S.result.sides ? S.result.sides.map((side) => side.ads || []) : [S.result.ads || []]) : [];
+  const all = pools.flat().filter(Boolean);
+  return all.find((item) => item.library_id === id)
+    || all.find((item) => item.card_reach && Object.prototype.hasOwnProperty.call(item.card_reach, id));
 };
 async function submitCompare() {
   const names = [S.company.trim(), S.companyB.trim()];
   if (!names[0] || !names[1]) return note('error.input', null, true);
-  S.result = null; S.cmp = null; S.busy = 'pages'; render();
+  const seq = ++S.searchSeq;
+  S.result = null; S.resultMode = null; S.cmp = null; S.busy = 'pages'; S.busyMode = 'compare'; render();
   try {
     const sides = [];
     for (const name of names) {
       const found = await api(`/api/pages?name=${encodeURIComponent(name)}&country=${S.country}`);
-      if (!found.pages.length) { S.busy = null; return note('pages.none.named', { name, country: region(S.country) }); }
+      if (S.searchSeq !== seq) return;
+      if (!found.pages.length) { S.busy = null; S.busyMode = null; return note('pages.none.named', { name, country: region(S.country) }); }
       sides.push({ name, pages: found.pages, suggested: found.suggested_page_id,
         picked: found.pages.length === 1 ? found.pages[0].page_id : null });
     }
-    S.busy = null; S.cmp = { sides };
-    if (sides.every((side) => side.picked)) return launchCompare();
+    if (S.searchSeq !== seq) return;
+    S.busy = null; S.busyMode = null; S.cmp = { sides };
+    if (sides.every((side) => side.picked)) {
+      if (sides[0].picked === sides[1].picked) { S.cmp = null; return note('error.same_page', null, true); }
+      return launchCompare();
+    }
     render();
-  } catch (error) { S.busy = null; note('error.title', null, true); }
+  } catch (error) { if (S.searchSeq === seq) { S.busy = null; S.busyMode = null; note('error.title', null, true); } }
 }
 function launchCompare() {
+  if (!S.cmp || !S.cmp.sides || S.cmp.sides.length < 2) return;
   const [first, second] = S.cmp.sides;
+  if (first.picked === second.picked) { S.cmp = null; return note('error.same_page', null, true); }
   S.pending = { mode: 'compare', page_id: first.picked, page_id_b: second.picked, country: S.country, fresh: false };
   S.cmp = null;
   return launch();
 }
 
 /* ---------- what changed ---------- */
-const stamp = (iso) => `${day(iso.slice(0, 10))}, ${clock(iso)}`;
+const stamp = (iso) => (iso ? `${day(iso)}, ${clock(iso)}` : '—');
 function adCell(ad, keyword) {
   return `<div class="adcell">${ad.thumbnail ? mediaImg(ad.thumbnail, 'thumb', '', true) : '<span class="thumb"></span>'}
     <div class="adtext"><div><a href="${esc(ad.ad_url)}" target="_blank" rel="noopener">${esc(ad.opening || t('t.notext'))}</a></div>
@@ -2226,7 +2287,7 @@ function newsDetail(c) {
   return `<div class="sheet">
     <section class="rhead"><div class="grow"><h1>${esc(title)}</h1><p>${esc(t('news.span', { from: stamp(c.previous.taken_at), to: stamp(c.current.taken_at), gap: c.days_between < 1 ? oneOrMore('gap.hours', Math.max(1, Math.round(c.days_between * 24))) : days(Math.round(c.days_between)) }))}</p></div>
       <div class="rlinks"><button class="linklike" data-action="news-refresh" data-value="${esc(c.subject.key)}">${esc(t('news.refresh'))}</button></div></section>
-    <section class="metrics three">${cells.map(([value, label, why]) => `<div class="metric"><b>${num(value)}</b><span>${esc(label)}</span><small>${esc(why)}</small></div>`).join('')}</section>
+    <section class="metrics three">${cells.map(([value, label, why]) => `<div class="metric"><div class="metric-head"><span class="metric-lbl">${esc(label)}</span></div><b>${num(value)}</b><small>${esc(why)}</small></div>`).join('')}</section>
     ${c.sample ? `<section><p class="muted">${esc(t('news.sample'))}</p></section>` : ''}
     ${c.subject && c.subject.mode === 'company' && c.ritmo ? ritmoSection({ mode: 'company', ritmo: c.ritmo, page: { page_id: c.subject.page_id }, country: c.subject.country }, true) : ''}
     ${c.audience_drift && c.audience_drift.measurable ? jsDriftBar(c.audience_drift) : ''}
@@ -2253,10 +2314,13 @@ async function loadHistory() {
   if (S.mode === 'news') renderResults();
 }
 async function openNews(key) {
+  const seq = ++S.newsSeq;
   S.mode = 'news'; S.pages = null; S.notice = null; S.overlay = null;
   render();
   await loadHistory();
+  if (S.newsSeq !== seq || S.mode !== 'news') return;
   try { S.news = await api(`/api/history/changes?key=${encodeURIComponent(key)}`); } catch { S.news = null; }
+  if (S.newsSeq !== seq || S.mode !== 'news') return;
   if (S.news && !S.news.available) S.news = null;
   renderResults();
 }
@@ -2283,12 +2347,12 @@ function adDrawer(ad, r) {
     : ad.reach_per_day_estimate != null ? t('d.scale.estimate', { n: num(ad.reach_per_day_estimate), rank: num(ad.impression_rank) })
     : ad.scale_basis === 'impressions' ? t('d.scale.impressions', { n: num(ad.impression_rank) }) : t('d.scale.none');
   const reach = ad.reach, audience = ad.audience;
-  const places = (list, limit) => placeNames(list, null, list.length, limit);
+  const places = (list, limit) => placeNames(list || [], null, (list || []).length, limit);
   let reachHtml;
   if (!reach) reachHtml = `<p class="muted">${esc(t('d.reach.unread'))}</p>`;
   else if (!reach.available) reachHtml = `<p class="muted">${esc(t('d.reach.none'))}</p>`;
   else {
-    const countries = reach.regions.flatMap((g) => g.countries).sort((a, b) => b.reach - a.reach).slice(0, 8);
+    const countries = (reach.regions || []).flatMap((g) => g.countries || []).sort((a, b) => b.reach - a.reach).slice(0, 8);
     reachHtml = `<dl>
       ${ad.reach_total != null ? `<dt>${esc(t('d.reach.country', { country: where }))}</dt><dd>${num(ad.reach_total)}</dd>
       <dt>${esc(t('d.reach.perday', { country: where }))}</dt><dd>${num(ad.reach_per_day)}${(ad.reach_cards_read || 1) > 1 ? '' : ` <span class="muted">· ${esc(t('d.reach.perday.x', { total: num(ad.reach_total), days: days(rateDays) }))}</span>`}</dd>` : ''}
@@ -2346,7 +2410,7 @@ function adDrawer(ad, r) {
         ${(ad.languages || []).length > 1 ? `<dt>${esc(t('d.variants.languages'))}</dt><dd>${ad.languages.map((code) => esc(named('language', code))).join(', ')}</dd>` : ''}
         ${ad.products ? `<dt>${esc(t('d.variants.products'))}</dt><dd>${num(ad.products)}</dd>` : ''}</dl>
       ${ad.kind && ad.kind !== 'standard' ? `<p class="smallnote">${esc(t(`d.kind.${ad.kind}`))}</p>` : ''}
-      <p class="smallnote">${esc(t('d.longevity', { n: Math.round(ad.longevity_score) }))}</p>
+      <p class="smallnote">${esc(t('d.longevity', { n: ad.longevity_score != null ? Math.round(ad.longevity_score) : '—' }))}</p>
       <p style="margin-top:12px"><button class="linklike" data-action="guide">${esc(t('link.guide'))}</button></p></section>
     <section><h3>${esc(t('d.text'))}</h3><p class="copy">${esc(ad.body || t('t.notext'))}</p>
       <dl style="margin-top:14px">${ad.headline ? `<dt>${esc(t('d.headline'))}</dt><dd>${esc(ad.headline)}</dd>` : ''}
@@ -2378,7 +2442,7 @@ function confirmDialog() {
       <div><span class="k">${esc(t('confirm.opened'))}</span><span class="v">${esc(t('confirm.opened.v', { n: num(e.ceiling ?? S.deep * 2) }))}</span></div>
       <div><span class="k">${esc(t('confirm.frames'))}</span><span class="v"><label class="check"><input type="checkbox" data-change="frames" ${S.frames ? 'checked' : ''}>${esc(t('confirm.frames.on'))}</label><span class="muted">${esc(count(e.images ?? 0, 'n.images'))}</span></span></div>
       <div><span class="k">${esc(t('confirm.tokens'))}</span><span class="v">${esc(t('confirm.tokens.v', { n: num(e.tokens ?? 0) }))}</span></div>
-      <div><span class="k">${esc(t('confirm.band'))}</span><span class="v big">${esc(e.band ? t(`band.${e.band}`) : '—')}</span></div>
+      <div><span class="k">${esc(t('confirm.band'))}</span><span class="v big">${esc(e.band && hasT(`band.${e.band}`) ? t(`band.${e.band}`) : '—')}</span></div>
       <div><span class="k">${esc(t('confirm.time'))}</span><span class="v">${e.seconds ? esc(t('confirm.time.v', { time: dur(e.seconds) })) : '—'}</span></div>
     </div>
     <p class="smallnote">${esc(t('confirm.note'))}</p>
@@ -2388,10 +2452,10 @@ function projectDialog(overlay) {
   const p = overlay.draft, errors = overlay.errors || {};
   const field = (name, key, body, full) => `<label class="field${full ? ' full' : ''}${errors[name] ? ' bad' : ''}"><span>${esc(t(key))}</span>${body}${errors[name] ? `<em>${esc(t(`proj.err.${errors[name]}`))}</em>` : ''}</label>`;
   const input = (name, hint) => `<input type="text" data-pf="${name}" value="${esc(p[name] ?? '')}" placeholder="${esc(hint ? t(hint) : '')}" autocomplete="off">`;
+  const goalPeriods = [t('proj.goal.day'), t('proj.goal.week'), t('proj.goal.month')];
+  const savedPeriod = overlay.goalPeriod || goalPeriods[0];
   const goalInput = `<div style="display:flex;gap:8px">${input('goal', 'proj.goal.hint')}<select id="goal-period" style="width:170px;flex:none" aria-label="${esc(t('proj.goal'))}">
-    <option value="${esc(t('proj.goal.day'))}">${esc(t('proj.goal.day'))}</option>
-    <option value="${esc(t('proj.goal.week'))}">${esc(t('proj.goal.week'))}</option>
-    <option value="${esc(t('proj.goal.month'))}">${esc(t('proj.goal.month'))}</option></select></div>`;
+    ${goalPeriods.map((opt) => `<option value="${esc(opt)}"${opt === savedPeriod ? ' selected' : ''}>${esc(opt)}</option>`).join('')}</select></div>`;
   const optFields = ['vat_pct', 'shipping_cost', 'payment_fee_pct', 'payment_fee_fixed', 'return_rate_pct', 'other_costs'];
   const openExtra = optFields.some((k) => (p[k] !== undefined && p[k] !== null && String(p[k]).trim() !== '') || errors[k]);
   return `<div class="dialog" role="dialog" aria-modal="true"><h2>${esc(t('proj.title'))}</h2><p class="lead">${esc(t('proj.lead'))}</p>
@@ -2512,6 +2576,7 @@ function renderOverlay() {
   else if (overlay.type === 'link-confirm') inner = linkDialog(overlay);
   else if (overlay.type === 'how') inner = howDialog(overlay);
   else if (overlay.type === 'tutorial') inner = tutorialDialog(overlay);
+  if (!inner) { S.overlay = null; el.innerHTML = ''; return; }
   el.innerHTML = `<div class="scrim" data-action="close"></div>${inner}`;
   hydrateMcpImages();
 }
@@ -2519,13 +2584,19 @@ function render() { renderTop(); renderSearch(); renderResults(); renderOverlay(
 
 /* ---------- actions ---------- */
 async function refreshEstimate() {
+  const seq = ++S.estSeq;
   try {
-    S.estimate = await api(`/api/estimate?level=${S.level}&ads=${S.deep}&frames=${S.frames && S.level !== 'data' ? 1 : 0}`);
-  } catch { S.estimate = null; }
-  if (!S.job && !S.busy) renderSearch();
+    const est = await api(`/api/estimate?level=${S.level}&ads=${S.deep}&frames=${S.frames && S.level !== 'data' ? 1 : 0}`);
+    if (S.estSeq !== seq) return;
+    S.estimate = est;
+  } catch { if (S.estSeq !== seq) return; S.estimate = null; }
+  const searchEl = $('#search');
+  const typingInSearch = Boolean(searchEl && document.activeElement && searchEl.contains(document.activeElement)
+    && document.activeElement.matches && document.activeElement.matches('input, textarea, select'));
+  if (!S.job && !S.busy && !typingInSearch) renderSearch();
   if (S.overlay && S.overlay.type === 'confirm') renderOverlay();
 }
-function note(key, vars, err) { S.notice = { text: t(key, vars), err }; render(); }
+function note(key, vars, err) { S.notice = { key, vars, err }; render(); }
 
 async function submit() {
   S.notice = null; S.searchExpandedManual = false; S.wayHint = false;
@@ -2535,15 +2606,17 @@ async function submit() {
     return gate({ mode: 'keyword', query: S.query.trim() });
   }
   if (!S.company.trim()) return note('error.input', null, true);
-  S.pages = null; S.result = null; S.busy = 'pages'; render();
+  const seq = ++S.searchSeq;
+  S.pages = null; S.result = null; S.resultMode = null; S.busy = 'pages'; S.busyMode = 'company'; render();
   try {
     const found = await api(`/api/pages?name=${encodeURIComponent(S.company.trim())}&country=${S.country}`);
-    S.busy = null;
+    if (S.searchSeq !== seq) return;
+    S.busy = null; S.busyMode = null;
     if (!found.pages.length) return note('pages.none', { country: region(S.country) });
     if (found.pages.length === 1) { render(); return gate({ mode: 'company', page_id: found.pages[0].page_id }); }
     S.pages = found; render();
     window.scrollTo({ top: 0, behavior: 'instant' });
-  } catch (error) { S.busy = null; note('error.title', null, true); }
+  } catch (error) { if (S.searchSeq === seq) { S.busy = null; S.busyMode = null; note('error.title', null, true); } }
 }
 function gate(request) {
   S.searchExpandedManual = false;
@@ -2553,33 +2626,45 @@ function gate(request) {
   return launch();
 }
 async function launch() {
-  S.overlay = null; S.pages = null; S.result = null; S.notice = null;
+  const seq = ++S.searchSeq;
+  S.overlay = null; S.pages = null; S.result = null; S.resultMode = null; S.notice = null;
   S.searchExpandedManual = false;
-  S.durataBusy = false; S.durataError = false;
+  _resetViewFilters();
+  S.aiSeq++;
   try {
     S.job = await api('/api/jobs', { method: 'POST', body: { ...S.pending, level: S.pending.mode === 'compare' ? 'data' : S.level, deep: S.deep, frames: S.frames } });
   } catch (error) {
+    if (S.searchSeq !== seq) return;
     if (error.data && error.data.error === 'project_required') return openProject(true);
     return note('error.title', null, true);
   }
+  if (S.searchSeq !== seq) return;
   render();
-  while (S.job && S.job.status === 'running') {
+  while (S.job && S.job.status === 'running' && S.searchSeq === seq) {
     await sleep(700);
+    if (S.searchSeq !== seq || !S.job) break;
     try { S.job = await api(`/api/jobs/${S.job.id}`); } catch { break; }
+    if (S.searchSeq !== seq) break;
     updateProgress();
   }
+  if (S.searchSeq !== seq) return;
   const job = S.job; S.job = null;
   if (!job || job.status !== 'done') return note('error.title', null, true);
   const found = job.result.sides ? job.result.sides.every((side) => (side.ads || []).length) : (job.result.ads || []).length;
-  if (!found) return note(`error.${job.result.outcome === 'blocked' ? 'blocked' : 'no_results'}`);
+  if (!found) {
+    const blocked = job.result.sides
+      ? job.result.sides.some((side) => side.outcome === 'blocked')
+      : job.result.outcome === 'blocked';
+    return note(`error.${blocked ? 'blocked' : 'no_results'}`);
+  }
   S.result = job.result; S.result._live = true; S.resultMode = job.params.mode; S.jobId = job.id;
-  S.tab = 'overview'; S.aiJob = null; S.mcpSent = false; S.stratNeedProject = false;
+  S.tab = 'overview';
   S.stratLevel = (job.params.level === 'plan') ? 'plan' : 'analysis';
   render();
   window.scrollTo({ top: 0, behavior: 'instant' });
 }
 function setTab(tab) {
-  if (!STUDIO_TABS.includes(tab) || !S.result) return;
+  if (!STUDIO_TABS.includes(tab) || !hasModeResult()) return;
   S.tab = tab; S.stratNeedProject = false;
   renderResults();
 }
@@ -2609,7 +2694,8 @@ async function runAi() {
   if (!r || !S.jobId) return;
   const level = S.stratLevel === 'plan' ? 'plan' : 'analysis';
   if (level === 'plan' && !S.project) { S.stratNeedProject = true; renderResults(); return; }
-  S.stratNeedProject = false; S.aiElapsed = 0;
+  const seq = ++S.aiSeq;
+  S.stratNeedProject = false; S.aiElapsed = 0; S.aiCopied = false;
   const t0 = performance.now();
   const token = newToken();
   const adsCount = (r.request && r.request.deep) || S.deep;
@@ -2621,22 +2707,26 @@ async function runAi() {
       body: { token, job_id: S.jobId, level, ads: adsCount, frames: useFrames, lang: S.lang },
     });
   } catch (error) {
+    if (S.aiSeq !== seq) return;
     if (error.data && error.data.error === 'project_required') { S.stratNeedProject = true; renderResults(); return; }
     S.aiJob = { status: 'error', error: (error.data && error.data.error) || 'command_failed', detail: error.message };
     renderResults();
     return;
   }
+  if (S.aiSeq !== seq) return;
   renderResults();
-  while (S.aiJob && S.aiJob.status === 'running') {
+  while (S.aiJob && S.aiJob.status === 'running' && S.aiSeq === seq) {
     await sleep(700);
+    if (S.aiSeq !== seq || !S.aiJob) break;
     try { S.aiJob = await api(`/api/ai/jobs/${S.aiJob.id}`); } catch { break; }
+    if (S.aiSeq !== seq) break;
     if (S.aiJob && S.aiJob.status === 'running') {
       S.aiElapsed = Math.round((performance.now() - t0) / 1000);
       const el = $('#ai-elapsed');
       if (el) el.textContent = `${S.aiElapsed} s`;
     }
   }
-  if (S.tab === 'strategy') renderResults();
+  if (S.aiSeq === seq && S.tab === 'strategy') renderResults();
 }
 async function sendMcpAi() {
   const r = S.result;
@@ -2672,8 +2762,10 @@ async function reopenHistory(key) {
     try {
       const saved = await api(`/api/history/latest?key=${encodeURIComponent(key)}`);
       if (saved && saved.available && saved.result) {
+        _resetViewFilters();
+        S.pages = null; S.cmp = null; S.notice = null;
         S.result = saved.result; S.resultMode = saved.result.mode; S.jobId = saved.job_id || null;
-        S.tab = 'overview'; S.seismoWeek = null; S.searchExpandedManual = false; render(); return;
+        S.tab = 'overview'; S.searchExpandedManual = false; render(); return;
       }
     } catch { /* fall back to fresh search */ }
   }
@@ -2725,14 +2817,17 @@ function openProject(thenSearch) {
 }
 async function saveProject() {
   const overlay = S.overlay;
+  if (!overlay || !overlay.draft) return;
   document.querySelectorAll('[data-pf]').forEach((el) => { overlay.draft[el.dataset.pf] = el.value; });
   const rawGoal = String(overlay.draft.goal || '').trim();
   const periodEl = document.getElementById('goal-period');
+  if (periodEl && periodEl.value) overlay.goalPeriod = periodEl.value;
+  const payload = { ...overlay.draft };
   if (/^\d+(?:[.,]\d+)?$/.test(rawGoal) && periodEl && periodEl.value) {
-    overlay.draft.goal = `${rawGoal} ${periodEl.value}`;
+    payload.goal = `${rawGoal} ${periodEl.value}`;
   }
   let saved;
-  try { saved = await api('/api/project', { method: 'PUT', body: overlay.draft }); } catch (error) { saved = { errors: {} }; }
+  try { saved = await api('/api/project', { method: 'PUT', body: payload }); } catch (error) { saved = { errors: {} }; }
   if (!saved.project) { overlay.errors = saved.errors || {}; return renderOverlay(); }
   S.project = saved.project;
   S.simPrice = S.simCost = S.simVat = S.simShip = S.simFeePct = S.simRetPct = S.simItFee = null;
@@ -2755,7 +2850,13 @@ async function makeBrief(options = {}) {
 }
 
 const ACTIONS = {
-  mode(value) { S.mode = value; S.pages = null; S.cmp = null; S.notice = null; S.durataBusy = false; S.durataError = false; S.searchExpandedManual = false; render(); if (value === 'news') loadHistory(); },
+  mode(value) {
+    S.mode = value; S.pages = null; S.cmp = null; S.notice = null;
+    S.durataCancelSeq++; S.durataBusy = false; S.durataError = false;
+    S.searchExpandedManual = false;
+    render();
+    if (value === 'news') loadHistory();
+  },
   'news-open': openNews, 'news-refresh': refreshSubject,
   rtab: setTab,
   'ads-view'(value) { S.adsView = value === 'cards' ? 'cards' : 'table'; renderResults(); },
@@ -2767,14 +2868,25 @@ const ACTIONS = {
     if (r.mode === 'company' && r.page && r.page.page_id) gate({ mode: 'company', page_id: r.page.page_id, fresh: true });
     else if (r.mode === 'keyword' && r.query) gate({ mode: 'keyword', query: r.query, fresh: true });
   },
-  'conn-open'() { S.searchExpandedManual = true; renderSearch(); const way = $('#way'); if (way && way.scrollIntoView) way.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
+  'conn-open'() {
+    if (S.mode !== 'company' && S.mode !== 'keyword') { S.mode = 'company'; renderTop(); }
+    S.searchExpandedManual = true;
+    renderSearch();
+    const way = $('#way');
+    if (way && way.scrollIntoView) way.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  },
   'quick-reopen': reopenHistory,
   'jump-company': jumpToCompany,
   'ad-step'(value) { stepAd(Number(value || 1)); },
   'video-inspect': runVideoInspect,
   'ai-run': runAi,
   'mcp-send-ai': sendMcpAi,
-  async 'copy-ai-report'() { if (S.aiJob && S.aiJob.markdown) await copyText(S.aiJob.markdown); },
+  async 'copy-ai-report'() {
+    if (S.aiJob && S.aiJob.markdown && await copyText(S.aiJob.markdown)) {
+      S.aiCopied = true;
+      renderResults();
+    }
+  },
   sort(value) { S.sort = value; renderResults(); },
   theme(value) {
     if (value === S.theme) return;
@@ -2811,24 +2923,23 @@ const ACTIONS = {
   },
   'link-open'() { S.overlay = { type: 'link-confirm', overwrite: false }; renderOverlay(); },
   'link-overwrite-open'() { S.overlay = { type: 'link-confirm', overwrite: true }; renderOverlay(); },
-  'link-go'() { const overwrite = S.overlay.overwrite; S.overlay = null; renderOverlay(); runConnect(overwrite); },
+  'link-go'() { if (!S.overlay) return; const overwrite = Boolean(S.overlay.overwrite); S.overlay = null; renderOverlay(); runConnect(overwrite); },
   'link-test': testLink,
   async 'link-copy'() { S.link.copy = (await copyText(exampleSentence())) ? 'ok' : 'failed'; renderWay(); },
   'way-run'() {
-    const r = S.result;
-    if (r && S.jobId && S.resultMode !== 'compare') {
-      S.wayHint = false; S.tab = 'strategy'; render(); runAi(); return;
+    if (hasModeResult() && S.jobId && S.mode !== 'compare') {
+      S.wayHint = false; S.searchExpandedManual = false; S.tab = 'strategy'; render(); runAi(); return;
     }
     S.wayHint = true; renderWay();
   },
   'way-copy'() {
     const r = S.result;
-    if (r && S.jobId && S.resultMode !== 'compare' && r.request && r.request.level !== 'data') { S.link.hint = false; renderWay(); return makeBrief(); }
+    if (hasModeResult() && S.jobId && S.mode !== 'compare' && r.request && r.request.level !== 'data') { S.link.hint = false; renderWay(); return makeBrief(); }
     S.link.hint = true; renderWay();
   },
   'how-open'() { S.overlay = { type: 'how', step: 1 }; renderOverlay(); },
-  'how-next'() { S.overlay.step = Math.min(3, S.overlay.step + 1); renderOverlay(); },
-  'how-prev'() { S.overlay.step = Math.max(1, S.overlay.step - 1); renderOverlay(); },
+  'how-next'() { if (!S.overlay) return; S.overlay.step = Math.min(3, (S.overlay.step || 1) + 1); renderOverlay(); },
+  'how-prev'() { if (!S.overlay) return; S.overlay.step = Math.max(1, (S.overlay.step || 1) - 1); renderOverlay(); },
   tutorial() { S.overlay = { type: 'tutorial', tab: 1 }; renderOverlay(); },
   'kpi-open'() { S.overlay = { type: 'tutorial', tab: 5 }; renderOverlay(); },
   'tut-tab'(value) { if (S.overlay && S.overlay.type === 'tutorial') { S.overlay.tab = Number(value); renderOverlay(); } },
@@ -2849,24 +2960,29 @@ const ACTIONS = {
   'brief-ads'(value) { makeBrief({ ads: Number(value) }); },
   'choose-page'(value) { gate({ mode: 'company', page_id: value }); },
   'cmp-pick'(value, el) {
+    if (!S.cmp || !S.cmp.sides || !S.cmp.sides[Number(el.dataset.side)]) return;
     S.cmp.sides[Number(el.dataset.side)].picked = value;
     if (S.cmp.sides.every((side) => side.picked)) launchCompare(); else renderResults();
   },
   'open-ad'(value) { S.overlay = { type: 'ad', id: value }; renderOverlay(); },
   close() { S.overlay = null; renderOverlay(); },
   async 'copy-brief'() {
-    const made = S.overlay.made;
+    const made = S.overlay && S.overlay.made;
+    if (!made) return;
     if (await copyText(made.text)) briefStatus(t('brief.copied'));
     else briefStatus(t('brief.copy.failed', { folder: made.folder_name }), true);
   },
   async 'copy-command'() {
-    const made = S.overlay.made;
+    const made = S.overlay && S.overlay.made;
+    if (!made) return;
     if (await copyText(t(`brief.command.${made.level}`, { folder: made.folder }))) briefStatus(t('brief.copied.command'));
     else briefStatus(t('brief.copy.failed.command'), true);
   },
   async 'open-frames'() {
+    const made = S.overlay && S.overlay.made;
+    if (!made) return;
     try {
-      await api('/api/frames/open', { method: 'POST', body: { key: S.overlay.made.frames_key } });
+      await api('/api/frames/open', { method: 'POST', body: { key: made.frames_key } });
       briefStatus(t('brief.frames.opened'));
     } catch { briefStatus(t('brief.frames.failed'), true); }
   },
@@ -2948,6 +3064,7 @@ document.addEventListener('click', (event) => {
     }
     return;
   }
+  if (event.target.closest('.help-pop')) return;
   if (!event.target.closest('.help-wrap')) closeHelp();
   const el = event.target.closest('[data-action]');
   if (!el || el.disabled) return;
@@ -2974,12 +3091,17 @@ document.addEventListener('input', (event) => {
     }
   }
   if (el.dataset.sim) {
-    if (el.dataset.sim === 'price') S.simPrice = Number(el.value || 0);
-    if (el.dataset.sim === 'cost') S.simCost = Number(el.value || 0);
-    if (el.dataset.sim === 'vat') S.simVat = Number(el.value || 0);
-    if (el.dataset.sim === 'ship') S.simShip = Number(el.value || 0);
-    if (el.dataset.sim === 'feePct') S.simFeePct = Number(el.value || 0);
-    if (el.dataset.sim === 'retPct') S.simRetPct = Number(el.value || 0);
+    const n = Number(el.value || 0);
+    const safe = Number.isFinite(n) ? n : 0;
+    if (el.dataset.sim === 'price') S.simPrice = safe;
+    if (el.dataset.sim === 'cost') S.simCost = safe;
+    if (el.dataset.sim === 'vat') S.simVat = safe;
+    if (el.dataset.sim === 'ship') S.simShip = safe;
+    if (el.dataset.sim === 'feePct') S.simFeePct = safe;
+    if (el.dataset.sim === 'retPct') S.simRetPct = safe;
+    document.querySelectorAll(`[data-sim="${el.dataset.sim}"]`).forEach((other) => {
+      if (other !== el) other.value = el.value;
+    });
     updateSimDom();
   }
 });
@@ -2989,19 +3111,29 @@ document.addEventListener('change', (event) => {
   if (el.dataset.change === 'brief-frames') makeBrief({ frames: el.checked });
   if (el.dataset.bind === 'country') {
     S.country = el.value;
-    if (S.simItFee === null && $('[data-sim-check="itFee"]')) {
-      $('[data-sim-check="itFee"]').checked = ((S.project && S.project.market) || S.country) === 'IT';
-      updateSimDom();
+    if (S.simItFee === null) {
+      const wantIt = ((S.project && S.project.market) || S.country) === 'IT';
+      const checks = document.querySelectorAll('[data-sim-check="itFee"]');
+      if (checks.length) {
+        checks.forEach((cb) => { cb.checked = wantIt; });
+        updateSimDom();
+      }
     }
   }
-  if (el.dataset.simCheck === 'itFee') { S.simItFee = el.checked; updateSimDom(); }
+  if (el.dataset.simCheck === 'itFee') {
+    S.simItFee = el.checked;
+    document.querySelectorAll('[data-sim-check="itFee"]').forEach((other) => {
+      if (other !== el) other.checked = el.checked;
+    });
+    updateSimDom();
+  }
 });
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     if ($('.help-wrap.open')) { closeHelp(); return; }
     if (S.overlay) { ACTIONS.close(); return; }
   }
-  if (event.key === 'Enter' && event.target.dataset && event.target.dataset.bind && !S.job && !S.busy) { submit(); return; }
+  if (event.key === 'Enter' && event.target.dataset && ['query', 'company', 'companyB'].includes(event.target.dataset.bind) && !S.job && !S.busy) { submit(); return; }
   const editing = event.target && event.target.matches && event.target.matches('input, textarea, select, [contenteditable]');
   if (editing || event.ctrlKey || event.metaKey || event.altKey) return;
   if (S.overlay && S.overlay.type === 'ad') {
@@ -3009,7 +3141,7 @@ document.addEventListener('keydown', (event) => {
     else if (event.key === 'ArrowLeft') { event.preventDefault(); stepAd(-1); }
     return;
   }
-  if (!S.overlay && S.result && (S.mode === 'company' || S.mode === 'keyword')) {
+  if (!S.overlay && hasModeResult() && (S.mode === 'company' || S.mode === 'keyword')) {
     const idx = STUDIO_TABS.indexOf(S.tab);
     if (event.key === 'ArrowRight') { event.preventDefault(); setTab(STUDIO_TABS[(idx + 1) % STUDIO_TABS.length]); return; }
     if (event.key === 'ArrowLeft') { event.preventDefault(); setTab(STUDIO_TABS[(idx - 1 + STUDIO_TABS.length) % STUDIO_TABS.length]); return; }
@@ -3031,11 +3163,13 @@ function _applyHostCtx(ctx) {
 (async function start() {
   if (IS_MCP_APP) {
     try {
-      mcpApp = new window.McpExtApps.App({ name: 'Ad Library Insights', version: '0.7.0' }, {});
+      mcpApp = new window.McpExtApps.App({ name: 'Ad Library Insights', version: '0.8.0' }, {});
       mcpApp.onhostcontextchanged = _applyHostCtx;
       mcpApp.ontoolinput = ({ arguments: args }) => {
         if (args && (args.name || args.page_id || args.query)) {
-          S.busy = 'tool'; S.searchExpandedManual = false;
+          const targetMode = (args.query && !args.page_id && !args.name) ? 'keyword' : 'company';
+          S.mode = targetMode; S.busy = 'tool'; S.busyMode = targetMode;
+          S.result = null; S.resultMode = null; S.searchExpandedManual = false;
           render();
         }
       };

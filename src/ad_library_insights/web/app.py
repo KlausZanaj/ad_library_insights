@@ -203,6 +203,11 @@ class Workspace:
                                 source.result["durata"] = found["durata"]
                                 if enriched_ritmo is not None:
                                     source.result["ritmo"] = enriched_ritmo
+                            if had_valid_ritmo or enriched_ritmo is not None:
+                                job.result = {
+                                    **found,
+                                    "ritmo": enriched_ritmo if enriched_ritmo is not None else source.raw["ritmo"],
+                                }
                             break
                 else:
                     result = await self._collect(

@@ -34,6 +34,11 @@ def _compact_css(raw: str) -> str:
     return "\n".join(line.strip() for line in stripped.splitlines() if line.strip())
 
 
+def _compact_js(raw: str) -> str:
+    """Safely trim blank lines and leading/trailing spaces without altering literals."""
+    return "\n".join(line.strip() for line in raw.splitlines() if line.strip())
+
+
 def build_studio_html(static_dir: Path | None = None) -> str:
     """Assemble the self-contained MCP App HTML document from web static assets."""
     root = Path(static_dir) if static_dir else STATIC_DIR
@@ -41,7 +46,7 @@ def build_studio_html(static_dir: Path | None = None) -> str:
     strings_raw = json.loads((root / "strings.json").read_text(encoding="utf-8"))
     strings_json = json.dumps(strings_raw, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
     sdk_js = _SCRIPT_CLOSE.sub(r"<\\/\1", (root / "mcp_ext_apps.min.js").read_text(encoding="utf-8"))
-    app_js = _SCRIPT_CLOSE.sub(r"<\\/\1", (root / "app.js").read_text(encoding="utf-8"))
+    app_js = _SCRIPT_CLOSE.sub(r"<\\/\1", _compact_js((root / "app.js").read_text(encoding="utf-8")))
 
     return (
         '<!doctype html>\n'
@@ -60,6 +65,7 @@ def build_studio_html(static_dir: Path | None = None) -> str:
         '<path d="M3 14V9.5M7 14V5.5M11 14V8M15 14V3.5" stroke-linecap="round"/></svg>'
         '</span><span class="brand-text">Ad Library Studio <em class="brand-by">by Klaus</em></span></span>\n'
         '    <nav class="modes" id="modes" aria-label="Mode"></nav>\n'
+        '    <span id="conn-pill"></span>\n'
         '    <button class="btn quiet small top-tut" id="tut-btn" data-action="tutorial"></button>\n'
         '    <div class="switch" id="lang" role="group"></div>\n'
         '    <div class="switch" id="theme" role="group"></div>\n'

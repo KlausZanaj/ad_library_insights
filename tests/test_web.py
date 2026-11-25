@@ -1699,3 +1699,160 @@ def test_v08_zalando_ritmo_preserved_and_strategy_flowchart_popovers(site, page_
     assert abs(pop_box["y"] - btn_box["y"]) < 260
 
 
+def test_mode_switch_from_compare_never_blanks_company_or_keyword_and_guard_regressions(site, page_of):
+    """Switching from Compare to Company/Keyword must expand the search form (never blank screen),
+    pressing Enter in #tbl-q must not submit a new search, clicking inside .help-pop must not close it,
+    unknown ad IDs must not leave an orphan .scrim, and Tab 6 simulator must update even when #search is open."""
+    page = page_of("it")
+    page.wait_for_selector("input[data-bind=company]")
+
+    # 1. Populate a completed Compare result
+    page.evaluate("""() => {
+      const adA = {
+        library_id: '111111111111', advertiser: 'Zalando', body: 'Zalando black friday deal',
+        media_type: 'video', score: 88, verdict: 'scaling', reliability: 'high', days_running: 14, creatives: 4,
+      };
+      const adB = {
+        library_id: '222222222222', advertiser: 'Tezenis', body: 'Tezenis winter capsule',
+        media_type: 'image', score: 71, verdict: 'holding', reliability: 'high', days_running: 30, creatives: 2,
+      };
+      S.mode = 'compare';
+      S.resultMode = 'compare';
+      S.company = 'Zalando';
+      S.companyB = 'Tezenis';
+      S.result = {
+        mode: 'compare', country: 'IT',
+        sides: [
+          { query: 'Zalando', page: { name: 'Zalando', page_id: '111', category: 'Retail', followers: 1000 }, ads_parsed: 5, ads: [adA] },
+          { query: 'Tezenis', page: { name: 'Tezenis', page_id: '222', category: 'Retail', followers: 500 }, ads_parsed: 3, ads: [adB] },
+        ],
+        comparison: {
+          names: { a: 'Zalando', b: 'Tezenis' },
+          highlights: [],
+          rows: [{ group: 'volume', key: 'active_ads', kind: 'number', a: 5, b: 3 }],
+          audience_overlap: { measurable: false },
+        },
+      };
+      render();
+    }""")
+    page.wait_for_selector(".cmphead")
+
+    # 2. Switch Compare -> Company: must show full Company form (NOT collapsed blank screen)
+    page.click("[data-action=mode][data-value=company]")
+    assert _count(page, ".search-compact") == 0
+    assert page.locator("input[data-bind=company]").is_visible()
+    assert page.locator("#results").inner_text().strip() == ""
+
+    # 3. Switch Company -> Keyword: must show full Keyword form (NOT collapsed blank screen)
+    page.click("[data-action=mode][data-value=keyword]")
+    assert _count(page, ".search-compact") == 0
+    assert page.locator("input[data-bind=query]").is_visible()
+    assert page.locator("#results").inner_text().strip() == ""
+
+    # 4. Switch back -> Compare: comparison sheet restores cleanly
+    page.click("[data-action=mode][data-value=compare]")
+    assert page.locator(".cmphead").is_visible()
+
+    # 5. Load a Company result and test #tbl-q Enter, .help-pop click, unknown ad ID scrim, and Tab 6 simulator sync
+    search_requests = []
+    page.route("**/api/pages*", lambda r: (search_requests.append(r.request.url), r.fulfill(status=200, content_type="application/json", body='{"pages":[]}')))
+    page.route("**/api/jobs", lambda r: (search_requests.append(r.request.url), r.fulfill(status=200, content_type="application/json", body='{}')))
+
+    page.evaluate("""() => {
+      S.mode = 'company';
+      S.resultMode = 'company';
+      S.level = 'plan';
+      S.levelOpen = true;
+      S.searchExpandedManual = true;
+      S.tab = 'ads';
+      S.stratLevel = 'plan';
+      S.result = {
+        mode: 'company', country: 'IT', ads_parsed: 2, from_cache: false,
+        request: { mode: 'company', country: 'IT', level: 'plan', deep: 10, frames: false },
+        page: { name: 'Zalando', page_id: '111', category: 'Retail', followers: 1000 },
+        signals: {
+          active_ads: 2, video_share: 0.5, new_per_week: 2, started_last_30_days: 2, share_started_last_30_days: 1,
+          reach: { available: false }, languages: [], platforms: [], buttons: [], destinations: [],
+          copy_patterns: { reused_texts: [] },
+        },
+        ads: [
+          { library_id: '111111111111', advertiser: 'Zalando', body: 'Alpha jacket offer', media_type: 'video', score: 88, verdict: 'scaling', reliability: 'high', days_running: 14, creatives: 4 },
+          { library_id: '222222222222', advertiser: 'Zalando', body: 'Beta boots promo', media_type: 'image', score: 62, verdict: 'holding', reliability: 'medium', days_running: 25, creatives: 2 },
+        ],
+      };
+      render();
+    }""")
+    page.wait_for_selector("#tbl-q")
+    page.fill("#tbl-q", "Alpha")
+    page.press("#tbl-q", "Enter")
+    assert search_requests == []
+    assert _count(page, "#ads-tbody tr") == 1
+
+    # Clicking an unknown ad ID must NOT leave a dark .scrim blocking the page
+    page.evaluate("ACTIONS['open-ad']('999999999999999')")
+    assert _count(page, "#overlay .scrim") == 0
+
+    # Tab 6: clicking inside an open .help-pop inside .arch-node must NOT close the popover
+    page.click("[data-action=rtab][data-value=strategy]")
+    page.wait_for_selector(".arch-schema")
+    btn = page.locator(".arch-node[data-value=copy] [data-action=help-toggle]")
+    btn.scroll_into_view_if_needed()
+    btn.click()
+    pop = page.locator(".help-wrap.open .help-pop")
+    assert pop.is_visible()
+    pop.click()
+    assert pop.is_visible()
+
+    # Tab 6 Level 3 simulator updates even when #search is expanded with Level 3 open simultaneously
+    tab6_price = page.locator("#results [data-sim=price]")
+    tab6_cpa = page.locator("#results [data-sim-out=cpa]")
+    before = tab6_cpa.inner_text()
+    tab6_price.fill("300")
+    after = tab6_cpa.inner_text()
+    assert before != after
+
+
+def test_durata_backend_preserves_and_syncs_ritmo(monkeypatch, tmp_path):
+    """Durata returning partial_list must preserve valid active-ads ritmo on both source.result and job.result."""
+    from ad_library_insights import service
+    from ad_library_insights.client import AdLibraryClient
+    from ad_library_insights.web.app import Job
+
+    valid_ritmo = {"available": True, "sta_lta": {"state": "spike", "ratio": 3.08, "weeks": []}}
+    partial_durata = {
+        "durata": {"available": False, "reason": "partial_list", "loaded_share": 0.57, "window_days": 90},
+        "ritmo": {"available": False, "reason": "partial_list", "loaded_share": 0.57},
+    }
+
+    async def fake_analyze_durata(*_a, **_k):
+        return partial_durata
+
+    monkeypatch.setattr(service, "analyze_durata", fake_analyze_durata)
+    asgi = create_app(client=AdLibraryClient(renderer=lambda *_a, **_k: None), home=tmp_path)
+    space = asgi.state.workspace
+    src = Job(
+        id="src1",
+        params={"mode": "company", "country": "IT", "page_id": "111"},
+        status="done",
+        raw={"page": {"page_id": "111"}, "ads": [{"library_id": "1"}], "ritmo": dict(valid_ritmo)},
+        result={"page": {"page_id": "111"}, "ads": [{"library_id": "1"}], "ritmo": dict(valid_ritmo)},
+    )
+    space.jobs[src.id] = src
+    with TestClient(asgi) as http:
+        res = http.post("/api/durata", json={"page_id": "111", "country": "IT", "window_days": 90})
+        assert res.status_code == 202
+        jid = res.json()["id"]
+        djob = None
+        for _ in range(50):
+            djob = http.get(f"/api/jobs/{jid}").json()
+            if djob["status"] != "running":
+                break
+            time.sleep(0.05)
+
+    assert djob["status"] == "done"
+    assert src.result["ritmo"]["available"] is True
+    assert djob["result"]["ritmo"]["available"] is True
+    assert djob["result"]["durata"]["reason"] == "partial_list"
+
+
+

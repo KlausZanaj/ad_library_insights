@@ -4,12 +4,12 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests: 509 offline](https://img.shields.io/badge/tests-509%20offline-informational)](#tests)
+[![Tests: 514 offline](https://img.shields.io/badge/tests-514%20offline-informational)](#tests)
 [![MCP: 17 tools](https://img.shields.io/badge/MCP-17%20tools%20%C2%B7%20MCP%20App%20%C2%B7%206%20skills%20%C2%B7%205%20sub--agents-0062cc)](#connect-to-claude-code-google-antigravity-codex-cli-or-claude-desktop)
 
 Ad Library Insights reads the public Meta Ad Library and runs an entire **pure-Python quantitative pipeline** before an LLM ever sees a byte: merging duplicate feeds and translations into distinct creative concepts, computing Kaplan-Meier cohort survival, detecting launch bursts and format shifts, slicing verified data packs into isolated specialist views, stress-testing ad drafts with an independent red-team jury, auditing the final draft deterministically, and inspecting individual video ads on demand.
 
-It runs inside **MCP App hosts** (`ui://ad-library-insights/studio.html` in Google Antigravity, Claude Desktop, and compatible clients), as a **local 5-tab Studio web app** (`127.0.0.1` with 1-click Claude Code execution), as a **command-line tool**, and as a standard **MCP server** (17 tools, 6 skills, 5 sub-agents). Everything runs locally using your own AI assistant (Claude Code, Google Antigravity, Codex CLI, Claude Desktop, or any browser chat).
+It runs inside **MCP App hosts** (`ui://ad-library-insights/studio.html` in Google Antigravity, Claude Desktop, and compatible clients), as a **local 6-tab Studio web app** (`127.0.0.1` with 1-click Claude Code execution), as a **command-line tool**, and as a standard **MCP server** (17 tools, 6 skills, 5 sub-agents). Everything runs locally using your own AI assistant (Claude Code, Google Antigravity, Codex CLI, Claude Desktop, or any browser chat).
 
 ---
 
@@ -39,7 +39,7 @@ Raw Meta Ad Library scraping breaks on survivor bias, launch spikes, duplicated 
 | **Copy duplication & demographic drift without embeddings** | Information theory & ecology | [`lab/struttura.py`](src/ad_library_insights/lab/struttura.py): `zlib` raw DEFLATE Normalized Compression Distance (NCD), HHI/Gini reach concentration, Shannon diversity, Pianka niche overlap, Jensen-Shannon drift | Quantifies concentration, copy families and audience overlap/drift locally with zero GPU or vector DB. |
 | **LLM confirmation bias & hallucinated ad math** | Intelligence analysis (ACH & red-teaming) | [`skills/`](skills) + [`.claude/agents/`](.claude/agents) + [`lab/audit.py`](src/ad_library_insights/lab/audit.py): 4 isolated specialist slices, Analysis of Competing Hypotheses, independent Level 3 `ad-skeptical-jury`, deterministic `check_report` | Separates evidence collection from synthesis and catches ungrounded IDs, impossible claims or drifted budget math before delivery. |
 
-Every formula lives in readable standard-library Python under [`src/ad_library_insights/lab/`](src/ad_library_insights/lab) and is verified by the 504-test offline suite — zero black-box scores.
+Every formula lives in readable standard-library Python under [`src/ad_library_insights/lab/`](src/ad_library_insights/lab) and is verified by the 514-test offline suite — zero black-box scores.
 
 ---
 
@@ -109,7 +109,7 @@ Before starting any Level 2 or Level 3 collection, the app displays the exact nu
   2. **Analyse a company** from its verified page, with on-demand **Durata** cohort survival (60/90/120/180-day Kaplan-Meier curve, Weibull failure regime & Lindy survival) and **Ritmo** 9-week seismograph.
   3. **Compare two companies** across 26 objective indicators plus **EU+UK audience overlap (Pianka index)** over `country × age × gender`.
   4. **What changed & cohort survival:** every search is saved locally; from the second search of the same company, it lists new, stopped and modified ads, computes **survival rate by age cohort**, tracks **Ritmo** launch/format alerts, and measures **Audience drift (Jensen-Shannon distance)** across snapshots.
-- **5-Tab Interactive Studio (`overview`, `pulse`, `structure`, `ads`, `strategy`):** collapsible summary search bar (`/` shortcut, `1–5` and `← →` keyboard navigation), Quick-Reopen history chips, Table & Visual Cards Grid toggle, Prev/Next Ad Inspector with on-demand **first-5-seconds Video Hook inspection**, and an embedded **MCP App (`ui://ad-library-insights/studio.html`)** view.
+- **6-Tab Interactive Studio (`overview`, `ads`, `seismo`, `durata`, `structure`, `strategy`):** collapsible summary search bar (`/` shortcut, `1–6` and `← →` keyboard navigation), Quick-Reopen history chips, Table & Visual Cards Grid toggle with open Tier List, clickable 9-week Seismograph inspector, dedicated Lifespan funnel table, connected multi-agent Strategy flowchart, Prev/Next Ad Inspector with on-demand **first-5-seconds Video Hook inspection**, and an embedded **MCP App (`ui://ad-library-insights/studio.html`)** view.
 - **Interactive Table Guide, Auto Summary & 6-Tab Tutorial:** automatic **In breve** summary banner, inline **`?`** contextual popovers, 6-tab **Tutorial & KPI** modal, and expandable **Table guide** explaining every Verdict and Reliability grade.
 - **Break-even CPA checker & CSV cut list:** computes net margin, break-even CPA, max CPC at 1%/2%/3% CVR and flags zero-sale over-spenders directly from an Ads Manager CSV export.
 - **Bilingual & dual-theme responsive UI:** Italian and English sticky toggle, smooth Light and Deep Blue Dark theme transitions, and mobile-safe horizontal table scrolling with viewport-clamped popovers.
@@ -162,10 +162,10 @@ On Windows, double-click **`avvia.bat`**. On first launch it creates the virtual
 ad-library-insights app
 ```
 
-1. **Pick a mode and depth level (1, 2 or 3).** Clicking any level expands its workflow and live simulator; once loaded, results open in the **5-tab Studio** while the search bar collapses cleanly at the top.
+1. **Pick a mode and depth level (1, 2 or 3).** Clicking any level expands its workflow and live simulator; once loaded, results open in the **6-tab Studio** while the search bar collapses cleanly at the top.
 2. **Choose how many concepts to read in depth (10, 20 or 50).** Opens the most shown ad of each concept first, then second/third ads up to a ceiling of two ads opened per concept requested.
 3. **Run, connect or export for Levels 2 and 3:**
-   - **1-Click In-Page AI Execution (Claude Code):** click **Generate report here (Claude Code)** in Tab 5 (`Strategy & AI`) to pipe the prepared brief via `stdin` to local `claude -p`, audit it deterministically via `check_report`, and click any cited Ad ID in the rendered report to open its inspector drawer.
+   - **1-Click In-Page AI Execution (Claude Code):** click **Generate report here (Claude Code)** in Tab 6 (`AI Strategy`) to pipe the prepared brief via `stdin` to local `claude -p`, audit it deterministically via `check_report`, and click any cited Ad ID in the rendered report to open its inspector drawer.
    - **1-Click Assistant Setup:** click **Connect now** on the page — or run `ad-library-insights connect --claude --antigravity` — to configure the MCP server, 6 skills, and 5 sub-agents.
    - **Universal 1-Click Copy:** click **Copy for your assistant** to copy a self-contained single-pass brief for ChatGPT, Claude Web or Gemini, and **Open stills folder** to attach extracted video frames.
 
@@ -176,8 +176,8 @@ ad-library-insights app
 ## Connect to Claude Code, Google Antigravity, Codex CLI or Claude Desktop
 
 No external LLM APIs or keys are ever called by the app. Four integration layers are supported:
-- **Interactive MCP App Studio (`ui://ad-library-insights/studio.html`):** renders the full 5-tab Studio natively inside compatible MCP hosts (Google Antigravity Side Pane / Global Sidebar / inline results, Claude Desktop, ChatGPT MCP Apps) via `open_studio`, `search_ads`, `analyze_company`, and `compare_companies`.
-- **Universal Web App Copy (`brief.md`) & Local 1-Click Runner:** one-click single-pass brief for any browser chat (ChatGPT, Gemini Web, Claude Web), or direct `claude -p` execution inside Tab 5 on `127.0.0.1`.
+- **Interactive MCP App Studio (`ui://ad-library-insights/studio.html`):** renders the full 6-tab Studio natively inside compatible MCP hosts (Google Antigravity Side Pane / Global Sidebar / inline results, Claude Desktop, ChatGPT MCP Apps) via `open_studio`, `search_ads`, `analyze_company`, and `compare_companies`.
+- **Universal Web App Copy (`brief.md`) & Local 1-Click Runner:** one-click single-pass brief for any browser chat (ChatGPT, Gemini Web, Claude Web), or direct `claude -p` execution inside Tab 6 on `127.0.0.1`.
 - **Standard MCP server (`17` tools: `16` model-visible + `app_studio_action`) + 6 [`skills/`](skills):** model-agnostic integration for Claude Code, Google Antigravity, Codex CLI, Cursor and Claude Desktop.
 - **Dedicated Claude Code sub-agents ([`.claude/agents/`](.claude/agents)):** isolated `model: sonnet` execution for the 4 research analysts and Level 3 `ad-skeptical-jury` runs natively in Claude Code; on all other clients, the same checklists run in a single pass via `brief.md`.
 
@@ -251,10 +251,10 @@ codex mcp add ad-library-insights -- /absolute/path/.venv/bin/python -m ad_libra
 
 | Tool | Purpose |
 |---|---|
-| `open_studio(country, name, page_id, query, deep_ads, open_browser)` | Opens the interactive 5-tab **Ad Library Studio** UI resource (`ui://ad-library-insights/studio.html`) inside MCP App hosts (Side Pane, Global Sidebar, or inline) or launches the local `127.0.0.1` Studio. |
+| `open_studio(country, name, page_id, query, deep_ads, open_browser)` | Opens the interactive 6-tab **Ad Library Studio** UI resource (`ui://ad-library-insights/studio.html`) inside MCP App hosts (Side Pane, Global Sidebar, or inline) or launches the local `127.0.0.1` Studio. |
 | `search_ads(country, query, advertiser, ..., deep_ads)` | Ranked concepts for a keyword and/or advertiser name (`meta.ui` opens results inline in the Studio). `deep_ads` reads reach and audience for the most shown concepts. |
 | `find_advertiser_pages(name, country)` | Advertiser pages suggested by the library for a name, with followers and category. |
-| `analyze_company(country, page_id \| name, deep_ads, frames)` | Every active ad of one page, ranked, with company signals, reach, audience, `Ritmo`, `Su cosa si regge` and `Annunci fuori schema` (`meta.ui` opens the 5-tab Studio inline). |
+| `analyze_company(country, page_id \| name, deep_ads, frames)` | Every active ad of one page, ranked, with company signals, reach, audience, `Ritmo`, `Su cosa si regge` and `Annunci fuori schema` (`meta.ui` opens the 6-tab Studio inline). |
 | `compare_companies(country, page_id_a, page_id_b, deep_ads)` | Two pages side by side across 26 metrics plus EU+UK `Pianka` audience overlap (`meta.ui` opens the Studio comparison view). |
 | `what_changed(country, query \| page_id)` | New, stopped and changed ads since the previous search, cohort survival, `Ritmo` and Jensen-Shannon audience drift. |
 | `estimate_consumption(level, ads, frames)` | Token, image and time estimate for a Level 2 or Level 3 run. |
@@ -315,7 +315,7 @@ pip install -e ".[dev]"
 python -m pytest
 ```
 
-The 509-test suite runs entirely offline using recorded fixtures in `tests/fixtures/`, a scripted renderer and a deterministic fake clock.
+The 514-test suite runs entirely offline using recorded fixtures in `tests/fixtures/`, a scripted renderer and a deterministic fake clock.
 
 ## License
 

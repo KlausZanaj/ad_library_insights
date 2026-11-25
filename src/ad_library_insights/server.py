@@ -32,7 +32,7 @@ mcp = FastMCP(
         "files, one per specialist; a Plan needs the project card (get_project, save_project). Single video "
         "ads can be inspected on demand with inspect_video (one ad_id per call). Pages are "
         "cached for six hours and requests are spaced out, so a call can take a few minutes. "
-        "Call open_studio to open the interactive 5-tab Ad Library Studio UI."
+        "Call open_studio to open the interactive 6-tab Ad Library Studio UI."
     ),
 )
 
@@ -69,7 +69,7 @@ def _ensure_web_url(preferred_port: int = 8765) -> str:
     meta={"ui": {"prefersBorder": False}},
 )
 def studio_app_html() -> str:
-    """Self-contained interactive 5-tab Studio HTML rendered inside MCP App hosts."""
+    """Self-contained interactive 6-tab Studio HTML rendered inside MCP App hosts."""
     return mcp_app.build_studio_html()
 
 
@@ -96,7 +96,8 @@ async def _collect_for_studio(
                 lambda: [client.media.save(p.get("logo_url"), f"page_{p['page_id']}_logo") for p in result["pages"][:12]]
             )
             pages_out = []
-            for p, logo in zip(result["pages"], logos):
+            for idx, p in enumerate(result["pages"]):
+                logo = logos[idx] if idx < len(logos) else None
                 row = {k: v for k, v in p.items() if k != "logo_url"}
                 row["logo"] = Path(logo).name if logo else None
                 pages_out.append(row)
@@ -571,11 +572,11 @@ async def open_studio(
     deep_ads: int = 10,
     open_browser: bool = False,
 ) -> dict:
-    """Open the interactive 5-tab Ad Library Studio inside the assistant or local browser.
+    """Open the interactive 6-tab Ad Library Studio inside the assistant or local browser.
 
     Called with empty arguments, returns saved subjects, product card and defaults for the
     home screen. With ``page_id``, ``name`` or ``query``, collects data and preloads the
-    5-tab Studio directly. With ``open_browser=True``, opens the local browser Studio URL.
+    6-tab Studio directly. With ``open_browser=True``, opens the local browser Studio URL.
     """
     try:
         clean_country = normalise_country(country or "IT")
@@ -622,7 +623,8 @@ async def app_studio_action(action: str, payload: dict | None = None) -> dict:
                 lambda: [client.media.save(p.get("logo_url"), f"page_{p['page_id']}_logo") for p in found["pages"][:12]]
             )
             pages_out = []
-            for p, logo in zip(found["pages"], logos):
+            for idx, p in enumerate(found["pages"]):
+                logo = logos[idx] if idx < len(logos) else None
                 row = {k: v for k, v in p.items() if k != "logo_url"}
                 row["logo"] = Path(logo).name if logo else None
                 pages_out.append(row)
@@ -636,10 +638,44 @@ async def app_studio_action(action: str, payload: dict | None = None) -> dict:
                 deep_ads=int(data.get("deep", 10)),
                 use_cache=not bool(data.get("fresh")),
             )
+        if action == "compare":
+            clean_country = normalise_country(data.get("country") or "IT")
+            page_id = str(data.get("page_id") or "").strip()
+            page_id_b = str(data.get("page_id_b") or "").strip()
+            if not page_id.isdigit() or not page_id_b.isdigit() or page_id_b == page_id:
+                raise ValueError("page_id and page_id_b must be two different numeric page IDs")
+            clean_deep = max(0, min(int(data.get("deep", 10)), max(consumption.DEEP_CHOICES)))
+            use_cache = not bool(data.get("fresh"))
+            first = await service.research_company(client, clean_country, page_id=page_id, use_cache=use_cache)
+            second = await service.research_company(client, clean_country, page_id=page_id_b, use_cache=use_cache)
+            for side in (first, second):
+                if side.get("ads"):
+                    await _deepen(side, clean_deep, False, use_cache)
+                    await asyncio.to_thread(media.save_ad_media, side["ads"][:50], client.media)
+            both = bool(first.get("ads") and second.get("ads"))
+            params = {
+                "mode": "compare", "country": clean_country, "level": "data",
+                "deep": clean_deep, "frames": False, "page_id": page_id, "page_id_b": page_id_b,
+            }
+            return {
+                "ok": both,
+                "mode": "compare",
+                "country": clean_country,
+                "request": params,
+                "sides": [
+                    mcp_app.compact_result(first, params, url_prefix=""),
+                    mcp_app.compact_result(second, params, url_prefix=""),
+                ],
+                "comparison": compare.compare(first, second) if both else None,
+            }
         if action == "durata":
             clean_country = normalise_country(data.get("country") or "IT")
             page_id = str(data.get("page_id") or "").strip()
+            if not page_id.isdigit():
+                raise ValueError("page_id must be the numeric id of an advertiser page")
             window_days = int(data.get("window_days", 90))
+            if window_days not in (60, 90, 120, 180):
+                raise ValueError("window_days must be one of (60, 90, 120, 180)")
             snaps = history.History().snapshots(f"company:{clean_country}:{page_id}")
             return await service.analyze_durata(
                 client, clean_country, page_id, window_days=window_days,

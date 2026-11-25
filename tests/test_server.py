@@ -129,3 +129,53 @@ def test_cli_connect_prints_antigravity_config(monkeypatch, tmp_path, capsys):
     saved = json.loads((tmp_path / "mcp_config.json").read_text(encoding="utf-8"))
     assert saved["mcpServers"]["ad-library-insights"]["args"] == ["-m", "ad_library_insights"]
     assert (tmp_path / "skills" / "competitor-analysis" / "SKILL.md").is_file()
+
+
+def test_app_studio_action_compare_and_durata_validation(monkeypatch, cards):
+    async def renderer(url, wait_seconds, scroll_rounds):
+        return PageSnapshot(url=url, status_code=200, page_text="~2 results", cards=cards)
+
+    monkeypatch.setattr(server, "_client", AdLibraryClient(renderer=renderer))
+
+    async def exercise():
+        async with Client(server.mcp) as client:
+            bad_pid = (await client.call_tool("app_studio_action", {"action": "durata", "payload": {"page_id": "abc"}})).data
+            bad_win = (await client.call_tool("app_studio_action", {"action": "durata", "payload": {"page_id": "111", "window_days": 45}})).data
+            same_cmp = (await client.call_tool("app_studio_action", {"action": "compare", "payload": {"page_id": "111", "page_id_b": "111"}})).data
+            ok_cmp = (await client.call_tool("app_studio_action", {"action": "compare", "payload": {"page_id": "111", "page_id_b": "222", "country": "DE", "deep": 0}})).data
+            return bad_pid, bad_win, same_cmp, ok_cmp
+
+    bad_pid, bad_win, same_cmp, ok_cmp = asyncio.run(exercise())
+    assert bad_pid["ok"] is False
+    assert bad_win["ok"] is False
+    assert same_cmp["ok"] is False
+    assert ok_cmp["ok"] is True and ok_cmp["mode"] == "compare" and ok_cmp["comparison"] is not None
+    assert len(ok_cmp["sides"]) == 2
+
+
+def test_ai_runner_handles_missing_binary_oserror_and_success(monkeypatch, tmp_path):
+    from ad_library_insights import ai_runner
+
+    monkeypatch.setattr(ai_runner.link, "find_claude", lambda: None)
+    assert ai_runner.run_claude_brief("brief", tmp_path)["error"] == "claude_missing"
+
+    assert ai_runner.run_claude_brief("brief", tmp_path / "missing", claude_bin="claude")["error"] == "command_failed"
+
+    def boom(*_a, **_k):
+        raise OSError("cannot exec")
+
+    monkeypatch.setattr(ai_runner.subprocess, "Popen", boom)
+    res_err = ai_runner.run_claude_brief("brief", tmp_path, claude_bin="claude")
+    assert res_err["ok"] is False and res_err["error"] == "command_failed"
+
+    class FakeProc:
+        returncode = 0
+
+        def communicate(self, input=None, timeout=None):
+            assert input == "hello brief"
+            return ("# Final Report\n\nVerified.", "")
+
+    monkeypatch.setattr(ai_runner.subprocess, "Popen", lambda *_a, **_k: FakeProc())
+    res_ok = ai_runner.run_claude_brief("hello brief", tmp_path, claude_bin="claude")
+    assert res_ok["ok"] is True and "Final Report" in res_ok["markdown"]
+

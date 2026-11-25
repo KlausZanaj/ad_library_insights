@@ -61,8 +61,8 @@ def run_claude_brief(
     if sys.platform.startswith("win"):
         options["creationflags"] = subprocess.CREATE_NO_WINDOW
 
-    proc = subprocess.Popen([claude, "-p", _short_instruction(lang)], **options)
     try:
+        proc = subprocess.Popen([claude, "-p", _short_instruction(lang)], **options)
         stdout, stderr = proc.communicate(input=brief_text, timeout=timeout)
     except subprocess.TimeoutExpired:
         proc.kill()
