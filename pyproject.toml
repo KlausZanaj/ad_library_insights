@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ad-library-insights"
-version = "0.6.0"
+version = "0.7.0"
 description = "Local app, MCP server and CLI that turn the public Meta Ad Library into ranked, structured competitor research."
 readme = "README.md"
 requires-python = ">=3.10"

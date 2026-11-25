@@ -4,7 +4,7 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests: 517 offline](https://img.shields.io/badge/tests-517%20offline-informational)](#tests)
+[![Tests: 518 offline](https://img.shields.io/badge/tests-518%20offline-informational)](#tests)
 [![MCP: 17 tools](https://img.shields.io/badge/MCP-17%20tools%20%C2%B7%20MCP%20App%20%C2%B7%206%20skills%20%C2%B7%205%20sub--agents-0062cc)](#connect-to-claude-code-google-antigravity-codex-cli-or-claude-desktop)
 
 Ad Library Insights reads the public Meta Ad Library and runs an entire **pure-Python quantitative pipeline** before an LLM ever sees a byte: merging duplicate feeds and translations into distinct creative concepts, computing Kaplan-Meier cohort survival, detecting launch bursts and format shifts, slicing verified data packs into isolated specialist views, stress-testing ad drafts with an independent red-team jury, auditing the final draft deterministically, and inspecting individual video ads on demand.
@@ -39,7 +39,7 @@ Raw Meta Ad Library scraping breaks on survivor bias, launch spikes, duplicated 
 | **Copy duplication & demographic drift without embeddings** | Information theory & ecology | [`lab/struttura.py`](src/ad_library_insights/lab/struttura.py): `zlib` raw DEFLATE Normalized Compression Distance (NCD), HHI/Gini reach concentration, Shannon diversity, Pianka niche overlap, Jensen-Shannon drift | Quantifies concentration, copy families and audience overlap/drift locally with zero GPU or vector DB. |
 | **LLM confirmation bias & hallucinated ad math** | Intelligence analysis (ACH & red-teaming) | [`skills/`](skills) + [`.claude/agents/`](.claude/agents) + [`lab/audit.py`](src/ad_library_insights/lab/audit.py): 4 isolated specialist slices, Analysis of Competing Hypotheses, independent Level 3 `ad-skeptical-jury`, deterministic `check_report` | Separates evidence collection from synthesis and catches ungrounded IDs, impossible claims or drifted budget math before delivery. |
 
-Every formula lives in readable standard-library Python under [`src/ad_library_insights/lab/`](src/ad_library_insights/lab) and is verified by the 517-test offline suite — zero black-box scores.
+Every formula lives in readable standard-library Python under [`src/ad_library_insights/lab/`](src/ad_library_insights/lab) and is verified by the 518-test offline suite — zero black-box scores.
 
 ---
 
@@ -315,7 +315,7 @@ pip install -e ".[dev]"
 python -m pytest
 ```
 
-The 517-test suite runs entirely offline using recorded fixtures in `tests/fixtures/`, a scripted renderer and a deterministic fake clock.
+The 518-test suite runs entirely offline using recorded fixtures in `tests/fixtures/`, a scripted renderer and a deterministic fake clock.
 
 ## License
 

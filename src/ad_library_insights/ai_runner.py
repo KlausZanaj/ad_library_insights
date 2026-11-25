@@ -28,8 +28,37 @@ _INSTRUCTIONS = {
 }
 
 
+_FLAG_CACHE: dict[str, frozenset[str]] = {}
+_OPTIONAL_FLAGS = ("--restricted", "--permission-prompts", "--no-session-persistence")
+
+
 def _short_instruction(lang: str) -> str:
     return _INSTRUCTIONS["en" if lang == "en" else "it"]
+
+
+def _supported_flags(claude_bin: str) -> frozenset[str]:
+    """Probe ``claude --help`` once per binary path to avoid breaking older Claude Code versions."""
+    cached = _FLAG_CACHE.get(claude_bin)
+    if cached is not None:
+        return cached
+    kw: dict = {
+        "capture_output": True,
+        "text": True,
+        "encoding": "utf-8",
+        "errors": "replace",
+        "shell": False,
+        "timeout": 5,
+    }
+    if sys.platform.startswith("win"):
+        kw["creationflags"] = subprocess.CREATE_NO_WINDOW
+    try:
+        res = subprocess.run([claude_bin, "--help"], **kw)
+        help_text = (res.stdout or "") + "\n" + (res.stderr or "")
+        found = frozenset(flag for flag in _OPTIONAL_FLAGS if flag in help_text)
+    except (OSError, subprocess.TimeoutExpired):
+        found = frozenset()
+    _FLAG_CACHE[claude_bin] = found
+    return found
 
 
 def run_claude_brief(
@@ -73,12 +102,15 @@ def run_claude_brief(
         "--strict-mcp-config",
         "--disallowedTools",
         "mcp__*",
-        "--permission-prompts",
-        "none",
-        "--no-session-persistence",
-        "--",
-        _short_instruction(lang),
     ]
+    flags = _supported_flags(claude)
+    if "--restricted" in flags:
+        cmd.append("--restricted")
+    if "--permission-prompts" in flags:
+        cmd += ["--permission-prompts", "none"]
+    if "--no-session-persistence" in flags:
+        cmd.append("--no-session-persistence")
+    cmd += ["--", _short_instruction(lang)]
     try:
         proc = subprocess.Popen(cmd, **options)
         stdout, stderr = proc.communicate(input=brief_text, timeout=timeout)

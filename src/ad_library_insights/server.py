@@ -50,12 +50,16 @@ def _ensure_web_url(preferred_port: int = 8765) -> str:
         import uvicorn
         from .web.app import create_app
 
-        port = preferred_port
+        port: int | None = None
         for candidate in range(preferred_port, preferred_port + 20):
             with socket.socket() as probe:
                 if probe.connect_ex(("127.0.0.1", candidate)) != 0:
                     port = candidate
                     break
+        if port is None:
+            with socket.socket() as probe:
+                probe.bind(("127.0.0.1", 0))
+                port = probe.getsockname()[1]
         server_obj = uvicorn.Server(uvicorn.Config(create_app(_get_client()), host="127.0.0.1", port=port, log_level="warning"))
         threading.Thread(target=server_obj.run, daemon=True).start()
         _web_url = f"http://127.0.0.1:{port}/"

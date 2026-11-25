@@ -1856,14 +1856,38 @@ function formatInlineMd(raw) {
   s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   return linkifyAdIds(s);
 }
+function _mdCells(row) {
+  return row.replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+}
 function renderMarkdownSafe(md) {
   const lines = String(md || '').split(/\r?\n/);
   const out = [];
   let inList = false;
+  let inTable = false;
   const closeList = () => { if (inList) { out.push('</ul>'); inList = false; } };
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) { closeList(); continue; }
+  const closeTable = () => { if (inTable) { out.push('</tbody></table></div>'); inTable = false; } };
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (!trimmed) { closeList(); closeTable(); continue; }
+    const isPipe = trimmed.startsWith('|') && trimmed.slice(1).includes('|');
+    if (!inTable && isPipe) {
+      const next = (lines[i + 1] || '').trim();
+      if (next.includes('-') && next.includes('|') && /^\|?[\s:|-]+\|?$/.test(next)) {
+        closeList();
+        const ths = _mdCells(trimmed).map((c) => `<th>${formatInlineMd(c)}</th>`).join('');
+        out.push(`<div class="table-scroll"><table class="md-table"><thead><tr>${ths}</tr></thead><tbody>`);
+        inTable = true;
+        i++;
+        continue;
+      }
+    }
+    if (inTable) {
+      if (isPipe) {
+        out.push(`<tr>${_mdCells(trimmed).map((c) => `<td>${formatInlineMd(c)}</td>`).join('')}</tr>`);
+        continue;
+      }
+      closeTable();
+    }
     const h = trimmed.match(/^(#{1,3})\s+(.+)$/);
     if (h) { closeList(); const lvl = Math.min(3, h[1].length); out.push(`<h${lvl}>${formatInlineMd(h[2])}</h${lvl}>`); continue; }
     const li = trimmed.match(/^[-*]\s+(.+)$/);
@@ -1872,6 +1896,7 @@ function renderMarkdownSafe(md) {
     out.push(`<p>${formatInlineMd(trimmed)}</p>`);
   }
   closeList();
+  closeTable();
   return out.join('');
 }
 const ARCH_ICONS = {
@@ -2734,8 +2759,9 @@ async function sendMcpAi() {
   const level = S.stratLevel === 'plan' ? 'plan' : 'analysis';
   if (level === 'plan' && !S.project) { S.stratNeedProject = true; renderResults(); return; }
   S.stratNeedProject = false;
+  const safeQuery = String(r.query || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 120);
   const target = r.mode === 'company' && r.page && r.page.page_id
-    ? `page_id ${r.page.page_id} (${r.page.name || ''})` : `query "${r.query || ''}"`;
+    ? `page_id ${r.page.page_id}` : `query "${safeQuery}"`;
   const skill = level === 'plan' ? 'competitor-plan' : 'competitor-analysis';
   const prompt = S.lang === 'it'
     ? `Usa ad-library-insights (${skill}, livello ${level === 'plan' ? 3 : 2}) su ${target} in ${r.country}, analizzando ${S.deep} concetti e verifica il report finale con check_report.`
@@ -3163,7 +3189,7 @@ function _applyHostCtx(ctx) {
 (async function start() {
   if (IS_MCP_APP) {
     try {
-      mcpApp = new window.McpExtApps.App({ name: 'Ad Library Insights', version: '0.8.0' }, {});
+      mcpApp = new window.McpExtApps.App({ name: 'Ad Library Insights', version: '0.7.0' }, {});
       mcpApp.onhostcontextchanged = _applyHostCtx;
       mcpApp.ontoolinput = ({ arguments: args }) => {
         if (args && (args.name || args.page_id || args.query)) {

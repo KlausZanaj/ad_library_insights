@@ -156,6 +156,7 @@ def test_app_studio_action_compare_and_durata_validation(monkeypatch, cards):
 def test_ai_runner_handles_missing_binary_oserror_and_success(monkeypatch, tmp_path):
     from ad_library_insights import ai_runner
 
+    monkeypatch.setattr(ai_runner, "_supported_flags", lambda _bin: frozenset())
     monkeypatch.setattr(ai_runner.link, "find_claude", lambda: None)
     assert ai_runner.run_claude_brief("brief", tmp_path)["error"] == "claude_missing"
 
@@ -200,8 +201,20 @@ def test_ai_runner_enforces_readonly_tools_and_no_user_mcp(monkeypatch, tmp_path
 
     monkeypatch.setattr(ai_runner.subprocess, "Popen", fake_popen)
 
+    class FakeHelp:
+        def __init__(self, stdout):
+            self.stdout = stdout
+            self.stderr = ""
+
+    # 1. Modern CLI: --restricted, --permission-prompts, --no-session-persistence supported
+    ai_runner._FLAG_CACHE.clear()
+    monkeypatch.setattr(
+        ai_runner.subprocess,
+        "run",
+        lambda *_a, **_k: FakeHelp("--restricted\n--permission-prompts\n--no-session-persistence"),
+    )
     for lang in ("it", "en"):
-        res = ai_runner.run_claude_brief("brief body", tmp_path, lang=lang, claude_bin="claude")
+        res = ai_runner.run_claude_brief("brief body", tmp_path, lang=lang, claude_bin="modern-claude")
         assert res["ok"] is True
 
     assert len(recorded) == 2
@@ -211,6 +224,7 @@ def test_ai_runner_enforces_readonly_tools_and_no_user_mcp(monkeypatch, tmp_path
         assert cmd[cmd.index("--tools") + 1] == "Read,Glob,Grep"
         assert "--strict-mcp-config" in cmd
         assert cmd[cmd.index("--disallowedTools") + 1] == "mcp__*"
+        assert "--restricted" in cmd
         assert cmd[cmd.index("--permission-prompts") + 1] == "none"
         assert "--no-session-persistence" in cmd
         sep = cmd.index("--")
@@ -218,5 +232,19 @@ def test_ai_runner_enforces_readonly_tools_and_no_user_mcp(monkeypatch, tmp_path
         assert sep == len(cmd) - 2
         assert "<untrusted_ad_content>" in instruction
         assert "</untrusted_ad_content>" in instruction
+
+    # 2. Older CLI: optional flags absent in --help are omitted cleanly
+    recorded.clear()
+    monkeypatch.setattr(ai_runner.subprocess, "run", lambda *_a, **_k: FakeHelp("Usage: claude [options]"))
+    res_old = ai_runner.run_claude_brief("brief body", tmp_path, lang="en", claude_bin="legacy-claude")
+    assert res_old["ok"] is True
+    old_cmd = recorded[0][0]
+    assert old_cmd[old_cmd.index("--tools") + 1] == "Read,Glob,Grep"
+    assert "--strict-mcp-config" in old_cmd
+    assert old_cmd[old_cmd.index("--disallowedTools") + 1] == "mcp__*"
+    assert "--restricted" not in old_cmd
+    assert "--permission-prompts" not in old_cmd
+    assert "--no-session-persistence" not in old_cmd
+    ai_runner._FLAG_CACHE.clear()
 
 

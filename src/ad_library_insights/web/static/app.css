@@ -931,6 +931,9 @@ body.mcp-host .page { padding-bottom: 40px; }
 .ai-report-view p + p { margin-top: 8px; }
 .ai-report-view ul { margin: 6px 0 10px; padding-left: 20px; }
 .ai-report-view pre, .ai-report-view code { font-family: Consolas, "SF Mono", ui-monospace, monospace; font-size: .84rem; background: var(--sunken); padding: 1px 5px; border-radius: 4px; }
+.ai-report-view .md-table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: .86rem; }
+.ai-report-view .md-table th, .ai-report-view .md-table td { padding: 7px 10px; border-bottom: 1px solid var(--line); text-align: left; }
+.ai-report-view .md-table thead th { background: var(--sunken); font-weight: 640; }
 .id-link { font-family: Consolas, "SF Mono", ui-monospace, monospace; font-size: .84em; }
 
 @media (max-width: 1180px) {

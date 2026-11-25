@@ -1882,3 +1882,38 @@ def test_ai_run_rejects_second_concurrent_run_with_409(tmp_path):
     assert res.status_code == 409
     assert res.json() == {"error": "already_running"}
 
+
+def test_ai_report_renders_markdown_tables_safely_with_id_links(site, page_of):
+    """AI Markdown reports must render pipe tables into table.md-table safely with Ad ID links."""
+    res = _result(site, request={"mode": "company", "country": "IT", "level": "plan", "deep": 10, "frames": False})
+    ad_id = res["ads"][0]["library_id"]
+    page = page_of("it", res)
+    page.click("[data-action=rtab][data-value=strategy]")
+    page.wait_for_selector(".ai-studio-card")
+    page.evaluate(
+        """(id) => {
+          S.aiJob = {
+            id: 'ai-tbl',
+            status: 'done',
+            markdown: [
+              '## Piano 7 giorni',
+              '',
+              '| Giorno | Cosa | Chi |',
+              '| --- | --- | --- |',
+              `| 1 | Test concetto ${id} | Tu <img src=x onerror="window.__xss=1"> |`,
+              '',
+              '- Nota finale con id ' + id,
+            ].join('\\n'),
+            audit: { status: 'ok', checked_ad_ids: [id], warning_count: 0, warnings: [] },
+          };
+          renderResults();
+        }""",
+        ad_id,
+    )
+    page.wait_for_selector(".ai-report-view table.md-table")
+    assert _count(page, ".ai-report-view table.md-table thead th") == 3
+    assert _count(page, ".ai-report-view table.md-table tbody td") == 3
+    assert _count(page, ".ai-report-view table.md-table .id-link") == 1
+    assert page.evaluate("Boolean(window.__xss)") is False
+
+

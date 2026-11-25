@@ -8,8 +8,10 @@ This repository includes one vendored third-party browser client bundle under `s
 
 - **File:** `src/ad_library_insights/web/static/mcp_ext_apps.min.js` (bundled `dist/src/app-with-deps.js`)
 - **Upstream project:** Model Context Protocol MCP Apps SDK (`https://github.com/modelcontextprotocol/ext-apps`)
-- **License:** MIT License
-- **Bundled dependencies inside `app-with-deps.js`:** includes MIT-licensed dependencies such as `zod` and `content-type` (`Copyright (c) 2015 Douglas Christopher Wilson`).
+- **Copyright & License:** Copyright (c) Model Context Protocol contributors / Anthropic, PBC — MIT License
+- **Bundled dependencies inside `app-with-deps.js`:**
+  - `zod` — Copyright (c) 2020 Colin McDonnell (MIT License)
+  - `content-type` — Copyright (c) 2015 Douglas Christopher Wilson (MIT License)
 
 ```text
 MIT License
