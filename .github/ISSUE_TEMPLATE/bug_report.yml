@@ -1,0 +1,34 @@
+name: Bug Report
+description: Report an unexpected error, parser issue, or Studio bug
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please include the details below so we can reproduce it cleanly.
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, and how you launched Ad Library Insights
+      placeholder: "e.g. Windows 11, Python 3.12, Studio / Claude Code MCP / CLI"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Command, tool call, or advertiser/country that triggered the issue
+      placeholder: |
+        1. Run `ad-library-insights app`
+        2. Search ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual behavior
+      description: What happened instead (paste terminal traceback if available)?
+    validations:
+      required: true

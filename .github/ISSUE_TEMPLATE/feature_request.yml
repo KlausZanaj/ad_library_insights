@@ -1,0 +1,21 @@
+name: Feature or Metric Request
+description: Suggest a new statistical diagnostic, Studio improvement, or MCP workflow
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea to make Ad Library Insights sharper? Note that we strictly avoid fabricated spend or ROAS estimates — all diagnostics must remain grounded in observable Meta Ad Library delivery signals.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Problem or insight you want to unlock
+      placeholder: "e.g. Track creative format transitions across multi-country EU cohorts..."
+    validations:
+      required: true
+  - type: textarea
+    id: approach
+    attributes:
+      label: Proposed approach or diagnostic formula
+      placeholder: "Optional: statistical method, Studio tab, or MCP tool idea"

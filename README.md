@@ -1,20 +1,18 @@
+<div align="center">
+
 # Ad Library Insights
 
 **Competitive ad intelligence that runs an entire quantitative lab in pure Python — before an AI ever sees a word.**
 
+[![GitHub Stars](https://img.shields.io/github/stars/KlausZanaj/ad_library_insights?style=social)](https://github.com/KlausZanaj/ad_library_insights/stargazers)
+[![CI](https://github.com/KlausZanaj/ad_library_insights/actions/workflows/ci.yml/badge.svg)](https://github.com/KlausZanaj/ad_library_insights/actions/workflows/ci.yml)
 [![Version: 0.7.0](https://img.shields.io/badge/version-0.7.0-1d4ed8)](pyproject.toml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![Tests: 518 offline](https://img.shields.io/badge/tests-518%20offline-informational)](#tests)
 [![MCP: 17 tools · MCP App](https://img.shields.io/badge/MCP-17%20tools%20%C2%B7%20MCP%20App%20%C2%B7%206%20skills%20%C2%B7%205%20sub--agents-0f766e)](#connect-in-one-command-mcp-app--skills)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-Most "AI marketing tools" scrape raw text from the public Meta Ad Library and dump it into a single prompt, hoping the model does not confuse 50 catalogue duplicates with 50 winning ads or invent break-even math.
-
-**Ad Library Insights flips the architecture.** Everything measurable is computed deterministically on your machine in **standard-library Python** — **zero API keys, zero tokens at rest, zero paid SaaS**: deduplicating feed and translation variants via Union-Find, comparing two advertisers head-to-head across 26 objective metrics, measuring EU+UK demographic niche overlap, fitting censored Kaplan-Meier survival curves, and detecting 9-week launch spikes like a seismic array. Only when you ask for strategic synthesis does it hand isolated, `<untrusted_ad_content>`-delimited data slices to a **4-specialist sub-agent team + Red-Team Skeptical Jury** inside **Claude Code**, **Google Antigravity**, **Codex CLI**, **Claude Desktop**, or your local browser (`127.0.0.1`).
-
-![Ad Library Studio v0.7: Warm Ivory executive overview paired with Deep Obsidian Kaplan-Meier cohort survival](docs/images/hero-studio.png)
-
-<p align="center">
+<p>
   <a href="#quick-start-60-seconds">Quick Start</a> ·
   <a href="#1-two-companies-head-to-head--100-python-zero-ai">Head-to-Head Compare</a> ·
   <a href="#2-the-quantitative-lab-seismology--biostatistics-in-pure-python">Quantitative Lab</a> ·
@@ -22,6 +20,18 @@ Most "AI marketing tools" scrape raw text from the public Meta Ad Library and du
   <a href="#4-multi-agent-strategy-unit-economics--red-team-jury">Multi-Agent & Level 3</a> ·
   <a href="#connect-in-one-command-mcp-app--skills">MCP & Claude Code</a>
 </p>
+
+</div>
+
+Most "AI marketing tools" scrape raw text from the public Meta Ad Library and dump it into a single prompt, hoping the model does not confuse 50 catalogue duplicates with 50 winning ads or invent break-even math.
+
+**Ad Library Insights flips the architecture.** Everything measurable is computed deterministically on your machine in **standard-library Python** — **zero API keys, zero tokens at rest, zero paid SaaS**: deduplicating feed and translation variants via Union-Find, comparing two advertisers head-to-head across 26 objective metrics, measuring EU+UK demographic niche overlap, fitting censored Kaplan-Meier survival curves, and detecting 9-week launch spikes like a seismic array. Only when you ask for strategic synthesis does it hand isolated, `<untrusted_ad_content>`-delimited data slices to a **4-specialist sub-agent team + Red-Team Skeptical Jury** inside **Claude Code**, **Google Antigravity**, **Codex CLI**, **Claude Desktop**, or your local browser (`127.0.0.1`).
+
+### 86-Second Product Demo
+
+<!-- DEMO_VIDEO_URL -->
+
+![Ad Library Studio v0.7: Warm Ivory executive overview paired with Deep Obsidian Kaplan-Meier cohort survival](docs/images/hero-studio.png)
 
 ---
 
@@ -286,6 +296,16 @@ python -m pytest
 ```
 
 The **518-test suite** (unit, statistical invariants, security/sandboxing, MCP protocol, and headless Playwright UI) runs 100% offline against recorded fixtures in `tests/fixtures/` with a deterministic fake clock.
+
+---
+
+## Support the Project
+
+If **Ad Library Insights** saved you hours of manual Ad Library scrolling or inspired how you structure MCP + deterministic analytics workflows, consider giving it a ⭐ on GitHub — it directly helps others discover the project!
+
+<a href="https://github.com/KlausZanaj/ad_library_insights/stargazers">
+  <img src="https://api.star-history.com/svg?repos=KlausZanaj/ad_library_insights&type=Date" alt="Star History Chart" width="640" />
+</a>
 
 ## License
 
