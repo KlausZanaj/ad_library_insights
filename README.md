@@ -29,7 +29,7 @@ Most "AI marketing tools" scrape raw text from the public Meta Ad Library and du
 
 ### 86-Second Product Demo
 
-<!-- DEMO_VIDEO_URL -->
+https://github.com/user-attachments/assets/4cb27cc3-6ae6-40c7-bff5-8eff9260018f
 
 ![Ad Library Studio v0.7: Warm Ivory executive overview paired with Deep Obsidian Kaplan-Meier cohort survival](docs/images/hero-studio.png)
 
