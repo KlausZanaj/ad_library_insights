@@ -986,4 +986,8 @@ body.mcp-host .page { padding-bottom: 40px; }
   .studio-tabs { position: static; padding: 8px 16px !important; }
   .help-pop { width: 270px; }
   .tbl-search { width: 100%; min-width: 0; }
+  .sortbar { min-width: 0; max-width: 100%; }
+  .sortbar .switch { max-width: 100%; overflow-x: auto; flex-shrink: 1; scrollbar-width: none; }
+  .sortbar .switch::-webkit-scrollbar { display: none; }
+  .tier-item { min-width: 0; }
 }
